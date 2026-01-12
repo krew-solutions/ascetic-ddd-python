@@ -1,6 +1,6 @@
 import typing
 
-from .utils import hashable
+from ascetic_ddd.seedwork.domain.utils.data import hashable
 
 
 __all__ = ('Json', )
