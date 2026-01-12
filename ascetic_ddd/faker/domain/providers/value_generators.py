@@ -6,18 +6,18 @@ import typing
 import operator
 from hypothesis import strategies
 
-from ascetic_ddd.faker.domain.providers.interfaces import IValueFactory
+from ascetic_ddd.faker.domain.providers.interfaces import IValueGenerator
 
 
 __all__ = (
-    "IterableFactory",
-    "HypothesisStrategyFactory",
-    "CallableFactory",
-    "CountableFactory",
-    "SequenceFactory",
-    "RangeFactory",
-    "TemplateFactory",
-    "prepare_value_factory",
+    "IterableGenerator",
+    "HypothesisStrategyGenerator",
+    "CallableGenerator",
+    "CountableGenerator",
+    "SequenceGenerator",
+    "RangeGenerator",
+    "TemplateGenerator",
+    "prepare_value_generator",
 )
 
 from ..session.interfaces import ISession
@@ -25,20 +25,20 @@ from ..session.interfaces import ISession
 T = typing.TypeVar("T", covariant=True)
 
 
-def prepare_value_factory(value_factory):
-    if value_factory is not None:
-        if isinstance(value_factory, strategies.SearchStrategy):
-            value_factory = HypothesisStrategyFactory(value_factory)
-        elif isinstance(value_factory, typing.Iterable) and not isinstance(value_factory, (str, bytes)):
-            value_factory = IterableFactory(value_factory)
-        elif callable(value_factory):
+def prepare_value_generator(value_generator):
+    if value_generator is not None:
+        if isinstance(value_generator, strategies.SearchStrategy):
+            value_generator = HypothesisStrategyGenerator(value_generator)
+        elif isinstance(value_generator, typing.Iterable) and not isinstance(value_generator, (str, bytes)):
+            value_generator = IterableGenerator(value_generator)
+        elif callable(value_generator):
             # Check if already wrapped
-            if not isinstance(value_factory, CallableFactory):
-                value_factory = CallableFactory(value_factory)
-    return value_factory
+            if not isinstance(value_generator, CallableGenerator):
+                value_generator = CallableGenerator(value_generator)
+    return value_generator
 
 
-class IterableFactory(typing.Generic[T]):
+class IterableGenerator(typing.Generic[T]):
 
     def __init__(self, values: typing.Iterable[T]):
         self._values = iter(values)
@@ -50,7 +50,7 @@ class IterableFactory(typing.Generic[T]):
             raise StopAsyncIteration from e
 
 
-class HypothesisStrategyFactory(typing.Generic[T]):
+class HypothesisStrategyGenerator(typing.Generic[T]):
 
     def __init__(self, strategy: strategies.SearchStrategy[T]):
         self._strategy = strategy
@@ -59,7 +59,7 @@ class HypothesisStrategyFactory(typing.Generic[T]):
         return self._strategy.example()
 
 
-class CallableFactory(typing.Generic[T]):
+class CallableGenerator(typing.Generic[T]):
     """
     Обёртка для callable с любым числом параметров (0, 1 или 2).
     Автоматически определяет сигнатуру и async.
@@ -86,7 +86,7 @@ class CallableFactory(typing.Generic[T]):
         return result
 
 
-class CountableFactory(typing.Generic[T]):
+class CountableGenerator(typing.Generic[T]):
 
     def __init__(self, base: str):
         self._count = 0
@@ -99,7 +99,7 @@ class CountableFactory(typing.Generic[T]):
         return result
 
 
-class SequenceFactory(typing.Generic[T]):
+class SequenceGenerator(typing.Generic[T]):
 
     def __init__(self, lower: T, delta: typing.Any):
         self._lower = lower
@@ -110,7 +110,7 @@ class SequenceFactory(typing.Generic[T]):
         return self._op(self._lower, self._delta * position)
 
 
-class RangeFactory(typing.Generic[T]):
+class RangeGenerator(typing.Generic[T]):
 
     def __init__(self, lower: T, upper: T):
         self._lower = lower
@@ -125,9 +125,9 @@ class RangeFactory(typing.Generic[T]):
         return value
 
 
-class TemplateFactory(typing.Generic[T]):
+class TemplateGenerator(typing.Generic[T]):
 
-    def __init__(self, delegate: IValueFactory[typing.Any], template: T):
+    def __init__(self, delegate: IValueGenerator[typing.Any], template: T):
         assert isinstance(template, str) and "%s" in template
         self._template = template
         self._delegate = delegate
