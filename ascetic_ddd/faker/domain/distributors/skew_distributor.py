@@ -162,6 +162,32 @@ class SkewPartition(typing.Generic[T]):
         if read_offset:
             self._read_offset = read_offset
 
+    def remove(self, value: T) -> bool:
+        """Удаляет объект из партиции. Возвращает True если объект был удалён."""
+        if value not in self._value_set:
+            return False
+        self._value_set.discard(value)
+        self._values.remove(value)
+        return True
+
+    def get_relative_position(self, value: T) -> float | None:
+        """Возвращает относительную позицию объекта (0.0 - 1.0) или None если не найден."""
+        if value not in self._value_set:
+            return None
+        idx = self._values.index(value)
+        n = len(self._values)
+        return idx / n if n > 0 else 0.0
+
+    def insert_at_relative_position(self, value: T, relative_position: float) -> None:
+        """Вставляет объект в позицию, соответствующую относительной позиции."""
+        if value in self._value_set:
+            return
+        n = len(self._values)
+        idx = int(relative_position * n)
+        idx = max(0, min(idx, n))
+        self._values.insert(idx, value)
+        self._value_set.add(value)
+
     def populate_from(self, source: 'SkewPartition') -> None:
         values_length = len(source)
         if self._read_offset < values_length:
@@ -261,9 +287,40 @@ class SkewDistributor(Observable, IDistributor[T], typing.Generic[T]):
             raise StopAsyncIteration(None)
 
         try:
-            return target_partition.next(self._scale)
+            value = target_partition.next(self._scale)
         except StopIteration:
             raise StopAsyncIteration(None)
+
+        # Проверяем, соответствует ли объект спецификации (мог "протухнуть")
+        if not specification.is_satisfied_by(value):
+            self._relocate_stale_value(value, specification)
+            # Retry
+            return await self.next(session, specification)
+
+        return value
+
+    def _relocate_stale_value(self, value: T, current_spec: ISpecification[T]) -> None:
+        """
+        Перемещает протухший объект из текущей партиции в подходящие.
+        """
+        # Удаляем из текущей партиции
+        current_partition = self._partitions.get(current_spec)
+        if current_partition:
+            current_partition.remove(value)
+
+        # Получаем относительную позицию из default партиции
+        default_partition = self._partitions[self._default_spec]
+        relative_position = default_partition.get_relative_position(value)
+
+        if relative_position is None:
+            return
+
+        # Перебираем все партиции (кроме default и текущей) и вставляем куда подходит
+        for spec, partition in self._partitions.items():
+            if spec == self._default_spec or spec == current_spec:
+                continue
+            if spec.is_satisfied_by(value):
+                partition.insert_at_relative_position(value, relative_position)
 
     async def append(self, session: ISession, value: T):
         if value not in self._partitions[self._default_spec]:
