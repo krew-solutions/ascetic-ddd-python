@@ -1,1 +1,1 @@
-from .interfaces import ISessionPool, ISession, IAuthenticator
+from .interfaces import ISessionPool, ISession

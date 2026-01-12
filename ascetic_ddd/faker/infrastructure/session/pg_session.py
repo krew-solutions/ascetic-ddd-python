@@ -36,9 +36,10 @@ class PgSessionPool(Observable, ISessionPool):
     response_time: float
 
     def __init__(self, pool: IAsyncConnectionPool) -> None:
-        super().__init__(pool)
+        self._pool = pool
         self.response_time = 0.0
         self.stats = Collector()
+        super().__init__()
 
     @asynccontextmanager
     async def session(self) -> typing.AsyncIterator[ISession]:

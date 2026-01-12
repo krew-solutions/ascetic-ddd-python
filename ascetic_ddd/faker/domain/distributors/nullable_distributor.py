@@ -1,0 +1,76 @@
+import random
+import typing
+from typing import Hashable, Callable
+
+from ascetic_ddd.disposable import IDisposable
+from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
+from ascetic_ddd.faker.domain.distributors.interfaces import IDistributor
+from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
+
+__all__ = ('NullableDistributor',)
+
+
+T = typing.TypeVar("T", covariant=True)
+
+
+class NullableDistributor(IDistributor[T], typing.Generic[T]):
+    _delegate: IDistributor[T]
+    _null_weight: float = 0
+
+    def __init__(
+            self,
+            delegate: IDistributor[T],
+            null_weight: float = 0
+    ):
+        self._delegate = delegate
+        self._null_weight = null_weight
+
+    async def next(
+            self,
+            session: ISession,
+            specification: ISpecification[T] | None = None,
+    ) -> T | None:
+        if specification is None:
+            specification = EmptySpecification()
+        if self._null_weight > 0 and self._is_null():
+            return None
+        return await self._delegate.next(session, specification)
+
+    async def append(self, session: ISession, value: T):
+        return await self._delegate.append(session, value)
+
+    @property
+    def provider_name(self):
+        return self._delegate.provider_name
+
+    @provider_name.setter
+    def provider_name(self, value):
+        self._delegate.provider_name = value
+
+    def _is_null(self) -> bool:
+        return random.random() < self._null_weight
+
+    def attach(self, aspect: Hashable, observer: Callable, id_: Hashable | None = None) -> IDisposable:
+        return self._delegate.attach(aspect, observer, id_)
+
+    def detach(self, aspect, observer, id_: Hashable | None = None):
+        return self._delegate.detach(aspect, observer, id_)
+
+    def notify(self, aspect, *args, **kwargs):
+        return self._delegate.notify(aspect, *args, **kwargs)
+
+    async def anotify(self, aspect: Hashable, *args, **kwargs):
+        return await self._delegate.anotify(aspect, *args, **kwargs)
+
+    async def setup(self, session: ISession):
+        await self._delegate.setup(session)
+
+    async def cleanup(self, session: ISession):
+        await self._delegate.cleanup(session)
+
+    def __copy__(self):
+        return self
+
+    def __deepcopy__(self, memodict={}):
+        return self

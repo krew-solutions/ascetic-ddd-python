@@ -1,12 +1,12 @@
 import os
 from psycopg_pool import AsyncConnectionPool
 
-from ..session import PgSessionPool
+from ascetic_ddd.faker.infrastructure.session import PgSessionPool
 
 
-async def make_pg_session_pool():
+async def make_internal_pg_session_pool():
     postgresql_url = os.environ.get(
-        'TEST_POSTGRESQL_URL',
+        'TEST_INTERNAL_POSTGRESQL_URL',
         ''
     )
     pool = AsyncConnectionPool(postgresql_url, open=False)
