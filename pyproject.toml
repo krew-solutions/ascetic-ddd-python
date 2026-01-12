@@ -17,7 +17,8 @@ dependencies = [
     # "python-jsonpath~=2.0.2",
     "aiohttp (>=3.13.3,<4.0.0)",
     "pydash (>=8.0.5,<9.0.0)",
-    "dotenv (>=0.9.9,<0.10.0)"
+    "dotenv (>=0.9.9,<0.10.0)",
+    "hypothesis (>=6.150.1,<7.0.0)"
 ]
 
 [dependency-groups]
