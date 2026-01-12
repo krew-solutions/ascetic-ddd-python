@@ -1,7 +1,6 @@
 import typing
 
 from abc import ABCMeta, abstractmethod
-from aiohttp import ClientSession
 from types import TracebackType
 
 from ...domain.aggregate import IHashable
@@ -20,7 +19,6 @@ __all__ = (
     "IIdentityKey",
     "IModel",
     "IPgSession",
-    "IRestSession",
 )
 
 
@@ -133,7 +131,7 @@ class IIdentityMap(metaclass=ABCMeta):
         raise NotImplementedError
 
 
-class ISession(_ISession, metaclass=ABCMeta):
+class ISession(_ISession, typing.Protocol, metaclass=ABCMeta):
     @property
     @abstractmethod
     def identity_map(self) -> IIdentityMap:
@@ -146,35 +144,5 @@ class IPgSession(_ISession, typing.Protocol, metaclass=ABCMeta):
     @property
     @abstractmethod
     def connection(self) -> IAsyncConnection:
-        """For ReadModels (Queries)."""
-        raise NotImplementedError
-
-
-@typing.runtime_checkable
-class IExternalPgSession(_ISession, typing.Protocol, metaclass=ABCMeta):
-
-    @property
-    @abstractmethod
-    def external_connection(self) -> IAsyncConnection:
-        """For ReadModels (Queries)."""
-        raise NotImplementedError
-
-
-@typing.runtime_checkable
-class IInternalPgSession(_ISession, typing.Protocol, metaclass=ABCMeta):
-
-    @property
-    @abstractmethod
-    def internal_connection(self) -> IAsyncConnection:
-        """For ReadModels (Queries)."""
-        raise NotImplementedError
-
-
-@typing.runtime_checkable
-class IRestSession(_ISession, typing.Protocol, metaclass=ABCMeta):
-
-    @property
-    @abstractmethod
-    def request(self) -> ClientSession:
         """For ReadModels (Queries)."""
         raise NotImplementedError

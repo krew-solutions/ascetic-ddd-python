@@ -1,6 +1,7 @@
 import typing
 from collections.abc import Callable, Hashable
 
+from ...domain.utils.stats import Collector
 from ...domain.session.interfaces import ISessionPool, ISession
 
 __all__ = (
@@ -49,6 +50,13 @@ class CompositeSessionPool(ISessionPool):
         for delegate in self._delegates:
             response_time += delegate.response_time
         return response_time
+
+    @property
+    def stats(self) -> Collector:
+        stats = Collector()
+        for delegate in self._delegates:
+            stats.update(delegate.stats)
+        return stats
 
     def __getitem__(self, item):
         return list(self._delegates)[item]
@@ -108,6 +116,13 @@ class CompositeSession(ISession):
         for delegate in self._delegates:
             response_time += delegate.response_time
         return response_time
+
+    @property
+    def stats(self) -> Collector:
+        stats = Collector()
+        for delegate in self._delegates:
+            stats.update(delegate.stats)
+        return stats
 
     def __getitem__(self, item):
         return list(self._delegates)[item]
