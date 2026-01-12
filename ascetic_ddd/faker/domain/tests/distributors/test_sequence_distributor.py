@@ -23,7 +23,7 @@ class SequenceDistributorTestCase(IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.null_weight = 0
         self.session_pool = await self._make_session_pool()
-        self.dist = self.distributor_factory(None, None, self.null_weight)
+        self.dist = self.distributor_factory(null_weight=self.null_weight, sequence=True)
         self.dist.provider_name = 'path.Fk.fk_id'
 
     async def _next_with_factory(self, ts_session, specification=None):

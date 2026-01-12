@@ -66,7 +66,19 @@ class IDistributorFactory(typing.Protocol[T], metaclass=ABCMeta):
     def __call__(
         self,
         weights: list[float] | None = None,
+        skew: float | None = None,
         scale: float | None = None,
         null_weight: float = 0,
+        sequence: bool = False
     ) -> IDistributor[T]:
+        """
+        Фабрика для Distributor.
+
+        Args:
+            weights: If a weights sequence is specified, selections are made according to the relative weights.
+            skew: Параметр перекоса (1.0 = равномерно, 2.0+ = перекос к началу). Default = 2.0
+            scale: Среднее количество использований каждого значения. Use scale = 1 for unique.
+            null_weight: Вероятность вернуть None (0-1)
+            sequence: Pass sequence number to value generator.
+        """
         raise NotImplementedError

@@ -6,7 +6,7 @@ from collections import Counter
 from unittest import IsolatedAsyncioTestCase
 
 from ascetic_ddd.faker.infrastructure.tests.db import make_internal_pg_session_pool
-from ascetic_ddd.faker.domain.distributors import skew_distributor_factory
+from ascetic_ddd.faker.domain.distributors import distributor_factory
 from ascetic_ddd.faker.domain.specification.object_pattern_specification import ObjectPatternSpecification
 from ascetic_ddd.faker.domain.values.empty import Empty, empty
 from ascetic_ddd.faker.domain.session.interfaces import ISession
@@ -44,7 +44,7 @@ class _BaseSkewDistributorTestCase(IsolatedAsyncioTestCase):
     При skew=2: первые 50% значений получают ~75% вызовов
     При skew=3: первые 33% значений получают ~70% вызовов
     """
-    distributor_factory = staticmethod(skew_distributor_factory)
+    distributor_factory = staticmethod(distributor_factory)
 
     skew = 2.0
     null_weight = 0.5

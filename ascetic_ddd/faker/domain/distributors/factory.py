@@ -1,11 +1,11 @@
 import typing
 
-from ascetic_ddd.faker.domain.distributors import WeightedDistributor, NullableDistributor
+from ascetic_ddd.faker.domain.distributors import WeightedDistributor, NullableDistributor, DummyDistributor
 from ascetic_ddd.faker.domain.distributors.interfaces import IDistributor
 from ascetic_ddd.faker.domain.distributors.sequence_distributor import SequenceDistributor
 from ascetic_ddd.faker.domain.distributors.skew_distributor import SkewDistributor
 
-__all__ = ('distributor_factory', 'skew_distributor_factory')
+__all__ = ('distributor_factory',)
 
 
 T = typing.TypeVar("T", covariant=True)
@@ -13,32 +13,29 @@ T = typing.TypeVar("T", covariant=True)
 
 def distributor_factory(
     weights: list[float] | None = None,
+    skew: float | None = None,
     scale: float | None = None,
     null_weight: float = 0,
-) -> IDistributor[T]:
-    if weights is not None:
-        dist = WeightedDistributor[T](weights, scale)
-    else:
-        dist = SequenceDistributor[T]()
-    if null_weight:
-        dist = NullableDistributor[T](dist, null_weight)
-    return dist
-
-
-def skew_distributor_factory(
-    skew: float = 2.0,
-    scale: float | None = None,
-    null_weight: float = 0,
+    sequence: bool = False
 ) -> IDistributor[T]:
     """
-    Фабрика для SkewDistributor.
+    Фабрика для Distributor.
 
     Args:
-        skew: Параметр перекоса (1.0 = равномерно, 2.0+ = перекос к началу)
-        scale: Среднее количество использований каждого значения
+        weights: If a weights sequence is specified, selections are made according to the relative weights.
+        skew: Параметр перекоса (1.0 = равномерно, 2.0+ = перекос к началу). Default = 2.0
+        scale: Среднее количество использований каждого значения. Use scale = 1 for unique.
         null_weight: Вероятность вернуть None (0-1)
+        sequence: Pass sequence number to value generator.
     """
-    dist = SkewDistributor[T](skew=skew, scale=scale)
+    if weights is not None:
+        dist = WeightedDistributor[T](weights, scale)
+    elif skew is not None:
+        dist = SkewDistributor[T](skew=skew, scale=scale)
+    elif sequence:
+        dist = SequenceDistributor[T]()
+    else:
+        dist = DummyDistributor()
     if null_weight:
         dist = NullableDistributor[T](dist, null_weight)
     return dist
