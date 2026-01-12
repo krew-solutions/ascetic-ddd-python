@@ -3,4 +3,5 @@ from .weighted_distributor import WeightedDistributor
 from .skew_distributor import SkewDistributor
 from .sequence_distributor import SequenceDistributor
 from .nullable_distributor import NullableDistributor
+from .dummy_distributor import DummyDistributor
 from .factory import distributor_factory, skew_distributor_factory
