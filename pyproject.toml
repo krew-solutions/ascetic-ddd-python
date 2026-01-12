@@ -15,6 +15,7 @@ dependencies = [
     "jsonpath2 (>=0.4.5,<0.5.0)",
     "jsonpath-rfc9535 (>=1.0.0,<2.0.0)",
     # "python-jsonpath~=2.0.2",
+    "aiohttp (>=3.13.3,<4.0.0)"
 ]
 
 [dependency-groups]
