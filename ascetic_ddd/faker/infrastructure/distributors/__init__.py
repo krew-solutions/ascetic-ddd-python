@@ -1,3 +1,3 @@
-from .pg_weighted_distributor import PgWeightedDistributor
-from .pg_skew_distributor import PgSkewDistributor
-from .factory import pg_distributor_factory
+from ascetic_ddd.faker.infrastructure.distributors.pg_weighted_distributor import PgWeightedDistributor
+from ascetic_ddd.faker.infrastructure.distributors.pg_skew_distributor import PgSkewDistributor
+from ascetic_ddd.faker.infrastructure.distributors.factory import pg_distributor_factory

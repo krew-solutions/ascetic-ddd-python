@@ -4,7 +4,7 @@ from ascetic_ddd.faker.domain.providers._mixins import BaseDistributorProvider
 from ascetic_ddd.faker.domain.providers.interfaces import IValueProvider, IValueGenerator
 from ascetic_ddd.faker.domain.providers.value_generators import prepare_value_generator
 from ascetic_ddd.faker.domain.values.empty import empty, Empty
-from ascetic_ddd.faker.domain.distributors import IDistributor
+from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IDistributor
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 
 __all__ = ('ValueProvider',)

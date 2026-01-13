@@ -1,6 +1,4 @@
-import logging
-
-from ascetic_ddd.faker.domain.tests.distributors.test_sequence_distributor import SequenceDistributorTestCase
+from ascetic_ddd.faker.domain.tests.distributors.m2o.test_sequence_distributor import SequenceDistributorTestCase
 from ascetic_ddd.faker.infrastructure.distributors.factory import pg_distributor_factory
 
 

@@ -8,7 +8,7 @@ from ascetic_ddd.faker.domain.providers.interfaces import IValueProvider, IShunt
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.domain.values.empty import empty, Empty
-from ascetic_ddd.faker.domain.distributors.interfaces import IDistributor
+from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IDistributor
 from ascetic_ddd.faker.domain.specification.object_pattern_specification import ObjectPatternSpecification
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 

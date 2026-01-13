@@ -1,15 +1,12 @@
-import copy
 import functools
-import math
-import uuid
-import pprint
 import logging
+import uuid
 import dataclasses
 from collections import Counter
 from unittest import IsolatedAsyncioTestCase
 
 from ascetic_ddd.faker.infrastructure.tests.db import make_internal_pg_session_pool
-from ascetic_ddd.faker.domain.distributors import distributor_factory
+from ascetic_ddd.faker.domain.distributors.m2o.factory import distributor_factory
 from ascetic_ddd.faker.domain.specification.object_pattern_specification import ObjectPatternSpecification
 from ascetic_ddd.faker.domain.values.empty import Empty, empty
 from ascetic_ddd.faker.domain.session.interfaces import ISession
@@ -38,10 +35,18 @@ class Factory:
         )
 
 
-class _BaseDistributorTestCase(IsolatedAsyncioTestCase):
+class _BaseSkewDistributorTestCase(IsolatedAsyncioTestCase):
+    """
+    Базовый класс тестов для SkewDistributor.
+
+    Проверяем степенное распределение: idx = n * (1 - random())^skew
+    При skew=1: равномерное распределение
+    При skew=2: первые 50% значений получают ~75% вызовов
+    При skew=3: первые 33% значений получают ~70% вызовов
+    """
     distributor_factory = staticmethod(distributor_factory)
 
-    weights = [0.7, 0.2, 0.07, 0.03]
+    skew = 2.0
     null_weight = 0.5
     scale = 50
     count = 3000
@@ -52,11 +57,11 @@ class _BaseDistributorTestCase(IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.session_pool = await self._make_session_pool()
         self.dist = self.distributor_factory(
-            weights=self.weights,
+            skew=self.skew,
             scale=self.scale,
             null_weight=self.null_weight,
         )
-        self.dist.provider_name = 'path.Fk.fk_id'
+        self.dist.provider_name = 'path.SkewFk.fk_id'
 
     def _check_scale_of_emptiable_result(self, result, strategy=lambda actual_scale, expected_scale: None):
         counter = Counter(result)
@@ -68,9 +73,7 @@ class _BaseDistributorTestCase(IsolatedAsyncioTestCase):
             "Emptiable scale, Actual: %s, Expected: %s, Empty: %s, Non-Empty: %s, Total: %s, Len: %s",
             actual_scale, expected_scale, counter[None], counter.total() - counter[None], counter.total(), len(counter)
         )
-        # counter_repr = [(k, v) for k, v in sorted(counter.items(), key=lambda item: item[1], reverse=True)]
-        # logging.debug(pprint.pformat(counter_repr))
-        # Вероятностный подход (PgDistributor) имеет более высокую дисперсию
+        # Вероятностный подход (PgSkewDistributor) имеет более высокую дисперсию
         self.assertLessEqual(actual_scale, expected_scale * 1.5)
         strategy(actual_scale, expected_scale)
 
@@ -83,46 +86,30 @@ class _BaseDistributorTestCase(IsolatedAsyncioTestCase):
             "Non-empty scale, Actual: %s, Expected: %s, Total: %s, Len: %s",
             actual_scale, expected_scale, counter.total(), len(counter)
         )
-        # Вероятностный подход (PgDistributor) имеет более высокую дисперсию
+        # Вероятностный подход (PgSkewDistributor) имеет более высокую дисперсию
         self.assertLessEqual(actual_scale, expected_scale * 1.5)
         strategy(actual_scale, expected_scale)
 
-    def _check_non_empty_result(self, result):
+    def _check_skew_distribution(self, result):
+        """Проверка перекоса: первая половина должна получать больше вызовов."""
         counter = Counter(result)
-        del counter[None]
+        if None in counter:
+            del counter[None]
 
         counts = list(sorted(counter.values(), reverse=True))
-        partition_size = len(counts) / len(self.weights)
+        n = len(counts)
+        first_half_sum = sum(counts[:n // 2])
+        second_half_sum = sum(counts[n // 2:])
+        first_half_ratio = first_half_sum / counter.total()
 
-        for part_num in range(len(self.weights) - 1):
-            current_partition_counts = counts[
-               math.floor(part_num * partition_size):
-               math.ceil((part_num + 1) * partition_size)
-            ]
-            next_partition_counts = counts[
-                math.floor((part_num + 1) * partition_size):
-                math.ceil((part_num + 2) * partition_size)
-            ]
-            logging.info("Pos: %s, Current sum: %s, Next sum: %s",
-                         part_num, sum(current_partition_counts), sum(next_partition_counts))
-            self.assertGreaterEqual(sum(current_partition_counts), sum(next_partition_counts))
+        logging.info(
+            "First half: %d (%.1f%%), Second half: %d (%.1f%%)",
+            first_half_sum, first_half_ratio * 100,
+            second_half_sum, (1 - first_half_ratio) * 100
+        )
 
-        for part_num, weight in enumerate(self.weights):
-            current_partition_counts = counts[
-               math.floor(part_num * partition_size):
-               math.ceil((part_num + 1) * partition_size)
-            ]
-            actual_weight = sum(current_partition_counts) / counter.total()
-            logging.info("Pos: %s, Actual weight: %s, Expected weight: %s", part_num, actual_weight, weight)
-            # При динамическом создании значений (без per-value счётчиков) ранние значения
-            # получают больше вызовов, т.к. доступны дольше. Это даёт ~85% vs 70% для первой
-            # партиции. Вероятностный подход (без touch) добавляет ещё больше дисперсии.
-            # Для генератора фейковых данных это приемлемо.
-            self.assertLessEqual(actual_weight, weight * 3.0)
-            self.assertAlmostEqual(actual_weight, weight, delta=weight * 2.0)
-
-        counter_repr = [(k, v) for k, v in sorted(counter.items(), key=lambda item: item[1], reverse=True)]
-        logging.info(pprint.pformat(counter_repr))
+        # При skew>=2 первая половина должна получать значительно больше
+        self.assertGreater(first_half_ratio, 0.6)
 
     async def asyncTearDown(self):
         async with self.session_pool.session() as session, session.atomic() as ts_session:
@@ -130,18 +117,7 @@ class _BaseDistributorTestCase(IsolatedAsyncioTestCase):
         await self.session_pool._pool.close()
 
 
-class DefaultKeyDistributorTestCase(_BaseDistributorTestCase):
-
-    def _make_value_factory(self):
-        val = 0
-
-        async def factory(_session: ISession):
-            nonlocal val
-            res = val
-            val += 1
-            return res
-
-        return factory
+class DefaultKeySkewDistributorTestCase(_BaseSkewDistributorTestCase):
 
     async def test_default_key(self):
         val = 0
@@ -162,7 +138,7 @@ class DefaultKeyDistributorTestCase(_BaseDistributorTestCase):
                     await self.dist.append(ts_session, value)
                     result.append(value)
 
-        # Вероятностный подход в PgDistributor имеет более высокую дисперсию,
+        # Вероятностный подход в PgSkewDistributor имеет более высокую дисперсию,
         # поэтому используем 40% tolerance вместо 20%
         self._check_scale_of_emptiable_result(
             result,
@@ -172,10 +148,10 @@ class DefaultKeyDistributorTestCase(_BaseDistributorTestCase):
             result,
             functools.partial(self.assertAlmostEqual, delta=self.scale * 0.4)
         )
-        self._check_non_empty_result(result)
+        self._check_skew_distribution(result)
 
 
-class SpecificKeyDistributorTestCase(_BaseDistributorTestCase):
+class SpecificKeySkewDistributorTestCase(_BaseSkewDistributorTestCase):
 
     async def test_specific_key(self):
         factory = Factory()
@@ -199,51 +175,41 @@ class SpecificKeyDistributorTestCase(_BaseDistributorTestCase):
 
         self._check_scale_of_emptiable_result(result)
         self._check_scale_of_non_empty_result(result)
-        self._check_non_empty_result(result)
+        self._check_skew_distribution(result)
 
 
-class CollectionDistributorTestCase(_BaseDistributorTestCase):
-    weights = [0.7, 0.2, 0.1]
+class CollectionSkewDistributorTestCase(_BaseSkewDistributorTestCase):
+    skew = 3.0
 
     async def asyncSetUp(self):
         self.session_pool = await self._make_session_pool()
         self._values = self._make_values()
         self._value_iter = iter(self._values)
-        self._source_available = True
         self.scale = self.null_weight * self.count / len(self._values)
         self.dist = self.distributor_factory(
-            weights=self.weights,
+            skew=self.skew,
             scale=None,
             null_weight=self.null_weight,
         )
-        self.dist.provider_name = 'path.Fk.fk_id'
+        self.dist.provider_name = 'path.SkewFk.fk_id'
 
     def _make_values(self):
         return [5, 10, 20]
 
-    async def _next_with_fallback(self, ts_session):
-        """Если source исчерпан, используем fallback через повторный вызов next."""
-        try:
-            return await self.dist.next(ts_session)
-        except StopAsyncIteration:
-            if self._source_available:
-                try:
-                    value = next(self._value_iter)
-                    await self.dist.append(ts_session, value)
-                    return value
-                except StopIteration:
-                    self._source_available = False
-            # Fallback: повторно вызвать next (теперь есть значения, select вернёт одно)
-            try:
-                return await self.dist.next(ts_session)
-            except StopAsyncIteration:
-                # В редком случае StopAsyncIteration ещё раз (вероятностно)
-                return await self.dist.next(ts_session)
-
     async def test_fixed_collection(self):
 
         async with self.session_pool.session() as session, session.atomic() as ts_session:
-            result = [await self._next_with_fallback(ts_session) for _ in range(self.count)]
+            result = []
+            for _ in range(self.count):
+                try:
+                    result.append(await self.dist.next(ts_session))
+                except StopAsyncIteration:
+                    try:
+                        value = next(self._value_iter)
+                        await self.dist.append(ts_session, value)
+                        result.append(value)
+                    except StopIteration:
+                        result.append(None)
 
         self._check_scale_of_emptiable_result(
             result,
@@ -253,4 +219,4 @@ class CollectionDistributorTestCase(_BaseDistributorTestCase):
             result,
             functools.partial(self.assertAlmostEqual, delta=self.scale * 0.05)
         )
-        self._check_non_empty_result(result)
+        self._check_skew_distribution(result)

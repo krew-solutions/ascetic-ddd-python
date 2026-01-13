@@ -1,7 +1,7 @@
 import typing
 
-from ascetic_ddd.faker.domain.distributors import NullableDistributor, DummyDistributor
-from ascetic_ddd.faker.domain.distributors.interfaces import IDistributor
+from ascetic_ddd.faker.domain.distributors.m2o import NullableDistributor, DummyDistributor
+from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IDistributor
 from ascetic_ddd.faker.infrastructure.distributors.pg_sequence_distributor import PgSequenceDistributor
 from ascetic_ddd.faker.infrastructure.distributors.pg_skew_distributor import PgSkewDistributor
 from ascetic_ddd.faker.infrastructure.distributors import PgWeightedDistributor

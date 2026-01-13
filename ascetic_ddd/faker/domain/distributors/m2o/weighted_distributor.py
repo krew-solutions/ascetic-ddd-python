@@ -2,7 +2,7 @@ import math
 import random
 import typing
 
-from ascetic_ddd.faker.domain.distributors.interfaces import IDistributor
+from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IDistributor
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification

@@ -1,7 +1,6 @@
-import logging
-
 from ascetic_ddd.faker.infrastructure.distributors import pg_distributor_factory
-from ascetic_ddd.faker.domain.tests.distributors import test_weighted_distributor as td
+from ascetic_ddd.faker.domain.tests.distributors.m2o import test_weighted_distributor as td
+
 
 # logging.basicConfig(level="DEBUG")
 

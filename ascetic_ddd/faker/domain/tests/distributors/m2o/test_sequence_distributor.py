@@ -2,9 +2,9 @@ import datetime
 from dateutil import tz
 from unittest import IsolatedAsyncioTestCase
 
-from ...specification.scope_specification import ScopeSpecification
+from ascetic_ddd.faker.domain.specification.scope_specification import ScopeSpecification
 from ascetic_ddd.faker.infrastructure.tests.db import make_internal_pg_session_pool
-from ascetic_ddd.faker.domain.distributors import distributor_factory
+from ascetic_ddd.faker.domain.distributors.m2o.factory import distributor_factory
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 
 # logging.basicConfig(level="DEBUG")
