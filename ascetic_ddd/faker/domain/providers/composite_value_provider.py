@@ -42,6 +42,7 @@ class CompositeValueProvider(
             result_factory: typing.Callable[[...], T_Output] | None = None,  # T_Output of each nested Provider.
             result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
     ):
+        super().__init__()
         self._distributor = distributor
         if result_factory is not None:
             def result_factory(result):
@@ -52,7 +53,10 @@ class CompositeValueProvider(
             def result_exporter(value):
                 return value
         self._result_exporter = result_exporter
-        super().__init__()
+        self.on_init()
+
+    def on_init(self):
+        pass
 
     def is_complete(self) -> bool:
         return (
@@ -65,6 +69,7 @@ class CompositeValueProvider(
         clone._output_result = empty
         for attr, provider in self._providers.items():
             setattr(clone, attr, provider.empty(shunt))
+        clone.on_init()
 
     def reset(self) -> None:
         self._input_value = empty
@@ -101,6 +106,7 @@ class CompositeValueProvider(
         else:
             specification = ObjectPatternSpecification(self._input_value, self._result_exporter)
 
+        await self.do_populate(session)
         for provider in self._providers.values():
             await provider.populate(session)
 
@@ -115,6 +121,9 @@ class CompositeValueProvider(
                 await self._distributor.append(session, self._output_result)
                 value = self._result_exporter(self._output_result)
                 self.set(value)
+
+    async def do_populate(self, session: ISession) -> None:
+        pass
 
     async def _default_factory(self, session: ISession, position: typing.Optional[int] = None):
         data = dict()
