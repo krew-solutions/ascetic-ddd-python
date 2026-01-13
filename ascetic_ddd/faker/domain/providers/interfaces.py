@@ -9,16 +9,16 @@ from ascetic_ddd.observable.interfaces import IObservable
 
 
 __all__ = (
-    'IDiscreteValueProvider',
+    'IValueProvider',
     'IReferenceProvider',
     'IEntityProvider',
     'IRelativeProvider',
     'INameable',
     'IShunt',
     'ICloneable',
-    'IProbabilityDistributionDiscreteValueProvider',
     'IValueGenerator',
     'IValueAnyGenerator',
+    'ICompositeValueProvider',
 )
 
 T_Input = typing.TypeVar("T_Input")
@@ -84,6 +84,10 @@ class IProvidable(typing.Protocol, metaclass=ABCMeta):
     async def populate(self, session: ISession) -> None:
         raise NotImplementedError
 
+    @abstractmethod
+    def is_complete(self) -> bool:
+        raise NotImplementedError
+
 
 class IMutable(typing.Protocol[T_Input, T_Output], metaclass=ABCMeta):
 
@@ -95,20 +99,8 @@ class IMutable(typing.Protocol[T_Input, T_Output], metaclass=ABCMeta):
     def set(self, value: T_Input) -> None:
         raise NotImplementedError
 
-
-class IDiscreteValueProvider(
-    IMutable[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
-    ISetupable, typing.Protocol[T_Input, T_Output], metaclass=ABCMeta
-):
-    pass
-
-
-class IProbabilityDistributionDiscreteValueProvider(
-    IDiscreteValueProvider[T_Input, T_Output], typing.Protocol[T_Input, T_Output], metaclass=ABCMeta
-):
-
     @abstractmethod
-    def is_complete(self) -> bool:
+    def get(self) -> T_Input:
         raise NotImplementedError
 
     @abstractmethod
@@ -116,7 +108,53 @@ class IProbabilityDistributionDiscreteValueProvider(
         raise NotImplementedError
 
 
-class IEntityProvider(IMutable[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
+class IValueProvider(
+    IMutable[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
+    ISetupable, typing.Protocol[T_Input, T_Output], metaclass=ABCMeta
+):
+    pass
+
+
+class ICompositeMutable(typing.Protocol[T_Input, T_Output], metaclass=ABCMeta):
+    """
+    Структура Provider не совпадает со структурой агрегата, если агрегат приводится в требуемое состояние многоходово
+    (см. агрегат Specialist at grade project).
+    Это подсказка на вопрос о том, должен ли Distributor хранить сырые значения провайдера или готовый агрегат.
+
+    В method self.set(...) технически невозможно установить в качестве значения итоговый тип,
+    т.к. для валидного его состояния банально может не хватать данных (Auto Increment PK, FK).
+    """
+
+    @abstractmethod
+    async def create(self, session: ISession) -> T_Output:
+        raise NotImplementedError
+
+    @abstractmethod
+    def set(self, value: T_Input) -> None:
+        """
+        Не используем **kwargs, т.к. иначе придется инспектировать сигнатуру каждого вложенного сеттера
+        (композиция может быть вложенной).
+        Ну и в принципе здесь можно принимать Specification вторым аргументом.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def get(self) -> T_Input:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def append(self, session: ISession, value: T_Output):
+        raise NotImplementedError
+
+
+class ICompositeValueProvider(
+    IMutable[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
+    ISetupable, typing.Protocol[T_Input, T_Output], metaclass=ABCMeta
+):
+    pass
+
+
+class IEntityProvider(ICompositeMutable[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
                       ISetupable, typing.Protocol[T_Input, T_Output], metaclass=ABCMeta):
 
     @abstractmethod
@@ -125,11 +163,11 @@ class IEntityProvider(IMutable[T_Input, T_Output], IProvidable, IObservable, INa
 
     @property
     @abstractmethod
-    def id_provider(self) -> IDiscreteValueProvider[T] | IProbabilityDistributionDiscreteValueProvider[T]:
+    def id_provider(self) -> IValueProvider[T_Input, T_Output]:
         raise NotImplementedError
 
 
-class IReferenceProvider(IDiscreteValueProvider[T_Input, T_Output],
+class IReferenceProvider(IValueProvider[T_Input, T_Output],
                          typing.Protocol[T_Input, T_Output], metaclass=ABCMeta):
 
     @property
@@ -153,7 +191,7 @@ class IRelativeProvider(typing.Protocol, metaclass=ABCMeta):
         raise NotImplementedError
 
 
-class IValueGenerator(typing.Protocol[T_Input]):
+class IValueGenerator(typing.Protocol[T_Input], metaclass=ABCMeta):
     """
     Фабрика значений для дистрибьюторов.
     Принимает session и опциональный position (номер в последовательности).

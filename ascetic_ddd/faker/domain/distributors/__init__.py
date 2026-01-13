@@ -1,4 +1,4 @@
-from .interfaces import IDistributorFactory
+from .interfaces import IDistributor, IDistributorFactory
 from .weighted_distributor import WeightedDistributor
 from .skew_distributor import SkewDistributor
 from .sequence_distributor import SequenceDistributor

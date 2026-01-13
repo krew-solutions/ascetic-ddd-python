@@ -13,12 +13,13 @@ T = typing.TypeVar("T", covariant=True)
 class ObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
     _object_pattern: dict
     _hash: int | None
+    _object_exporter: typing.Callable[[T], dict]
 
-    __slots__ = ('_object_pattern', '_state_accessor', '_hash')
+    __slots__ = ('_object_pattern', '_object_exporter', '_hash')
 
-    def __init__(self, object_pattern: dict, state_accessor: typing.Callable[[T], dict]):
+    def __init__(self, object_pattern: dict, object_exporter: typing.Callable[[T], dict]):
         self._object_pattern = object_pattern
-        self._state_accessor = state_accessor
+        self._object_exporter = object_exporter
         self._hash = None
 
     def __hash__(self) -> int:
@@ -32,7 +33,7 @@ class ObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
         return hash(self) == hash(other)
 
     def is_satisfied_by(self, obj: T) -> bool:
-        state = self._state_accessor(obj)
+        state = self._object_exporter(obj)
         # return predicates.is_match(state, self._object_pattern)
         return is_subset(self._object_pattern, state)
 

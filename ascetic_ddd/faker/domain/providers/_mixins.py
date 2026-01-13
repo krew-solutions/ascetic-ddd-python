@@ -1,11 +1,12 @@
 import copy
 import typing
 import abc
+import logging
 from collections.abc import Hashable, Callable
 
 from ascetic_ddd.disposable import IDisposable
 from ascetic_ddd.faker.domain.distributors.interfaces import IDistributor
-from ascetic_ddd.faker.domain.providers.interfaces import IDiscreteValueProvider, INameable, IShunt, ICloneable
+from ascetic_ddd.faker.domain.providers.interfaces import IValueProvider, INameable, IShunt, ICloneable
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.values.empty import empty, Empty
 
@@ -117,22 +118,38 @@ class BaseProvider(
     NameableMixin,
     ObservableMixin,
     CloneableMixin,
-    IDiscreteValueProvider[T_Input, T_Output],
+    IValueProvider[T_Input, T_Output],
     typing.Generic[T_Input, T_Output],
     metaclass=abc.ABCMeta
 ):
-    _value: T_Input | Empty = empty
+    _input_value: T_Input | Empty = empty
+    _output_result: T_Output | Empty = empty
+
+    def __init__(self):
+        self._logger = logging.getLogger(".".join((type(self).__module__, type(self).__name__)))
+        super().__init__()
 
     def reset(self) -> None:
-        self._value = empty
-        self.notify('value', self._value)
+        self._input_value = empty
+        self._output_result = empty
+        self.notify('input_value', self._input_value)
 
-    def set(self, value: T) -> None:
-        self._value = value
-        self.notify('value', self._value)
+    def set(self, value: T_Input) -> None:
+        self._input_value = value
+        self.notify('input_value', self._input_value)
+
+    def get(self) -> T_Input:
+        return self._input_value
 
     def do_empty(self, clone: typing.Self, shunt: IShunt):
-        clone._value = empty
+        clone._input_value = empty
+        clone._output_result = empty
+
+    def is_complete(self) -> bool:
+        return self._input_value is not empty or self._output_result is not empty
+
+    async def append(self, session: ISession, value: T_Output):
+        pass
 
     async def setup(self, session: ISession):
         pass
@@ -143,7 +160,7 @@ class BaseProvider(
 
 class BaseDistributorProvider(BaseProvider[T_Input, T_Output], typing.Generic[T_Input, T_Output],
                               metaclass=abc.ABCMeta):
-    _distributor: IDistributor[T_Input]
+    _distributor: IDistributor[T_Output]
 
     @property
     def provider_name(self) -> str:
@@ -161,3 +178,6 @@ class BaseDistributorProvider(BaseProvider[T_Input, T_Output], typing.Generic[T_
     async def cleanup(self, session: ISession):
         await self._distributor.cleanup(session)
         await super().cleanup(session)
+
+    async def append(self, session: ISession, value: T_Input):
+        await self._distributor.append(session, value)
