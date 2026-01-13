@@ -48,7 +48,7 @@ class _BaseSkewDistributorTestCase(IsolatedAsyncioTestCase):
 
     skew = 2.0
     null_weight = 0.5
-    scale = 50
+    mean = 50
     count = 3000
 
     async def _make_session_pool(self):
@@ -58,37 +58,37 @@ class _BaseSkewDistributorTestCase(IsolatedAsyncioTestCase):
         self.session_pool = await self._make_session_pool()
         self.dist = self.distributor_factory(
             skew=self.skew,
-            scale=self.scale,
+            mean=self.mean,
             null_weight=self.null_weight,
         )
         self.dist.provider_name = 'path.SkewFk.fk_id'
 
-    def _check_scale_of_emptiable_result(self, result, strategy=lambda actual_scale, expected_scale: None):
+    def _check_mean_of_emptiable_result(self, result, strategy=lambda actual_mean, expected_mean: None):
         counter = Counter(result)
         self.assertGreaterEqual(counter[None] / counter.total(), self.null_weight - 0.1)
         self.assertLessEqual(counter[None] / counter.total(), self.null_weight + 0.1)
-        actual_scale = counter.total() / len(counter)
-        expected_scale = (self.scale * (len(counter) - 1)) / (len(counter) * self.null_weight)
+        actual_mean = counter.total() / len(counter)
+        expected_mean = (self.mean * (len(counter) - 1)) / (len(counter) * self.null_weight)
         logging.info(
-            "Emptiable scale, Actual: %s, Expected: %s, Empty: %s, Non-Empty: %s, Total: %s, Len: %s",
-            actual_scale, expected_scale, counter[None], counter.total() - counter[None], counter.total(), len(counter)
+            "Emptiable mean, Actual: %s, Expected: %s, Empty: %s, Non-Empty: %s, Total: %s, Len: %s",
+            actual_mean, expected_mean, counter[None], counter.total() - counter[None], counter.total(), len(counter)
         )
         # Вероятностный подход (PgSkewDistributor) имеет более высокую дисперсию
-        self.assertLessEqual(actual_scale, expected_scale * 1.5)
-        strategy(actual_scale, expected_scale)
+        self.assertLessEqual(actual_mean, expected_mean * 1.5)
+        strategy(actual_mean, expected_mean)
 
-    def _check_scale_of_non_empty_result(self, result, strategy=lambda actual_scale, expected_scale: None):
+    def _check_mean_of_non_empty_result(self, result, strategy=lambda actual_mean, expected_mean: None):
         counter = Counter(result)
         del counter[None]
-        actual_scale = counter.total() / len(counter)
-        expected_scale = self.scale
+        actual_mean = counter.total() / len(counter)
+        expected_mean = self.mean
         logging.info(
-            "Non-empty scale, Actual: %s, Expected: %s, Total: %s, Len: %s",
-            actual_scale, expected_scale, counter.total(), len(counter)
+            "Non-empty mean, Actual: %s, Expected: %s, Total: %s, Len: %s",
+            actual_mean, expected_mean, counter.total(), len(counter)
         )
         # Вероятностный подход (PgSkewDistributor) имеет более высокую дисперсию
-        self.assertLessEqual(actual_scale, expected_scale * 1.5)
-        strategy(actual_scale, expected_scale)
+        self.assertLessEqual(actual_mean, expected_mean * 1.5)
+        strategy(actual_mean, expected_mean)
 
     def _check_skew_distribution(self, result):
         """Проверка перекоса: первая половина должна получать больше вызовов."""
@@ -140,13 +140,13 @@ class DefaultKeySkewDistributorTestCase(_BaseSkewDistributorTestCase):
 
         # Вероятностный подход в PgSkewDistributor имеет более высокую дисперсию,
         # поэтому используем 40% tolerance вместо 20%
-        self._check_scale_of_emptiable_result(
+        self._check_mean_of_emptiable_result(
             result,
-            functools.partial(self.assertAlmostEqual, delta=(self.scale / self.null_weight) * 0.4)
+            functools.partial(self.assertAlmostEqual, delta=(self.mean / self.null_weight) * 0.4)
         )
-        self._check_scale_of_non_empty_result(
+        self._check_mean_of_non_empty_result(
             result,
-            functools.partial(self.assertAlmostEqual, delta=self.scale * 0.4)
+            functools.partial(self.assertAlmostEqual, delta=self.mean * 0.4)
         )
         self._check_skew_distribution(result)
 
@@ -173,8 +173,8 @@ class SpecificKeySkewDistributorTestCase(_BaseSkewDistributorTestCase):
                     await self.dist.append(ts_session, value)
                     result.append(value)
 
-        self._check_scale_of_emptiable_result(result)
-        self._check_scale_of_non_empty_result(result)
+        self._check_mean_of_emptiable_result(result)
+        self._check_mean_of_non_empty_result(result)
         self._check_skew_distribution(result)
 
 
@@ -185,10 +185,10 @@ class CollectionSkewDistributorTestCase(_BaseSkewDistributorTestCase):
         self.session_pool = await self._make_session_pool()
         self._values = self._make_values()
         self._value_iter = iter(self._values)
-        self.scale = self.null_weight * self.count / len(self._values)
+        self.mean = self.null_weight * self.count / len(self._values)
         self.dist = self.distributor_factory(
             skew=self.skew,
-            scale=None,
+            mean=None,
             null_weight=self.null_weight,
         )
         self.dist.provider_name = 'path.SkewFk.fk_id'
@@ -211,12 +211,12 @@ class CollectionSkewDistributorTestCase(_BaseSkewDistributorTestCase):
                     except StopIteration:
                         result.append(None)
 
-        self._check_scale_of_emptiable_result(
+        self._check_mean_of_emptiable_result(
             result,
-            functools.partial(self.assertAlmostEqual, delta=(self.scale / self.null_weight) * 0.05)
+            functools.partial(self.assertAlmostEqual, delta=(self.mean / self.null_weight) * 0.05)
         )
-        self._check_scale_of_non_empty_result(
+        self._check_mean_of_non_empty_result(
             result,
-            functools.partial(self.assertAlmostEqual, delta=self.scale * 0.05)
+            functools.partial(self.assertAlmostEqual, delta=self.mean * 0.05)
         )
         self._check_skew_distribution(result)

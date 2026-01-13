@@ -207,16 +207,16 @@ class SkewPartition(typing.Generic[T]):
         idx = int(n * (1 - random.random()) ** self._skew)
         return min(idx, n - 1)
 
-    def next(self, expected_scale: float) -> T:
+    def next(self, expected_mean: float) -> T:
         """
         Возвращает случайное значение из партиции.
-        Бросает StopIteration с вероятностью 1/expected_scale (сигнал создать новое).
+        Бросает StopIteration с вероятностью 1/expected_mean (сигнал создать новое).
         """
         n = len(self._values)
         if n == 0:
             raise StopIteration
 
-        if random.random() < 1.0 / expected_scale:
+        if random.random() < 1.0 / expected_mean:
             raise StopIteration
 
         return self._values[self._select_idx()]
@@ -247,7 +247,7 @@ class SkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     - Один параметр вместо списка весов
     - Нет проблемы миграции значений между партициями
     """
-    _scale: float = 50
+    _mean: float = 50
     _partitions: dict[ISpecification, SkewPartition[T]]
     _skew: float
     _default_spec: ISpecification = None
@@ -256,11 +256,11 @@ class SkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     def __init__(
             self,
             skew: float = 2.0,
-            scale: float | None = None,
+            mean: float | None = None,
     ):
         self._skew = skew
-        if scale is not None:
-            self._scale = scale
+        if mean is not None:
+            self._mean = mean
         self._default_spec = EmptySpecification()
         self._partitions = dict()
         self._partitions[self._default_spec] = SkewPartition(self._skew, self._default_spec)
@@ -283,11 +283,11 @@ class SkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
 
         target_partition = self._partitions[specification]
 
-        if self._scale == 1:
+        if self._mean == 1:
             raise StopAsyncIteration(None)
 
         try:
-            value = target_partition.next(self._scale)
+            value = target_partition.next(self._mean)
         except StopIteration:
             raise StopAsyncIteration(None)
 

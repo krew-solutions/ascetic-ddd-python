@@ -15,7 +15,7 @@ T = typing.TypeVar("T", covariant=True)
 def pg_distributor_factory(
     weights: list[float] | None = None,
     skew: float | None = None,
-    scale: float | None = None,
+    mean: float | None = None,
     null_weight: float = 0,
     sequence: bool = False
 ) -> IM2ODistributor[T]:
@@ -25,14 +25,14 @@ def pg_distributor_factory(
     Args:
         weights: If a weights sequence is specified, selections are made according to the relative weights.
         skew: Параметр перекоса (1.0 = равномерно, 2.0+ = перекос к началу). Default = 2.0
-        scale: Среднее количество использований каждого значения. Use scale = 1 for unique.
+        mean: Среднее количество использований каждого значения. Use mean = 1 for unique.
         null_weight: Вероятность вернуть None (0-1)
         sequence: Pass sequence number to value generator.
     """
     if weights is not None:
-        dist = PgWeightedDistributor[T](weights, scale)
+        dist = PgWeightedDistributor[T](weights, mean)
     elif skew is not None:
-        dist = PgSkewDistributor[T](skew=skew, scale=scale)
+        dist = PgSkewDistributor[T](skew=skew, mean=mean)
     elif sequence:
         dist = PgSequenceDistributor[T]()
     else:

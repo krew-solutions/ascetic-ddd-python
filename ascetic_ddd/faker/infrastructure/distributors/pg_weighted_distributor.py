@@ -52,7 +52,7 @@ class PgWeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     """
     _extract_connection = staticmethod(extract_internal_connection)
     _initialized: bool = False
-    _scale: float = 50
+    _mean: float = 50
     _tables: Tables
     _weights: list[float]
     _default_key: str = str(frozenset())
@@ -61,13 +61,13 @@ class PgWeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     def __init__(
             self,
             weights: typing.Iterable[float] = tuple(),
-            scale: float | None = None,
+            mean: float | None = None,
             initialized: bool = False
     ):
         self._tables = Tables()
         self._weights = list(weights)
-        if scale is not None:
-            self._scale = scale
+        if mean is not None:
+            self._mean = mean
         self._initialized = initialized
         super().__init__()
 
@@ -82,10 +82,10 @@ class PgWeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
         if not self._initialized:
             await self.setup(session)
 
-        if self._scale is None:
-            self._scale = await self._get_param(session, 'scale')
+        if self._mean is None:
+            self._mean = await self._get_param(session, 'mean')
 
-        if self._scale == 1:
+        if self._mean == 1:
             raise StopAsyncIteration(None)
 
         value, should_create_new = await self._get_next_value(session, specification)
@@ -143,7 +143,7 @@ class PgWeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
         await self._populate_weights(session, self._weights)
         await self._create_values_table(session)
         await self._create_params_table(session)
-        await self._set_param(session, 'scale', self._scale)
+        await self._set_param(session, 'mean', self._mean)
 
     async def _is_initialized(self, session: ISession) -> bool:
         sql = """SELECT to_regclass(%s)"""
@@ -173,7 +173,7 @@ class PgWeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
         async with self._extract_connection(session).cursor() as acursor:
             await acursor.execute(sql)
 
-    async def _get_next_value(self, session: ISession, specification: ISpecification, scale: float = None):
+    async def _get_next_value(self, session: ISession, specification: ISpecification, mean: float = None):
         # TODO: https://dataschool.com/learn-sql/random-sequences/
         """
         Оптимизированный выбор значения без блокирующих счётчиков:
@@ -193,13 +193,13 @@ class PgWeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
         #   partition 1: ratio=3.5 → local_skew≈2.81 (смещение к концу, ближе к partition 0)
         #   partition 2: ratio=2.86 → local_skew≈2.52
         #   partition 3: ratio=2.33 → local_skew≈2.22
-        # Вероятностный подход: создаём новое значение с вероятностью 1/scale.
+        # Вероятностный подход: создаём новое значение с вероятностью 1/mean.
         # Это работает корректно с любым WHERE условием (per-specification).
         sql = """
             WITH params AS (
-                SELECT value::decimal AS expected_scale
+                SELECT value::decimal AS expected_mean
                 FROM %(params_table)s
-                WHERE key = 'scale'
+                WHERE key = 'mean'
                 LIMIT 1
             ),
             value_stats AS (
@@ -256,7 +256,7 @@ class PgWeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
                         )
                     ) AS pos,
                     vs.total_values,
-                    p.expected_scale
+                    p.expected_mean
                 FROM selected_partition sp
                 CROSS JOIN value_stats vs
                 CROSS JOIN params p
@@ -270,9 +270,9 @@ class PgWeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
                     OFFSET t.pos
                     LIMIT 1
                 ) AS object,
-                -- Вероятностный подход: создаём новое с вероятностью 1/scale
+                -- Вероятностный подход: создаём новое с вероятностью 1/mean
                 -- Работает корректно per-specification (WHERE учитывается в total_values)
-                (t.total_values = 0 OR RANDOM() < 1.0 / GREATEST(t.expected_scale, 1)) AS should_create_new,
+                (t.total_values = 0 OR RANDOM() < 1.0 / GREATEST(t.expected_mean, 1)) AS should_create_new,
                 t.total_values
             FROM target t
         """ % {

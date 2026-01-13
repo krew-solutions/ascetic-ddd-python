@@ -57,7 +57,7 @@ class PgSkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     """
     _extract_connection = staticmethod(extract_internal_connection)
     _initialized: bool = False
-    _scale: float = 50
+    _mean: float = 50
     _skew: float = 2.0
     _tables: Tables
     _default_key: str = str(frozenset())
@@ -66,13 +66,13 @@ class PgSkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     def __init__(
             self,
             skew: float = 2.0,
-            scale: float | None = None,
+            mean: float | None = None,
             initialized: bool = False
     ):
         self._tables = Tables()
         self._skew = skew
-        if scale is not None:
-            self._scale = scale
+        if mean is not None:
+            self._mean = mean
         self._initialized = initialized
         super().__init__()
 
@@ -87,10 +87,10 @@ class PgSkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
         if not self._initialized:
             await self.setup(session)
 
-        if self._scale is None:
-            self._scale = await self._get_param(session, 'scale')
+        if self._mean is None:
+            self._mean = await self._get_param(session, 'mean')
 
-        if self._scale == 1:
+        if self._mean == 1:
             raise StopAsyncIteration(None)
 
         value, should_create_new = await self._get_next_value(session, specification)
@@ -144,7 +144,7 @@ class PgSkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     async def _setup(self, session: ISession):
         await self._create_values_table(session)
         await self._create_params_table(session)
-        await self._set_param(session, 'scale', self._scale)
+        await self._set_param(session, 'mean', self._mean)
         await self._set_param(session, 'skew', self._skew)
 
     async def _is_initialized(self, session: ISession) -> bool:
@@ -181,7 +181,7 @@ class PgSkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
         При skew=2: первые 50% получают ~75% вызовов
         При skew=3: первые 33% получают ~70% вызовов
 
-        Вероятностный подход для создания новых значений: с вероятностью 1/scale.
+        Вероятностный подход для создания новых значений: с вероятностью 1/mean.
         Работает корректно per-specification (WHERE условие учитывается).
         """
         visitor = PgSpecificationVisitor()
@@ -190,7 +190,7 @@ class PgSkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
         sql = """
             WITH params AS (
                 SELECT
-                    (SELECT value::decimal FROM %(params_table)s WHERE key = 'scale' LIMIT 1) AS expected_scale,
+                    (SELECT value::decimal FROM %(params_table)s WHERE key = 'mean' LIMIT 1) AS expected_mean,
                     (SELECT value::decimal FROM %(params_table)s WHERE key = 'skew' LIMIT 1) AS skew
             ),
             value_stats AS (
@@ -207,7 +207,7 @@ class PgSkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
                         GREATEST(vs.total_values - 1, 0)
                     ) AS pos,
                     vs.total_values,
-                    p.expected_scale
+                    p.expected_mean
                 FROM value_stats vs
                 CROSS JOIN params p
             )
@@ -220,8 +220,8 @@ class PgSkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
                     OFFSET t.pos
                     LIMIT 1
                 ) AS object,
-                -- Вероятностный подход: создаём новое с вероятностью 1/scale
-                (t.total_values = 0 OR RANDOM() < 1.0 / GREATEST(t.expected_scale, 1)) AS should_create_new,
+                -- Вероятностный подход: создаём новое с вероятностью 1/mean
+                (t.total_values = 0 OR RANDOM() < 1.0 / GREATEST(t.expected_mean, 1)) AS should_create_new,
                 t.total_values
             FROM target t
         """ % {

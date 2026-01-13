@@ -138,17 +138,17 @@ class Partition(typing.Generic[T]):
         local_idx = min(local_idx, size - 1)
         return end - 1 - local_idx
 
-    def next(self, expected_scale: float) -> T:
+    def next(self, expected_mean: float) -> T:
         """
         Возвращает случайное значение из партиции.
-        Бросает StopIteration с вероятностью 1/expected_scale (сигнал создать новое).
+        Бросает StopIteration с вероятностью 1/expected_mean (сигнал создать новое).
         """
         n = len(self._values)
         if n == 0:
             raise StopIteration
 
         # Вероятностно сигнализируем о необходимости создать новое значение
-        if random.random() < 1.0 / expected_scale:
+        if random.random() < 1.0 / expected_mean:
             raise StopIteration
 
         return self._values[self._select_idx()]
@@ -173,8 +173,8 @@ class WeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     Если использовать max, тогда первое значение всегда будет равно единице, что неудобно в использовании.
     Поэтому выбираем sum.
 
-    Если sum(self._weights) >= 1, тогда пополнение будет через параметр self._scale.
-    Если sum(self._weights) < 1, тогда пополнение будет без учета параметра self._scale,
+    Если sum(self._weights) >= 1, тогда пополнение будет через параметр self._mean.
+    Если sum(self._weights) < 1, тогда пополнение будет без учета параметра self._mean,
     т.к. ни одна партиция не сможет достигнуть своего веса.
 
     В перспективе можно перейти на функциональную выборку, см.
@@ -184,7 +184,7 @@ class WeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     - экспоненциальная
     - логарифмическая
     """
-    _scale: float = 50
+    _mean: float = 50
     _partitions: dict[ISpecification, Partition[T]]
     _weights: list[float]
     _default_spec: ISpecification = None
@@ -193,11 +193,11 @@ class WeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     def __init__(
             self,
             weights: typing.Iterable[float] = tuple(),
-            scale: float | None = None,
+            mean: float | None = None,
     ):
         self._weights = list(weights)
-        if scale is not None:
-            self._scale = scale
+        if mean is not None:
+            self._mean = mean
         self._default_spec = EmptySpecification()
         self._partitions = dict()
         self._partitions[self._default_spec] = Partition(self._weights, self._default_spec)
@@ -220,11 +220,11 @@ class WeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
 
         target_partition = self._partitions[specification]
 
-        if self._scale == 1:
+        if self._mean == 1:
             raise StopAsyncIteration(None)
 
         try:
-            value = target_partition.next(self._scale)
+            value = target_partition.next(self._mean)
         except StopIteration:
             raise StopAsyncIteration(None)
 
