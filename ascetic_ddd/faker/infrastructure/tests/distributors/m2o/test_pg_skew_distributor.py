@@ -1,4 +1,4 @@
-from ascetic_ddd.faker.infrastructure.distributors import pg_distributor_factory
+from ascetic_ddd.faker.infrastructure.distributors.m2o.factory import pg_distributor_factory
 from ascetic_ddd.faker.domain.tests.distributors.m2o import test_skew_distributor as tsd
 
 
