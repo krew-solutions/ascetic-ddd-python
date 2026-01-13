@@ -8,6 +8,7 @@ from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 __all__ = (
     'IM2ODistributor',
     'IM2ODistributorFactory',
+    'ICursor',
 )
 
 
@@ -57,6 +58,14 @@ class IM2ODistributor(IObservable, typing.Generic[T], metaclass=ABCMeta):
 
     @abstractmethod
     def __deepcopy__(self, memodict={}):
+        raise NotImplementedError
+
+
+class ICursor(typing.Generic[T], metaclass=ABCMeta):
+    position: int
+
+    @abstractmethod
+    async def append(self, session: ISession, value: T):
         raise NotImplementedError
 
 
