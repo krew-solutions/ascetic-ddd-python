@@ -5,7 +5,7 @@ from typing import Hashable, Callable
 from ascetic_ddd.disposable import IDisposable
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
-from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IDistributor
+from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 
 __all__ = ('NullableDistributor',)
@@ -14,13 +14,13 @@ __all__ = ('NullableDistributor',)
 T = typing.TypeVar("T", covariant=True)
 
 
-class NullableDistributor(IDistributor[T], typing.Generic[T]):
-    _delegate: IDistributor[T]
+class NullableDistributor(IM2ODistributor[T], typing.Generic[T]):
+    _delegate: IM2ODistributor[T]
     _null_weight: float = 0
 
     def __init__(
             self,
-            delegate: IDistributor[T],
+            delegate: IM2ODistributor[T],
             null_weight: float = 0
     ):
         self._delegate = delegate

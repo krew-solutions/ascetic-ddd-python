@@ -2,7 +2,7 @@ import math
 import random
 import typing
 
-from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IDistributor
+from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
@@ -233,7 +233,7 @@ class SkewPartition(typing.Generic[T]):
         return self._values[0]
 
 
-class SkewDistributor(Observable, IDistributor[T], typing.Generic[T]):
+class SkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     """
     Дистрибьютор со степенным распределением.
 

@@ -1,7 +1,7 @@
 import typing
 
 from ascetic_ddd.observable.observable import Observable
-from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IDistributor
+from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 
@@ -10,7 +10,7 @@ __all__ = ('DummyDistributor',)
 T = typing.TypeVar("T", covariant=True)
 
 
-class DummyDistributor(Observable, IDistributor[T], typing.Generic[T]):
+class DummyDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     _provider_name: str | None = None
 
     async def next(

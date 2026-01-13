@@ -4,7 +4,7 @@ from ascetic_ddd.faker.domain.providers._mixins import BaseDistributorProvider
 from ascetic_ddd.faker.domain.providers.interfaces import IValueProvider, IValueGenerator
 from ascetic_ddd.faker.domain.providers.value_generators import prepare_value_generator
 from ascetic_ddd.faker.domain.values.empty import empty, Empty
-from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IDistributor
+from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 
 __all__ = ('ValueProvider',)
@@ -18,7 +18,7 @@ class ValueProvider(
     IValueProvider[T_Input, T_Output],
     typing.Generic[T_Input, T_Output]
 ):
-    _distributor: IDistributor[T_Output]
+    _distributor: IM2ODistributor[T_Output]
     _input_value: T_Input | Empty = empty
     _output_result: T_Output | Empty = empty
     _value_generator: IValueGenerator[T_Input] | None = None
@@ -28,7 +28,7 @@ class ValueProvider(
 
     def __init__(
             self,
-            distributor: IDistributor,
+            distributor: IM2ODistributor,
             value_generator: IValueGenerator[T_Input] | None = None,
             result_factory: typing.Callable[[T_Input], T_Output] | None = None,
             result_exporter: typing.Callable[[T_Output], T_Input] | None = None,

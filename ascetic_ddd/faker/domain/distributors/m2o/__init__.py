@@ -1,4 +1,4 @@
-from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IDistributor, IDistributorFactory
+from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor, IM2ODistributorFactory
 from ascetic_ddd.faker.domain.distributors.m2o.weighted_distributor import WeightedDistributor
 from ascetic_ddd.faker.domain.distributors.m2o.skew_distributor import SkewDistributor
 from ascetic_ddd.faker.domain.distributors.m2o.sequence_distributor import SequenceDistributor

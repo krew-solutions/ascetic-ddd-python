@@ -8,7 +8,7 @@ import dataclasses
 
 from psycopg.types.json import Jsonb
 
-from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IDistributor
+from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
@@ -38,7 +38,7 @@ class Tables:
         self.params = escape("params_for_%s" % name)
 
 
-class PgSkewDistributor(Observable, IDistributor[T], typing.Generic[T]):
+class PgSkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     """
     Дистрибьютор со степенным распределением в PostgreSQL.
 

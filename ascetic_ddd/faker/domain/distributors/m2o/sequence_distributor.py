@@ -2,7 +2,7 @@ import typing
 from collections import defaultdict
 
 from ascetic_ddd.observable.observable import Observable
-from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IDistributor
+from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
@@ -12,7 +12,7 @@ __all__ = ('SequenceDistributor',)
 T = typing.TypeVar("T", covariant=True)
 
 
-class SequenceDistributor(Observable, IDistributor[T], typing.Generic[T]):
+class SequenceDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     _sequences: dict[ISpecification, int]
     _provider_name: str | None = None
 

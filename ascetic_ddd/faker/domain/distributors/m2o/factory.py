@@ -1,6 +1,6 @@
 import typing
 
-from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IDistributor
+from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
 from ascetic_ddd.faker.domain.distributors.m2o.weighted_distributor import WeightedDistributor
 from ascetic_ddd.faker.domain.distributors.m2o.nullable_distributor import NullableDistributor
 from ascetic_ddd.faker.domain.distributors.m2o.dummy_distributor import DummyDistributor
@@ -19,7 +19,7 @@ def distributor_factory(
     scale: float | None = None,
     null_weight: float = 0,
     sequence: bool = False
-) -> IDistributor[T]:
+) -> IM2ODistributor[T]:
     """
     Фабрика для Distributor.
 

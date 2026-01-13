@@ -6,15 +6,15 @@ from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 
 __all__ = (
-    'IDistributor',
-    'IDistributorFactory',
+    'IM2ODistributor',
+    'IM2ODistributorFactory',
 )
 
 
 T = typing.TypeVar("T", covariant=True)
 
 
-class IDistributor(IObservable, typing.Generic[T], metaclass=ABCMeta):
+class IM2ODistributor(IObservable, typing.Generic[T], metaclass=ABCMeta):
 
     @abstractmethod
     async def next(
@@ -60,7 +60,7 @@ class IDistributor(IObservable, typing.Generic[T], metaclass=ABCMeta):
         raise NotImplementedError
 
 
-class IDistributorFactory(typing.Protocol[T], metaclass=ABCMeta):
+class IM2ODistributorFactory(typing.Protocol[T], metaclass=ABCMeta):
 
     @abstractmethod
     def __call__(
@@ -70,7 +70,7 @@ class IDistributorFactory(typing.Protocol[T], metaclass=ABCMeta):
         scale: float | None = None,
         null_weight: float = 0,
         sequence: bool = False
-    ) -> IDistributor[T]:
+    ) -> IM2ODistributor[T]:
         """
         Фабрика для Distributor.
 

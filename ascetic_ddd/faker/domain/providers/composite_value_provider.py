@@ -8,7 +8,7 @@ from ascetic_ddd.faker.domain.providers.interfaces import IValueProvider, IShunt
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.domain.values.empty import empty, Empty
-from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IDistributor
+from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
 from ascetic_ddd.faker.domain.specification.object_pattern_specification import ObjectPatternSpecification
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 
@@ -27,7 +27,7 @@ class CompositeValueProvider(
     typing.Generic[T_Input, T_Output],
     metaclass=ABCMeta
 ):
-    _distributor: IDistributor[T_Input]
+    _distributor: IM2ODistributor[T_Input]
     _criteria: ISpecification | None = None
     _value_generator: Callable[[...], T_Input]
     _result_factory: typing.Callable[[...], T_Output]  # T_Output of each nested Provider.
@@ -38,7 +38,7 @@ class CompositeValueProvider(
 
     def __init__(
             self,
-            distributor: IDistributor[T_Input],
+            distributor: IM2ODistributor[T_Input],
             result_factory: typing.Callable[[...], T_Output] | None = None,  # T_Output of each nested Provider.
             result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
     ):
