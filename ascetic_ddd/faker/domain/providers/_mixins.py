@@ -1,4 +1,5 @@
 import copy
+import functools
 import typing
 import abc
 import logging
@@ -6,9 +7,16 @@ from collections.abc import Hashable, Callable
 
 from ascetic_ddd.disposable import IDisposable
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
-from ascetic_ddd.faker.domain.providers.interfaces import IValueProvider, INameable, IShunt, ICloneable
+from ascetic_ddd.faker.domain.providers.interfaces import (
+    IValueProvider, INameable, IShunt, ICloneable,
+    ICompositeValueProvider, IValueGenerator
+)
+from ascetic_ddd.faker.domain.providers.value_generators import prepare_value_generator
 from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.domain.values.empty import empty, Empty
+from ascetic_ddd.observable.interfaces import IObservable
+from ascetic_ddd.observable.observable import Observable
 
 __all__ = (
     'ObservableMixin',
@@ -16,12 +24,10 @@ __all__ = (
     'CloneableMixin',
     'Shunt',
     'BaseProvider',
-    'BaseDistributorProvider',
+    'BaseDistributionProvider',
+    'BaseCompositeProvider',
+    'BaseCompositeDistributionProvider',
 )
-
-from ascetic_ddd.observable.interfaces import IObservable
-
-from ascetic_ddd.observable.observable import Observable
 
 T_Input = typing.TypeVar("T_Input")
 T_Output = typing.TypeVar("T_Output")
@@ -124,8 +130,26 @@ class BaseProvider(
 ):
     _input_value: T_Input | Empty = empty
     _output_result: T_Output | Empty = empty
+    _value_generator: IValueGenerator[T_Input] | None = None
+    _result_factory: typing.Callable[[T_Input], T_Output]
+    _result_exporter: typing.Callable[[T_Output], T_Input]
 
-    def __init__(self):
+    def __init__(
+            self,
+            value_generator: IValueGenerator[T_Input],
+            result_factory: typing.Callable[[T_Input], T_Output] | None = None,
+            result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
+    ):
+        self._value_generator = prepare_value_generator(value_generator)
+        if result_factory is not None:
+            def result_factory(result):
+                return result
+        self._result_factory = result_factory
+
+        if result_exporter is not None:
+            def result_exporter(value):
+                return value
+        self._result_exporter = result_exporter
         self._logger = logging.getLogger(".".join((type(self).__module__, type(self).__name__)))
         super().__init__()
 
@@ -158,9 +182,23 @@ class BaseProvider(
         pass
 
 
-class BaseDistributorProvider(BaseProvider[T_Input, T_Output], typing.Generic[T_Input, T_Output],
-                              metaclass=abc.ABCMeta):
+class BaseDistributionProvider(BaseProvider[T_Input, T_Output], typing.Generic[T_Input, T_Output],
+                               metaclass=abc.ABCMeta):
     _distributor: IM2ODistributor[T_Output]
+
+    def __init__(
+            self,
+            distributor: IM2ODistributor,
+            value_generator: IValueGenerator[T_Input],
+            result_factory: typing.Callable[[T_Input], T_Output] | None = None,
+            result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
+    ):
+        self._distributor = distributor
+        super().__init__(
+            value_generator=value_generator,
+            result_factory=result_factory,
+            result_exporter=result_exporter,
+        )
 
     @property
     def provider_name(self) -> str:
@@ -181,3 +219,167 @@ class BaseDistributorProvider(BaseProvider[T_Input, T_Output], typing.Generic[T_
 
     async def append(self, session: ISession, value: T_Input):
         await self._distributor.append(session, value)
+
+
+class BaseCompositeProvider(
+    ObservableMixin,
+    CloneableMixin,
+    ICompositeValueProvider[T_Input, T_Output],
+    typing.Generic[T_Input, T_Output],
+    metaclass=abc.ABCMeta
+):
+
+    _input_value: T_Input | Empty = empty
+    _output_result: T_Output | Empty = empty
+    _result_factory: typing.Callable[[...], T_Output]  # T_Output of each nested Provider.
+    _result_exporter: typing.Callable[[T_Output], T_Input]
+    _provider_name: str | None = None
+
+    def __init__(
+            self,
+            result_factory: typing.Callable[[...], T_Output] | None = None,  # T_Output of each nested Provider.
+            result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
+    ):
+        super().__init__()
+        if result_factory is not None:
+            def result_factory(result):
+                return result
+        self._result_factory = result_factory
+
+        if result_exporter is not None:
+            def result_exporter(value):
+                return value
+        self._result_exporter = result_exporter
+        self.on_init()
+
+    def on_init(self):
+        pass
+
+    def is_complete(self) -> bool:
+        return (
+            self._output_result is not empty or
+            any(provider.is_complete() for provider in self._providers.values())
+        )
+
+    def do_empty(self, clone: typing.Self, shunt: IShunt):
+        clone._input_value = empty
+        clone._output_result = empty
+        for attr, provider in self._providers.items():
+            setattr(clone, attr, provider.empty(shunt))
+        clone.on_init()
+
+    def reset(self) -> None:
+        self._input_value = empty
+        self._output_result = empty
+        self.notify('input_value', self._input_value)
+        for provider in self._providers.values():
+            provider.reset()
+
+    def set(self, value: T_Input) -> None:
+        self._input_value = value
+        self.notify('input_value', value)
+        for attr, val in value.items():
+            """
+            Вложенная композиция поддерживается автоматически.
+            """
+            getattr(self, attr).set(val)
+
+    def get(self) -> T_Input:
+        value = dict()
+        for attr, provider in self._providers.items():
+            val = provider.get()
+            if val is not empty:
+                value[attr] = val
+        return value
+
+    async def _default_factory(self, session: ISession, position: typing.Optional[int] = None):
+        data = dict()
+        for attr, provider in self._providers.items():
+            data[attr] = await provider.create(session)
+        return self._result_factory(**data)
+
+    async def append(self, session: ISession, value: T_Output):
+        pass
+
+    async def setup(self, session: ISession):
+        for provider in self._providers.values():
+            await provider.setup(session)
+
+    async def cleanup(self, session: ISession):
+        for provider in self._providers.values():
+            await provider.cleanup(session)
+
+    @classmethod
+    @property
+    @functools.cache
+    def _provider_attrs(cls) -> list[str]:
+        attrs = list()
+        for cls_ in cls.mro():  # Use self.__dict__ or self.__reduce__() instead?
+            if hasattr(cls_, '__annotations__'):
+                for key in cls_.__annotations__.keys():
+                    if not key.startswith('_') and key not in attrs:
+                        attrs.append(key)
+        return attrs
+
+    @property
+    def _providers(self) -> dict[str, IValueProvider[typing.Any]]:
+        return {i: getattr(self, i) for i in self._provider_attrs}
+
+    @property
+    def provider_name(self):
+        return self._provider_name
+
+    @provider_name.setter
+    def provider_name(self, value):
+        self._provider_name = value
+        for attr, provider in self._providers.items():
+            provider.provider_name = "%s.%s" % (value, attr)
+
+
+class BaseCompositeDistributionProvider(
+    BaseCompositeProvider[T_Input, T_Output],
+    typing.Generic[T_Input, T_Output],
+    metaclass=abc.ABCMeta
+):
+
+    _input_value: T_Input | Empty = empty
+    _output_result: T_Output | Empty = empty
+    _result_factory: typing.Callable[[...], T_Output]  # T_Output of each nested Provider.
+    _result_exporter: typing.Callable[[T_Output], T_Input]
+    _provider_name: str | None = None
+    _distributor: IM2ODistributor[T_Input]
+
+    def __init__(
+            self,
+            distributor: IM2ODistributor[T_Input],
+            result_factory: typing.Callable[[...], T_Output] | None = None,  # T_Output of each nested Provider.
+            result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
+    ):
+        self._distributor = distributor
+        super().__init__(
+            result_factory=result_factory,
+            result_exporter=result_exporter,
+        )
+
+    async def append(self, session: ISession, value: T_Output):
+        await self._distributor.append(session, value)
+        await super().append(session, value)
+
+    async def setup(self, session: ISession):
+        await self._distributor.setup(session)
+        await super().setup(session)
+
+    async def cleanup(self, session: ISession):
+        await self._distributor.cleanup(session)
+        await super().cleanup(session)
+
+    @property
+    def provider_name(self):
+        return self._provider_name
+
+    @provider_name.setter
+    def provider_name(self, value):
+        self._provider_name = value
+        self._distributor.provider_name = value
+        for attr, provider in self._providers.items():
+            provider.provider_name = "%s.%s" % (value, attr)
