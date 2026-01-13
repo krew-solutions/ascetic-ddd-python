@@ -3,6 +3,10 @@ from ascetic_ddd.faker.domain.distributors.o2m.skew_distributor import SkewDistr
 from ascetic_ddd.faker.domain.distributors.o2m.weighted_distributor import WeightedDistributor
 from ascetic_ddd.faker.domain.distributors.o2m.weighted_range_distributor import WeightedRangeDistributor
 from ascetic_ddd.faker.domain.distributors.o2m.distribution_distributor import DistributionDistributor
+from ascetic_ddd.faker.domain.distributors.o2m.range_distributor_adapter import (
+    RangeDistributorAdapter,
+    RangeDistributorFactory,
+)
 
 __all__ = (
     'IO2MDistributor',
@@ -10,4 +14,6 @@ __all__ = (
     'WeightedDistributor',
     'WeightedRangeDistributor',
     'DistributionDistributor',
+    'RangeDistributorAdapter',
+    'RangeDistributorFactory',
 )
