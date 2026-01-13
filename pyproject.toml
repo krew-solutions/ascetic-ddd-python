@@ -18,7 +18,8 @@ dependencies = [
     "aiohttp (>=3.13.3,<4.0.0)",
     "pydash (>=8.0.5,<9.0.0)",
     "dotenv (>=0.9.9,<0.10.0)",
-    "hypothesis (>=6.150.1,<7.0.0)"
+    "hypothesis (>=6.150.1,<7.0.0)",
+    "scipy (>=1.17.0,<2.0.0)"
 ]
 
 [dependency-groups]
