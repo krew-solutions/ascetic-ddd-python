@@ -10,6 +10,7 @@ from unittest import IsolatedAsyncioTestCase
 
 from ascetic_ddd.faker.infrastructure.tests.db import make_internal_pg_session_pool
 from ascetic_ddd.faker.domain.distributors.m2o.factory import distributor_factory
+from ascetic_ddd.faker.domain.distributors.m2o.cursor import Cursor
 from ascetic_ddd.faker.domain.specification.object_pattern_specification import ObjectPatternSpecification
 from ascetic_ddd.faker.domain.values.empty import Empty, empty
 from ascetic_ddd.faker.domain.session.interfaces import ISession
@@ -157,9 +158,9 @@ class DefaultKeyDistributorTestCase(_BaseDistributorTestCase):
             for _ in range(self.count):
                 try:
                     result.append(await self.dist.next(ts_session))
-                except StopAsyncIteration as e:
-                    value = await factory(ts_session, e.args[0] if e.args else None)
-                    await self.dist.append(ts_session, value)
+                except Cursor as cursor:
+                    value = await factory(ts_session, cursor.position)
+                    await cursor.append(ts_session, value)
                     result.append(value)
 
         # Вероятностный подход в PgDistributor имеет более высокую дисперсию,
@@ -192,9 +193,9 @@ class SpecificKeyDistributorTestCase(_BaseDistributorTestCase):
                 )
                 try:
                     result.append(await self.dist.next(ts_session, specification=spec))
-                except StopAsyncIteration:
+                except Cursor as cursor:
                     value = await factory(ts_session)
-                    await self.dist.append(ts_session, value)
+                    await cursor.append(ts_session, value)
                     result.append(value)
 
         self._check_mean_of_emptiable_result(result)
@@ -225,19 +226,19 @@ class CollectionDistributorTestCase(_BaseDistributorTestCase):
         """Если source исчерпан, используем fallback через повторный вызов next."""
         try:
             return await self.dist.next(ts_session)
-        except StopAsyncIteration:
+        except Cursor as cursor:
             if self._source_available:
                 try:
                     value = next(self._value_iter)
-                    await self.dist.append(ts_session, value)
+                    await cursor.append(ts_session, value)
                     return value
                 except StopIteration:
                     self._source_available = False
             # Fallback: повторно вызвать next (теперь есть значения, select вернёт одно)
             try:
                 return await self.dist.next(ts_session)
-            except StopAsyncIteration:
-                # В редком случае StopAsyncIteration ещё раз (вероятностно)
+            except Cursor:
+                # В редком случае Cursor ещё раз (вероятностно)
                 return await self.dist.next(ts_session)
 
     async def test_fixed_collection(self):

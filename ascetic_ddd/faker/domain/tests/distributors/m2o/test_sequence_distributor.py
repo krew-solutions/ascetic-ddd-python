@@ -5,6 +5,7 @@ from unittest import IsolatedAsyncioTestCase
 from ascetic_ddd.faker.domain.specification.scope_specification import ScopeSpecification
 from ascetic_ddd.faker.infrastructure.tests.db import make_internal_pg_session_pool
 from ascetic_ddd.faker.domain.distributors.m2o.factory import distributor_factory
+from ascetic_ddd.faker.domain.distributors.m2o.cursor import Cursor
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 
 # logging.basicConfig(level="DEBUG")
@@ -29,9 +30,9 @@ class SequenceDistributorTestCase(IsolatedAsyncioTestCase):
     async def _next_with_factory(self, ts_session, specification=None):
         try:
             return await self.dist.next(ts_session, specification)
-        except StopAsyncIteration as e:
-            value = await self.value_factory(ts_session, e.args[0] if e.args else None)
-            await self.dist.append(ts_session, value)
+        except Cursor as cursor:
+            value = await self.value_factory(ts_session, cursor.position)
+            await cursor.append(ts_session, value)
             return value
 
     async def test_default_key(self):
