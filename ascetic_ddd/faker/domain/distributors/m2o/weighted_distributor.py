@@ -14,7 +14,7 @@ __all__ = ('WeightedDistributor',)
 T = typing.TypeVar("T", covariant=True)
 
 
-class Partition(typing.Generic[T]):
+class Index(typing.Generic[T]):
     _specification: ISpecification[T]
     _read_offset: int
     _weights: list[float]
@@ -56,7 +56,7 @@ class Partition(typing.Generic[T]):
             self._read_offset = read_offset
 
     def remove(self, value: T) -> bool:
-        """Удаляет объект из партиции. Возвращает True если объект был удалён."""
+        """Удаляет объект из индекса. Возвращает True если объект был удалён."""
         if value not in self._value_set:
             return False
         self._value_set.discard(value)
@@ -81,7 +81,7 @@ class Partition(typing.Generic[T]):
         self._values.insert(idx, value)
         self._value_set.add(value)
 
-    def populate_from(self, source: 'Partition') -> None:
+    def populate_from(self, source: 'Index') -> None:
         values_length = len(source)
         if self._read_offset < values_length:
             current_offset = self._read_offset
@@ -141,7 +141,7 @@ class Partition(typing.Generic[T]):
 
     def next(self, expected_mean: float) -> T:
         """
-        Возвращает случайное значение из партиции.
+        Возвращает случайное значение из индекса.
         Бросает StopIteration с вероятностью 1/expected_mean (сигнал создать новое).
         """
         n = len(self._values)
@@ -186,7 +186,7 @@ class WeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     - логарифмическая
     """
     _mean: float = 50
-    _partitions: dict[ISpecification, Partition[T]]
+    _indexes: dict[ISpecification, Index[T]]
     _weights: list[float]
     _default_spec: ISpecification = None
     _provider_name: str | None = None
@@ -200,8 +200,8 @@ class WeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
         if mean is not None:
             self._mean = mean
         self._default_spec = EmptySpecification()
-        self._partitions = dict()
-        self._partitions[self._default_spec] = Partition(self._weights, self._default_spec)
+        self._indexes = dict()
+        self._indexes[self._default_spec] = Index(self._weights, self._default_spec)
         super().__init__()
 
     async def next(
@@ -213,13 +213,13 @@ class WeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
             specification = EmptySpecification()
 
         if specification != self._default_spec:
-            if specification not in self._partitions:
-                self._partitions[specification] = Partition(self._weights, specification)
-            target_partition = self._partitions[specification]
-            source_partition = self._partitions[self._default_spec]
-            target_partition.populate_from(source_partition)
+            if specification not in self._indexes:
+                self._indexes[specification] = Index(self._weights, specification)
+            target_index = self._indexes[specification]
+            source_index = self._indexes[self._default_spec]
+            target_index.populate_from(source_index)
 
-        target_partition = self._partitions[specification]
+        target_index = self._indexes[specification]
 
         if self._mean == 1:
             raise Cursor(
@@ -228,7 +228,7 @@ class WeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
             )
 
         try:
-            value = target_partition.next(self._mean)
+            value = target_index.next(self._mean)
         except StopIteration:
             raise Cursor(
                 position=None,
@@ -245,30 +245,30 @@ class WeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
 
     def _relocate_stale_value(self, value: T, current_spec: ISpecification[T]) -> None:
         """
-        Перемещает протухший объект из текущей партиции в подходящие.
+        Перемещает протухший объект из текущего индекса в подходящие.
         """
-        # Удаляем из текущей партиции
-        current_partition = self._partitions.get(current_spec)
-        if current_partition:
-            current_partition.remove(value)
+        # Удаляем из текущего индекса
+        current_index = self._indexes.get(current_spec)
+        if current_index:
+            current_index.remove(value)
 
-        # Получаем относительную позицию из default партиции
-        default_partition = self._partitions[self._default_spec]
-        relative_position = default_partition.get_relative_position(value)
+        # Получаем относительную позицию из default индекса
+        default_index = self._indexes[self._default_spec]
+        relative_position = default_index.get_relative_position(value)
 
         if relative_position is None:
             return
 
-        # Перебираем все партиции (кроме default и текущей) и вставляем куда подходит
-        for spec, partition in self._partitions.items():
+        # Перебираем все индексы (кроме default и текущего) и вставляем куда подходит
+        for spec, index in self._indexes.items():
             if spec == self._default_spec or spec == current_spec:
                 continue
             if spec.is_satisfied_by(value):
-                partition.insert_at_relative_position(value, relative_position)
+                index.insert_at_relative_position(value, relative_position)
 
     async def _append(self, session: ISession, value: T, position: int | None):
-        if value not in self._partitions[self._default_spec]:
-            self._partitions[self._default_spec].append(value)
+        if value not in self._indexes[self._default_spec]:
+            self._indexes[self._default_spec].append(value)
             await self.anotify('value', session, value)
         return
 

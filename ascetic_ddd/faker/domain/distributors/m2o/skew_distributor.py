@@ -114,9 +114,9 @@ def weights_to_skew(weights: list[float]) -> float:
 T = typing.TypeVar("T", covariant=True)
 
 
-class SkewPartition(typing.Generic[T]):
+class SkewIndex(typing.Generic[T]):
     """
-    Партиция со степенным распределением.
+    Индекс со степенным распределением.
     Один параметр skew вместо списка весов.
 
     skew = 1.0 — равномерное распределение
@@ -164,7 +164,7 @@ class SkewPartition(typing.Generic[T]):
             self._read_offset = read_offset
 
     def remove(self, value: T) -> bool:
-        """Удаляет объект из партиции. Возвращает True если объект был удалён."""
+        """Удаляет объект из индекса. Возвращает True если объект был удалён."""
         if value not in self._value_set:
             return False
         self._value_set.discard(value)
@@ -189,7 +189,7 @@ class SkewPartition(typing.Generic[T]):
         self._values.insert(idx, value)
         self._value_set.add(value)
 
-    def populate_from(self, source: 'SkewPartition') -> None:
+    def populate_from(self, source: 'SkewIndex') -> None:
         values_length = len(source)
         if self._read_offset < values_length:
             current_offset = self._read_offset
@@ -210,7 +210,7 @@ class SkewPartition(typing.Generic[T]):
 
     def next(self, expected_mean: float) -> T:
         """
-        Возвращает случайное значение из партиции.
+        Возвращает случайное значение из индекса.
         Бросает StopIteration с вероятностью 1/expected_mean (сигнал создать новое).
         """
         n = len(self._values)
@@ -246,10 +246,10 @@ class SkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     Преимущества:
     - O(1) выбор значения (vs O(n) у Distributor)
     - Один параметр вместо списка весов
-    - Нет проблемы миграции значений между партициями
+    - Нет проблемы миграции значений между индексами
     """
     _mean: float = 50
-    _partitions: dict[ISpecification, SkewPartition[T]]
+    _indexes: dict[ISpecification, SkewIndex[T]]
     _skew: float
     _default_spec: ISpecification = None
     _provider_name: str | None = None
@@ -263,8 +263,8 @@ class SkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
         if mean is not None:
             self._mean = mean
         self._default_spec = EmptySpecification()
-        self._partitions = dict()
-        self._partitions[self._default_spec] = SkewPartition(self._skew, self._default_spec)
+        self._indexes = dict()
+        self._indexes[self._default_spec] = SkewIndex(self._skew, self._default_spec)
         super().__init__()
 
     async def next(
@@ -276,13 +276,13 @@ class SkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
             specification = EmptySpecification()
 
         if specification != self._default_spec:
-            if specification not in self._partitions:
-                self._partitions[specification] = SkewPartition(self._skew, specification)
-            target_partition = self._partitions[specification]
-            source_partition = self._partitions[self._default_spec]
-            target_partition.populate_from(source_partition)
+            if specification not in self._indexes:
+                self._indexes[specification] = SkewIndex(self._skew, specification)
+            target_index = self._indexes[specification]
+            source_index = self._indexes[self._default_spec]
+            target_index.populate_from(source_index)
 
-        target_partition = self._partitions[specification]
+        target_index = self._indexes[specification]
 
         if self._mean == 1:
             raise Cursor(
@@ -291,7 +291,7 @@ class SkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
             )
 
         try:
-            value = target_partition.next(self._mean)
+            value = target_index.next(self._mean)
         except StopIteration:
             raise Cursor(
                 position=None,
@@ -308,30 +308,30 @@ class SkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
 
     def _relocate_stale_value(self, value: T, current_spec: ISpecification[T]) -> None:
         """
-        Перемещает протухший объект из текущей партиции в подходящие.
+        Перемещает протухший объект из текущего индекса в подходящие.
         """
-        # Удаляем из текущей партиции
-        current_partition = self._partitions.get(current_spec)
-        if current_partition:
-            current_partition.remove(value)
+        # Удаляем из текущего индекса
+        current_index = self._indexes.get(current_spec)
+        if current_index:
+            current_index.remove(value)
 
-        # Получаем относительную позицию из default партиции
-        default_partition = self._partitions[self._default_spec]
-        relative_position = default_partition.get_relative_position(value)
+        # Получаем относительную позицию из default индекса
+        default_index = self._indexes[self._default_spec]
+        relative_position = default_index.get_relative_position(value)
 
         if relative_position is None:
             return
 
-        # Перебираем все партиции (кроме default и текущей) и вставляем куда подходит
-        for spec, partition in self._partitions.items():
+        # Перебираем все индексы (кроме default и текущего) и вставляем куда подходит
+        for spec, index in self._indexes.items():
             if spec == self._default_spec or spec == current_spec:
                 continue
             if spec.is_satisfied_by(value):
-                partition.insert_at_relative_position(value, relative_position)
+                index.insert_at_relative_position(value, relative_position)
 
     async def _append(self, session: ISession, value: T, position: int | None = None):
-        if value not in self._partitions[self._default_spec]:
-            self._partitions[self._default_spec].append(value)
+        if value not in self._indexes[self._default_spec]:
+            self._indexes[self._default_spec].append(value)
             await self.anotify('value', session, value)
         return
 
