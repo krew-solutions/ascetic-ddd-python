@@ -66,15 +66,15 @@ class AggregateProvider(
         if self.id_provider.is_complete():
             # id_ здесь может быть еще неизвестен, т.к. агрегат не создан.
             # А может быть и известен, если его id_ реиспользуется как FK.
-            id_ = getattr(result, self._id_attr)
-            # FIXME: Проблема - как достать VO ID?
+            id_ = await getattr(self, self._id_attr).create(session)
             saved_result = await self._repository.get(session, id_)
         else:
             saved_result = None
         if saved_result is not None:
             result = saved_result
             state = self._result_exporter(result)
-            # Тут можно пооптимизировать. Действительно ли нам нужно бояться повторного вызова метода populate()?
+            # Тут можно пооптимизировать.
+            # Действительно ли нам нужно бояться повторного вызова метода populate()?
             self.reset()
             for k, p in self._providers.items():
                 p.set(state.get(k))
