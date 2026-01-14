@@ -53,21 +53,56 @@ class WeightedRangeDistributorTestCase(unittest.TestCase):
             logging.info("Value %d: %d (expected: %.0f)", i, counts[i], expected)
             self.assertAlmostEqual(counts[i], expected, delta=expected * 0.2)
 
-    def test_weights_shorter_than_range(self):
-        """Веса короче диапазона: остальные значения не выбираются."""
+    def test_weights_shorter_than_range_interpolation(self):
+        """Веса короче диапазона: интерполяция на весь диапазон."""
         dist = WeightedRangeDistributor(0, 5, weights=[0.7, 0.2, 0.1])
         counts = {i: 0 for i in range(6)}
 
         for _ in range(self.iterations):
             counts[dist.distribute()] += 1
 
-        # Только 0, 1, 2 должны выбираться
-        self.assertGreater(counts[0], 0)
-        self.assertGreater(counts[1], 0)
-        self.assertGreater(counts[2], 0)
-        self.assertEqual(counts[3], 0)
-        self.assertEqual(counts[4], 0)
-        self.assertEqual(counts[5], 0)
+        logging.info("Interpolated weights counts: %s", counts)
+
+        # Все значения должны выбираться
+        for i in range(6):
+            self.assertGreater(counts[i], 0, f"Value {i} should be selected")
+
+        # Убывающее распределение: 0 чаще всех, 5 реже всех
+        self.assertGreater(counts[0], counts[5])
+
+        # Монотонное убывание
+        for i in range(5):
+            self.assertGreaterEqual(
+                counts[i], counts[i + 1] * 0.8,  # С допуском на статистику
+                f"Value {i} should be >= {i+1}"
+            )
+
+    def test_interpolate_weights_method(self):
+        """Проверка метода интерполяции напрямую."""
+        # 3 веса -> 6 позиций
+        weights = [0.7, 0.2, 0.1]
+        result = WeightedRangeDistributor._interpolate_weights(weights, 6)
+
+        self.assertEqual(len(result), 6)
+        # Первый и последний должны соответствовать исходным
+        self.assertAlmostEqual(result[0], 0.7)
+        self.assertAlmostEqual(result[5], 0.1)
+        # Монотонное убывание
+        for i in range(5):
+            self.assertGreaterEqual(result[i], result[i + 1])
+
+    def test_interpolate_single_weight(self):
+        """Интерполяция одного веса: все позиции одинаковы."""
+        dist = WeightedRangeDistributor(0, 5, weights=[1.0])
+        counts = {i: 0 for i in range(6)}
+
+        for _ in range(self.iterations):
+            counts[dist.distribute()] += 1
+
+        # Равномерное распределение
+        expected = self.iterations / 6
+        for i, count in counts.items():
+            self.assertAlmostEqual(count, expected, delta=expected * 0.2)
 
     def test_single_value_range(self):
         """Диапазон из одного значения."""

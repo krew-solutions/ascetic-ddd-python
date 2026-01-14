@@ -27,9 +27,9 @@ class WeightedRangeDistributor(IO2MDistributor):
         dist = WeightedRangeDistributor(0, 5, weights=[0.5, 0.25, 0.12, 0.07, 0.04, 0.02])
         value = dist.distribute()
 
-        # Взвешенное с меньшим числом весов (остальные = 0)
+        # Взвешенное с меньшим числом весов (интерполяция на весь диапазон)
         dist = WeightedRangeDistributor(0, 5, weights=[0.7, 0.2, 0.1])
-        value = dist.distribute()  # только 0, 1, 2
+        value = dist.distribute()  # 0-5, веса интерполированы
     """
     _min_val: int
     _max_val: int
@@ -50,13 +50,15 @@ class WeightedRangeDistributor(IO2MDistributor):
         range_size = max_val - min_val + 1
 
         if weights is not None:
-            self._weights = list(weights)
-            # Дополняем нулями если весов меньше чем значений
-            if len(self._weights) < range_size:
-                self._weights.extend([0.0] * (range_size - len(self._weights)))
-            # Обрезаем если весов больше
-            elif len(self._weights) > range_size:
-                self._weights = self._weights[:range_size]
+            weights_list = list(weights)
+            if len(weights_list) == range_size:
+                self._weights = weights_list
+            elif len(weights_list) > range_size:
+                # Обрезаем если весов больше
+                self._weights = weights_list[:range_size]
+            else:
+                # Интерполируем веса на весь диапазон
+                self._weights = self._interpolate_weights(weights_list, range_size)
         else:
             # Равномерное распределение
             self._weights = [1.0] * range_size
@@ -71,6 +73,33 @@ class WeightedRangeDistributor(IO2MDistributor):
         for w in self._weights:
             cumsum += w / total
             self._cumulative.append(cumsum)
+
+    @staticmethod
+    def _interpolate_weights(weights: list[float], target_size: int) -> list[float]:
+        """
+        Линейная интерполяция весов на целевой размер.
+
+        Пример: weights=[0.7, 0.2, 0.1], target_size=6
+        Результат: веса распределены равномерно по позициям 0-5
+        """
+        if len(weights) < 2:
+            return weights * target_size if weights else [1.0] * target_size
+
+        result = []
+        src_len = len(weights)
+        for i in range(target_size):
+            # Позиция в исходном массиве (дробная)
+            src_pos = i * (src_len - 1) / (target_size - 1)
+            # Индексы соседних весов
+            left_idx = int(src_pos)
+            right_idx = min(left_idx + 1, src_len - 1)
+            # Доля между соседями
+            frac = src_pos - left_idx
+            # Линейная интерполяция
+            interpolated = weights[left_idx] * (1 - frac) + weights[right_idx] * frac
+            result.append(interpolated)
+
+        return result
 
     def distribute(self) -> int:
         """
