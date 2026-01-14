@@ -272,6 +272,9 @@ class WeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
             await self.anotify('value', session, value)
         return
 
+    async def append(self, session: ISession, value: T):
+        await self._append(session, value, None)
+
     @property
     def provider_name(self):
         return self._provider_name

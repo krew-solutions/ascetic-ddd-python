@@ -116,6 +116,9 @@ class PgWeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
         # logging.debug("Append: %s", value)
         await self.anotify('value', session, value)
 
+    async def append(self, session: ISession, value: T):
+        await self._append(session, value, None)
+
     @property
     def provider_name(self):
         return self._provider_name

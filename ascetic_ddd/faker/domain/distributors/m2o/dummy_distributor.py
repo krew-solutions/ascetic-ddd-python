@@ -27,6 +27,9 @@ class DummyDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     async def _append(self, session: ISession, value: T, position: int | None):
         await self.anotify('value', session, value)
 
+    async def append(self, session: ISession, value: T):
+        await self._append(session, value, None)
+
     @property
     def provider_name(self):
         return self._provider_name

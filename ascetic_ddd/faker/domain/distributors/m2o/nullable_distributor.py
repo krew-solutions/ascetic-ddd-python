@@ -60,6 +60,9 @@ class NullableDistributor(IM2ODistributor[T], typing.Generic[T]):
     async def anotify(self, aspect: Hashable, *args, **kwargs):
         return await self._delegate.anotify(aspect, *args, **kwargs)
 
+    async def append(self, session: ISession, value: T):
+        await self._delegate.append(session, value)
+
     async def setup(self, session: ISession):
         await self._delegate.setup(session)
 

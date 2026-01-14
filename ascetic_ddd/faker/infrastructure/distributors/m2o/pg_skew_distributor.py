@@ -120,6 +120,9 @@ class PgSkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
             await acursor.execute(sql, (self._encode(value), self._serialize(value)))
         await self.anotify('value', session, value)
 
+    async def append(self, session: ISession, value: T):
+        await self._append(session, value, None)
+
     @property
     def provider_name(self):
         return self._provider_name

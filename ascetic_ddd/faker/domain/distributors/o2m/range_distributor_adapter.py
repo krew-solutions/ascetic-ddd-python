@@ -96,6 +96,9 @@ class RangeDistributorAdapter(Observable, IM2ODistributor[T], typing.Generic[T])
         self._values[position] = value
         await self.anotify('value', session, value)
 
+    async def append(self, session: ISession, value: T):
+        await self._append(session, value, None)
+
     @property
     def provider_name(self) -> str | None:
         return self._provider_name

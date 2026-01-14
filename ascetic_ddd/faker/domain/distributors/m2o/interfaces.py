@@ -30,6 +30,13 @@ class IM2ODistributor(IObservable, typing.Generic[T], metaclass=ABCMeta):
         """
         raise NotImplementedError
 
+    @abstractmethod
+    async def append(self, session: ISession, value: T):
+        """
+        Appends value to the distributor.
+        """
+        raise NotImplementedError
+
     @property
     @abstractmethod
     def provider_name(self):
