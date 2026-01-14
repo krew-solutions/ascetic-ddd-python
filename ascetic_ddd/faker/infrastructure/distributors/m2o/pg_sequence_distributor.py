@@ -1,6 +1,7 @@
 import hashlib
 import typing
 
+from ascetic_ddd.faker.domain.distributors.m2o.cursor import Cursor
 from ascetic_ddd.observable.observable import Observable
 from ascetic_ddd.seedwork.infrastructure.utils.pg import escape
 from ascetic_ddd.faker.infrastructure.session.pg_session import extract_internal_connection
@@ -65,9 +66,12 @@ class PgSequenceDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
                 )
                 await acursor.execute(sql, (key, self._make_sequence_name(key)))
 
-        raise StopAsyncIteration(position)
+        raise Cursor(
+            position=position,
+            callback=self._append,
+        )
 
-    async def append(self, session: ISession, value: T):
+    async def _append(self, session: ISession, value: T, position: int | None):
         await self.anotify('value', session, value)
 
     @property

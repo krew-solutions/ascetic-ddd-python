@@ -1,6 +1,7 @@
 import typing
 from collections import defaultdict
 
+from ascetic_ddd.faker.domain.distributors.m2o.cursor import Cursor
 from ascetic_ddd.observable.observable import Observable
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
 from ascetic_ddd.faker.domain.session.interfaces import ISession
@@ -29,9 +30,12 @@ class SequenceDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
             specification = EmptySpecification()
         position = self._sequences[specification]
         self._sequences[specification] += 1
-        raise StopAsyncIteration(position)
+        raise Cursor(
+            position=position,
+            callback=self._append,
+        )
 
-    async def append(self, session: ISession, value: T):
+    async def _append(self, session: ISession, value: T, position: int | None):
         await self.anotify('value', session, value)
 
     @property

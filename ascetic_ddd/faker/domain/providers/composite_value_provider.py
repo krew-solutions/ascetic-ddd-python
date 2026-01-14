@@ -1,4 +1,6 @@
 import typing
+
+from ascetic_ddd.faker.domain.distributors.m2o.interfaces import ICursor
 from ascetic_ddd.faker.domain.providers._mixins import BaseCompositeDistributionProvider
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
 from ascetic_ddd.faker.domain.values.empty import empty
@@ -37,11 +39,11 @@ class CompositeValueProvider(
             self._output_result = await self._distributor.next(session, specification)
             value = self._result_exporter(self._output_result)
             self.set(value)
-        except StopAsyncIteration as e:
+        except ICursor as cursor:
             if self.is_complete():
                 result = await self._default_factory(session, e.args[0] if e.args else None)
                 self._output_result = self._result_factory(result)
-                await self._distributor.append(session, self._output_result)
+                await cursor.append(session, self._output_result)
                 value = self._result_exporter(self._output_result)
                 self.set(value)
 

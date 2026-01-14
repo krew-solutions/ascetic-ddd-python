@@ -1,6 +1,8 @@
 import typing
 
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor, IM2ODistributorFactory
+from ascetic_ddd.faker.domain.distributors.m2o.nullable_distributor import NullableDistributor
+from ascetic_ddd.faker.domain.distributors.m2o.cursor import Cursor
 from ascetic_ddd.faker.domain.distributors.o2m.interfaces import IO2MDistributor
 from ascetic_ddd.faker.domain.distributors.o2m.weighted_range_distributor import WeightedRangeDistributor
 from ascetic_ddd.faker.domain.session.interfaces import ISession
@@ -19,7 +21,7 @@ class RangeDistributorAdapter(Observable, IM2ODistributor[T], typing.Generic[T])
     Использует O2M дистрибьютор для генерации числа из диапазона,
     затем ищет значение по этому числу в словаре.
 
-    Если значение не найдено — бросает StopAsyncIteration(num),
+    Если значение не найдено — бросает Cursor(),
     сигнализируя вызывающему коду создать новое значение для этого слота.
 
     Пример:
@@ -34,10 +36,9 @@ class RangeDistributorAdapter(Observable, IM2ODistributor[T], typing.Generic[T])
         # В provider:
         try:
             company = await adapter.next(session)
-        except StopAsyncIteration as e:
-            slot = e.value  # число для которого нет значения
-            company = await create_company(slot)
-            await adapter.append(session, company, slot)
+        except Cursor as cursor:
+            company = await create_company(cursor.position)
+            await cursor.append(session, company)
     """
     _distributor: IO2MDistributor
     _values: dict[int, T]
@@ -62,13 +63,17 @@ class RangeDistributorAdapter(Observable, IM2ODistributor[T], typing.Generic[T])
         Возвращает значение из словаря по случайному числу.
 
         Raises:
-            StopAsyncIteration(num): если для числа num нет значения в словаре.
-                                     num передаётся для создания нового значения.
+            Cursor(): если для слота нет значения в словаре.
+            cursor.position — номер слота.
+            cursor.append(session, value) — добавить значение.
         """
         num = self._distributor.distribute()
 
         if num not in self._values:
-            raise StopAsyncIteration(num)
+            raise Cursor(
+                position=num,
+                callback=self._append,
+            )
 
         value = self._values[num]
 
@@ -79,24 +84,16 @@ class RangeDistributorAdapter(Observable, IM2ODistributor[T], typing.Generic[T])
 
         return value
 
-    async def append(self, session: ISession, value: T, slot: int | None = None):
+    async def _append(self, session: ISession, value: T, position: int | None = None):
         """
         Добавляет значение в словарь.
 
         Args:
             session: Сессия
             value: Значение для добавления
-            slot: Номер слота (ключ в словаре). Если None, добавляет в первый свободный.
+            position: Номер слота (ключ в словаре).
         """
-        if slot is not None:
-            self._values[slot] = value
-        else:
-            # Найти первый свободный слот
-            slot = 0
-            while slot in self._values:
-                slot += 1
-            self._values[slot] = value
-
+        self._values[position] = value
         await self.anotify('value', session, value)
 
     @property
@@ -147,10 +144,9 @@ class RangeDistributorFactory(IM2ODistributorFactory[T], typing.Generic[T]):
         # Использование
         try:
             value = await dist.next(session)
-        except StopAsyncIteration as e:
-            slot = e.value
-            new_value = create_value(slot)
-            await dist.append(session, new_value, slot)
+        except ICursor as cursor:
+            new_value = create_value(cursor.position)
+            await cursor.append(session, new_value)
     """
     _min_val: int
     _max_val: int
@@ -179,7 +175,7 @@ class RangeDistributorFactory(IM2ODistributorFactory[T], typing.Generic[T]):
             weights: Веса для каждого значения в диапазоне
             skew: Параметр перекоса для exponential decay (decay = 1/skew)
             mean: Не используется (для совместимости с интерфейсом)
-            null_weight: Не используется (для совместимости с интерфейсом)
+            null_weight: Вероятность вернуть None (0-1)
             sequence: Не используется (для совместимости с интерфейсом)
 
         Returns:
@@ -206,4 +202,9 @@ class RangeDistributorFactory(IM2ODistributorFactory[T], typing.Generic[T]):
                 self._max_val,
             )
 
-        return RangeDistributorAdapter(range_dist)
+        adapter = RangeDistributorAdapter(range_dist)
+
+        if null_weight > 0:
+            return NullableDistributor(adapter, null_weight=null_weight)
+
+        return adapter

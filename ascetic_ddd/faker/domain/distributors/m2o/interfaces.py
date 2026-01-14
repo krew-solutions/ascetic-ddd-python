@@ -25,13 +25,9 @@ class IM2ODistributor(IObservable, typing.Generic[T], metaclass=ABCMeta):
     ) -> T:
         """
         Returns next value from distribution.
-        Raises StopAsyncIteration(num) when mean is reached, signaling caller to create new value.
+        Raises ICursor(num) when mean is reached, signaling caller to create new value.
         num is sequence position (for SequenceDistributor) or None.
         """
-        raise NotImplementedError
-
-    @abstractmethod
-    async def append(self, session: ISession, value: T):
         raise NotImplementedError
 
     @property
@@ -61,7 +57,11 @@ class IM2ODistributor(IObservable, typing.Generic[T], metaclass=ABCMeta):
         raise NotImplementedError
 
 
-class ICursor(typing.Generic[T], metaclass=ABCMeta):
+class ICursor(typing.Generic[T], StopAsyncIteration, metaclass=ABCMeta):
+    """
+    Заинтересованные декораторы должны перехватывать Cursor и создавать свой, если им нужно добавить объект к себе.
+    Например, если WeightedDistributor станет декоратором для SequenceDistributor.
+    """
     position: int
 
     @abstractmethod

@@ -8,6 +8,7 @@ import dataclasses
 
 from psycopg.types.json import Jsonb
 
+from ascetic_ddd.faker.domain.distributors.m2o.cursor import Cursor
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
@@ -91,17 +92,23 @@ class PgSkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
             self._mean = await self._get_param(session, 'mean')
 
         if self._mean == 1:
-            raise StopAsyncIteration(None)
+            raise Cursor(
+                position=None,
+                callback=self._append,
+            )
 
         value, should_create_new = await self._get_next_value(session, specification)
         if should_create_new:
-            raise StopAsyncIteration(None)
+            raise Cursor(
+                position=None,
+                callback=self._append,
+            )
         if value is None:
             value = await self._get_value(session, specification, 0)
 
         return value
 
-    async def append(self, session: ISession, value: T):
+    async def _append(self, session: ISession, value: T, position: int | None):
         sql = """
             INSERT INTO %(values_table)s (value, object)
             VALUES (%%s, %%s)

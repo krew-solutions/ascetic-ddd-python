@@ -37,9 +37,6 @@ class NullableDistributor(IM2ODistributor[T], typing.Generic[T]):
             return None
         return await self._delegate.next(session, specification)
 
-    async def append(self, session: ISession, value: T):
-        return await self._delegate.append(session, value)
-
     @property
     def provider_name(self):
         return self._delegate.provider_name

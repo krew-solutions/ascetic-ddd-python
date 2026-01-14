@@ -2,6 +2,7 @@ import math
 import random
 import typing
 
+from ascetic_ddd.faker.domain.distributors.m2o.cursor import Cursor
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
@@ -221,12 +222,18 @@ class WeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
         target_partition = self._partitions[specification]
 
         if self._mean == 1:
-            raise StopAsyncIteration(None)
+            raise Cursor(
+                position=None,
+                callback=self._append,
+            )
 
         try:
             value = target_partition.next(self._mean)
         except StopIteration:
-            raise StopAsyncIteration(None)
+            raise Cursor(
+                position=None,
+                callback=self._append,
+            )
 
         # Проверяем, соответствует ли объект спецификации (мог "протухнуть")
         if not specification.is_satisfied_by(value):
@@ -259,7 +266,7 @@ class WeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
             if spec.is_satisfied_by(value):
                 partition.insert_at_relative_position(value, relative_position)
 
-    async def append(self, session: ISession, value: T):
+    async def _append(self, session: ISession, value: T, position: int | None):
         if value not in self._partitions[self._default_spec]:
             self._partitions[self._default_spec].append(value)
             await self.anotify('value', session, value)
