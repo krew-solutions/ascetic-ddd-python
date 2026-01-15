@@ -19,7 +19,9 @@ dependencies = [
     "pydash (>=8.0.5,<9.0.0)",
     "dotenv (>=0.9.9,<0.10.0)",
     "hypothesis (>=6.150.1,<7.0.0)",
-    "scipy (>=1.17.0,<2.0.0)"
+    "scipy (>=1.17.0,<2.0.0)",
+    "mimesis (>=19.1.0,<20.0.0)",
+    "faker (>=40.1.2,<41.0.0)"
 ]
 
 [dependency-groups]
