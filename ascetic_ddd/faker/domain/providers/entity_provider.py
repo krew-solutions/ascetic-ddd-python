@@ -1,0 +1,78 @@
+import typing
+from abc import ABCMeta
+
+from ascetic_ddd.faker.domain.distributors.m2o.interfaces import ICursor
+from ascetic_ddd.faker.domain.providers._mixins import BaseCompositeProvider
+from ascetic_ddd.faker.domain.providers.interfaces import IEntityProvider
+from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.faker.domain.values.empty import empty
+
+T_Input = typing.TypeVar("T_Input")
+T_Output = typing.TypeVar("T_Output")
+
+
+__all__ = ('EntityProvider',)
+
+
+class EntityProvider(
+    BaseCompositeProvider[T_Input, T_Output],
+    IEntityProvider[T_Input, T_Output],
+    typing.Generic[T_Input, T_Output],
+    metaclass=ABCMeta
+):
+    _id_attr: str
+    _result_factory: typing.Callable[[...], T_Output]
+    _result_exporter: typing.Callable[[T_Output], T_Input]
+
+    def __init__(
+            self,
+            result_factory: typing.Callable[[...], T_Output] | None = None,  # T_Output of each nested Provider.
+            result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
+    ):
+        super().__init__()
+
+        if result_factory is None:
+            def result_factory(result):
+                return result
+        self._result_factory = result_factory
+
+        if result_exporter is None:
+            def result_exporter(value):
+                return value
+        self._result_exporter = result_exporter
+
+        self.on_init()
+
+    def on_init(self):
+        pass
+
+    async def create(self, session: ISession) -> T_Output:
+        if self._output_result is empty:
+            self._output_result = await self._default_factory(session)
+        return self._output_result
+
+    async def _default_factory(self, session: ISession, position: typing.Optional[int] = None):
+        data = dict()
+        for attr, provider in self._providers.items():
+            data[attr] = await provider.create(session)
+        return self._result_factory(**data)
+
+    @property
+    def id_provider(self):
+        return getattr(self, self._id_attr)
+
+    async def populate(self, session: ISession) -> None:
+        if self.is_complete():
+            return
+        await self.do_populate(session)
+        for attr, provider in self._providers.items():
+            try:
+                await provider.populate(session)
+            except ICursor:
+                if attr == self._id_attr:
+                    continue
+                else:
+                    raise
+
+    async def do_populate(self, session: ISession) -> None:
+        pass
