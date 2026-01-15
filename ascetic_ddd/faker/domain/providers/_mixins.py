@@ -130,28 +130,6 @@ class BaseProvider(
 ):
     _input_value: T_Input | Empty = empty
     _output_result: T_Output | Empty = empty
-    _value_generator: IValueGenerator[T_Input] | None = None
-    _result_factory: typing.Callable[[T_Input], T_Output]
-    _result_exporter: typing.Callable[[T_Output], T_Input]
-
-    def __init__(
-            self,
-            value_generator: IValueGenerator[T_Input],
-            result_factory: typing.Callable[[T_Input], T_Output] | None = None,
-            result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
-    ):
-        self._value_generator = prepare_value_generator(value_generator)
-        if result_factory is not None:
-            def result_factory(result):
-                return result
-        self._result_factory = result_factory
-
-        if result_exporter is not None:
-            def result_exporter(value):
-                return value
-        self._result_exporter = result_exporter
-        self._logger = logging.getLogger(".".join((type(self).__module__, type(self).__name__)))
-        super().__init__()
 
     def reset(self) -> None:
         self._input_value = empty
@@ -159,8 +137,9 @@ class BaseProvider(
         self.notify('input_value', self._input_value)
 
     def set(self, value: T_Input) -> None:
-        self._input_value = value
-        self.notify('input_value', self._input_value)
+        if self._input_value != value:
+            self._input_value = value
+            self.notify('input_value', self._input_value)
 
     def get(self) -> T_Input:
         return self._input_value
@@ -170,7 +149,7 @@ class BaseProvider(
         clone._output_result = empty
 
     def is_complete(self) -> bool:
-        return self._input_value is not empty or self._output_result is not empty
+        return self._output_result is not empty
 
     async def append(self, session: ISession, value: T_Output):
         pass
@@ -186,19 +165,9 @@ class BaseDistributionProvider(BaseProvider[T_Input, T_Output], typing.Generic[T
                                metaclass=abc.ABCMeta):
     _distributor: IM2ODistributor[T_Output]
 
-    def __init__(
-            self,
-            distributor: IM2ODistributor,
-            value_generator: IValueGenerator[T_Input],
-            result_factory: typing.Callable[[T_Input], T_Output] | None = None,
-            result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
-    ):
+    def __init__(self, distributor: IM2ODistributor):
         self._distributor = distributor
-        super().__init__(
-            value_generator=value_generator,
-            result_factory=result_factory,
-            result_exporter=result_exporter,
-        )
+        super().__init__()
 
     @property
     def provider_name(self) -> str:
@@ -231,29 +200,7 @@ class BaseCompositeProvider(
 
     _input_value: T_Input | Empty = empty
     _output_result: T_Output | Empty = empty
-    _result_factory: typing.Callable[[...], T_Output]  # T_Output of each nested Provider.
-    _result_exporter: typing.Callable[[T_Output], T_Input]
     _provider_name: str | None = None
-
-    def __init__(
-            self,
-            result_factory: typing.Callable[[...], T_Output] | None = None,  # T_Output of each nested Provider.
-            result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
-    ):
-        super().__init__()
-        if result_factory is not None:
-            def result_factory(result):
-                return result
-        self._result_factory = result_factory
-
-        if result_exporter is not None:
-            def result_exporter(value):
-                return value
-        self._result_exporter = result_exporter
-        self.on_init()
-
-    def on_init(self):
-        pass
 
     def is_complete(self) -> bool:
         return (
@@ -291,12 +238,6 @@ class BaseCompositeProvider(
             if val is not empty:
                 value[attr] = val
         return value
-
-    async def _default_factory(self, session: ISession, position: typing.Optional[int] = None):
-        data = dict()
-        for attr, provider in self._providers.items():
-            data[attr] = await provider.create(session)
-        return self._result_factory(**data)
 
     async def append(self, session: ISession, value: T_Output):
         pass
@@ -344,22 +285,12 @@ class BaseCompositeDistributionProvider(
 
     _input_value: T_Input | Empty = empty
     _output_result: T_Output | Empty = empty
-    _result_factory: typing.Callable[[...], T_Output]  # T_Output of each nested Provider.
-    _result_exporter: typing.Callable[[T_Output], T_Input]
     _provider_name: str | None = None
     _distributor: IM2ODistributor[T_Input]
 
-    def __init__(
-            self,
-            distributor: IM2ODistributor[T_Input],
-            result_factory: typing.Callable[[...], T_Output] | None = None,  # T_Output of each nested Provider.
-            result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
-    ):
+    def __init__(self, distributor: IM2ODistributor[T_Input]):
         self._distributor = distributor
-        super().__init__(
-            result_factory=result_factory,
-            result_exporter=result_exporter,
-        )
+        super().__init__()
 
     async def append(self, session: ISession, value: T_Output):
         await self._distributor.append(session, value)

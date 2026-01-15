@@ -45,6 +45,8 @@ class AggregateProvider(
 ):
     _id_attr: str
     _repository: IAggregateRepository[T_Output]
+    _result_factory: typing.Callable[[...], T_Output]  # T_Output of each nested Provider.
+    _result_exporter: typing.Callable[[T_Output], T_Input]
 
     def __init__(
             self,
@@ -53,11 +55,23 @@ class AggregateProvider(
             result_factory: typing.Callable[[...], T_Output] | None = None,  # T_Output of each nested Provider.
             result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
     ):
-        super().__init__(
-            result_factory=result_factory,
-            result_exporter=result_exporter,
-        )
+        super().__init__()
         self._repository = repository
+
+        if result_factory is not None:
+            def result_factory(result):
+                return result
+        self._result_factory = result_factory
+
+        if result_exporter is not None:
+            def result_exporter(value):
+                return value
+        self._result_exporter = result_exporter
+
+        self.on_init()
+
+    def on_init(self):
+        pass
 
     async def create(self, session: ISession) -> T_Output:
         if self._output_result is not None:
@@ -76,14 +90,14 @@ class AggregateProvider(
             # Тут можно пооптимизировать.
             # Действительно ли нам нужно бояться повторного вызова метода populate()?
             self.reset()
-            for k, p in self._providers.items():
-                p.set(state.get(k))
+            self.set(state)
             await self.populate(session)
         else:
             await self._repository.insert(session, result)
             state = self._result_exporter(result)
             self.id_provider.set(state.get(self._id_attr))
-            await self.id_provider.append(session, getattr(result, self._id_attr))
+            await self.id_provider.populate(session)
+            # await self.id_provider.append(session, getattr(result, self._id_attr))
         self._output_result = result
         return result
 
@@ -104,6 +118,12 @@ class AggregateProvider(
 
     async def do_populate(self, session: ISession) -> None:
         pass
+
+    async def _default_factory(self, session: ISession, position: typing.Optional[int] = None):
+        data = dict()
+        for attr, provider in self._providers.items():
+            data[attr] = await provider.create(session)
+        return self._result_factory(**data)
 
     @property
     def id_provider(self):

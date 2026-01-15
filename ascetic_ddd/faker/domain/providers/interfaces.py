@@ -16,6 +16,7 @@ __all__ = (
     'INameable',
     'IShunt',
     'ICloneable',
+    'ISetupable',
     'IValueGenerator',
     'IValueAnyGenerator',
     'ICompositeValueProvider',
@@ -167,8 +168,11 @@ class IEntityProvider(ICompositeMutable[T_Input, T_Output], IProvidable, IObserv
         raise NotImplementedError
 
 
-class IReferenceProvider(IValueProvider[T_Input, T_Output],
-                         typing.Protocol[T_Input, T_Output], metaclass=ABCMeta):
+T_Id_Output = typing.TypeVar("T_Id_Output")
+
+
+class IReferenceProvider(IValueProvider[T_Input, T_Id_Output],
+                         typing.Protocol[T_Input, T_Output, T_Id_Output], metaclass=ABCMeta):
 
     @property
     @abstractmethod
