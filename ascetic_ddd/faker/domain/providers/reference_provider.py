@@ -80,7 +80,8 @@ class ReferenceProvider(
             else:
                 self.set(None)
         except ICursor as cursor:
-            self.aggregate_provider.set(self._input_value)
+            if self._input_value is not empty:
+                self.aggregate_provider.set(self._input_value)
             await self.aggregate_provider.populate(session)
             self._output_result = await self.aggregate_provider.create(session)
             await cursor.append(session, self._output_result)
@@ -118,18 +119,18 @@ class ReferenceProvider(
             aggregate_provider_accessor = LazyAggregateProviderAccessor[T_Input, T_Output](aggregate_provider)
         else:
             aggregate_provider_accessor = AggregateProviderAccessor[T_Input, T_Output](aggregate_provider)
-        self._aggregate_provider_accessor = SubscriptionAggregateProviderAccessor[T_Input, T_Output](
+        self._aggregate_provider_accessor = SubscriptionAggregateProviderAccessor[T_Input, T_Output, T_Id_Output](
             self, aggregate_provider_accessor
         )
 
 
-class SubscriptionAggregateProviderAccessor(IAggregateProviderAccessor, typing.Generic[T_Input, T_Output]):
-    _reference_provider: IReferenceProvider[T_Input, T_Output]
+class SubscriptionAggregateProviderAccessor(IAggregateProviderAccessor, typing.Generic[T_Input, T_Output, T_Id_Output]):
+    _reference_provider: IReferenceProvider[T_Input, T_Output, T_Id_Output]
     _initialized: bool = False
     _delegate: IAggregateProviderAccessor[T_Input, T_Output]
 
     def __init__(self,
-                 reference_provider: IReferenceProvider[T_Input, T_Output],
+                 reference_provider: IReferenceProvider[T_Input, T_Output, T_Id_Output],
                  delegate: IAggregateProviderAccessor[T_Input, T_Output]):
         self._reference_provider = reference_provider
         self._delegate = delegate

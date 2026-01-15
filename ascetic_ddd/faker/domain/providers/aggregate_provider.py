@@ -2,6 +2,7 @@ import typing
 from abc import ABCMeta, abstractmethod
 
 from ascetic_ddd.faker.domain.distributors.m2o import IM2ODistributorFactory
+from ascetic_ddd.faker.domain.distributors.m2o.interfaces import ICursor
 from ascetic_ddd.faker.domain.providers._mixins import BaseCompositeProvider
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.domain.providers.interfaces import IEntityProvider
