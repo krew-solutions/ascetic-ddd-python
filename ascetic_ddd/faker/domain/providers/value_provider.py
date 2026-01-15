@@ -27,13 +27,13 @@ class ValueProvider(
     ):
         self._value_generator = prepare_value_generator(value_generator)
 
-        if result_factory is not None:
+        if result_factory is None:
             def result_factory(result):
                 return result
 
         self._result_factory = result_factory
 
-        if result_exporter is not None:
+        if result_exporter is None:
             def result_exporter(value):
                 return value
 

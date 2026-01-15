@@ -263,7 +263,7 @@ class BaseCompositeProvider(
         return attrs
 
     @property
-    def _providers(self) -> dict[str, IValueProvider[typing.Any]]:
+    def _providers(self) -> dict[str, IValueProvider[typing.Any, typing.Any]]:
         return {i: getattr(self, i) for i in self._provider_attrs}
 
     @property
