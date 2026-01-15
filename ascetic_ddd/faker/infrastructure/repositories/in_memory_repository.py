@@ -25,7 +25,7 @@ class InMemoryRepository(typing.Generic[T]):
         self._aggregates[id_] = agg
 
     async def get(self, session: ISession, id_: IAccessible[typing.Any]) -> T | None:
-        return self._aggregates.get(id_)
+        return self._aggregates.get(id_.value)
 
     async def find(self, session: ISession, specification: ISpecification) -> typing.Iterable[T]:
         """Add index support by extending the class"""

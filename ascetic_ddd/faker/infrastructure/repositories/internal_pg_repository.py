@@ -77,7 +77,7 @@ class InternalPgRepository(typing.Generic[T]):
             'table': self._table,
         }
         async with self._extract_connection(session).cursor() as acursor:
-            await acursor.execute(sql, (self._encode(id_),))
+            await acursor.execute(sql, (self._encode(id_.value),))
             row = await acursor.fetchone()
             return row and self._deserialize(row[0])
 
