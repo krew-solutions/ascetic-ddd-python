@@ -111,7 +111,7 @@ class AggregateProvider(
         for attr, provider in self._providers.items():
             try:
                 await provider.populate(session)
-            except StopAsyncIteration:
+            except ICursor:
                 if attr == self._id_attr:
                     continue
                 else:
