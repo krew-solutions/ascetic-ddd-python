@@ -58,12 +58,12 @@ class AggregateProvider(
         super().__init__()
         self._repository = repository
 
-        if result_factory is not None:
+        if result_factory is None:
             def result_factory(result):
                 return result
         self._result_factory = result_factory
 
-        if result_exporter is not None:
+        if result_exporter is None:
             def result_exporter(value):
                 return value
         self._result_exporter = result_exporter

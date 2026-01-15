@@ -29,13 +29,13 @@ class CompositeValueProvider(
             result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
     ):
         super().__init__(distributor=distributor)
-        if result_factory is not None:
-            def result_factory(result):
-                return result
+        if result_factory is None:
+            def result_factory(**kwargs):
+                return kwargs
 
         self._result_factory = result_factory
 
-        if result_exporter is not None:
+        if result_exporter is None:
             def result_exporter(value):
                 return value
 
