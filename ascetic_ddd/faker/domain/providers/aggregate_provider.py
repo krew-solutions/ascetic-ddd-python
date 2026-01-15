@@ -6,6 +6,7 @@ from ascetic_ddd.faker.domain.providers._mixins import BaseCompositeProvider
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.domain.providers.interfaces import IEntityProvider
 from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.faker.domain.values.empty import empty
 
 
 __all__ = ('IAggregateRepository', 'AggregateProvider',)
@@ -74,9 +75,9 @@ class AggregateProvider(
         pass
 
     async def create(self, session: ISession) -> T_Output:
-        if self._output_result is not None:
+        if self._output_result is not empty:
             return self._output_result
-        result = self._default_factory(session)
+        result = await self._default_factory(session)
         if self.id_provider.is_complete():
             # id_ здесь может быть еще неизвестен, т.к. агрегат не создан.
             # А может быть и известен, если его id_ реиспользуется как FK.
