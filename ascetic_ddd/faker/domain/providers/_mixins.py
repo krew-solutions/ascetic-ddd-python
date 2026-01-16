@@ -205,7 +205,7 @@ class BaseCompositeProvider(
     def is_complete(self) -> bool:
         return (
             self._output_result is not empty or
-            any(provider.is_complete() for provider in self._providers.values())
+            all(provider.is_complete() for provider in self._providers.values())
         )
 
     def do_empty(self, clone: typing.Self, shunt: IShunt):
