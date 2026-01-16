@@ -4,7 +4,7 @@ __all__ = ("hashable", "freeze", "is_subset",)
 
 def hashable(o):
     if isinstance(o, dict):
-        return tuple((k, hashable(v)) for k, v in o.items())
+        return tuple(sorted((k, hashable(v)) for k, v in o.items()))
     if isinstance(o, list):
         return tuple([hashable(v) for v in o])
     return o
