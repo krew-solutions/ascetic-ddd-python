@@ -70,12 +70,14 @@ class CompositeValueProvider(
                 cursors[attr] = cursor
 
         try:
-            self._output_result = await self._distributor.next(session, specification)
-            if self._output_result is not None:
-                value = self._result_exporter(self._output_result)
+            result = await self._distributor.next(session, specification)
+            if result is not None:
+                value = self._result_exporter(result)
                 self.set(value)
             else:
                 self.set(None)
+            # self.set() could reset self._output_result
+            self._output_result = result
         except ICursor as cursor:
             result = await self._default_factory(session, cursor.position)
             value = self._result_exporter(result)

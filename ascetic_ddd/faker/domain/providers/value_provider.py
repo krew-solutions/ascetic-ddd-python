@@ -57,14 +57,18 @@ class ValueProvider(
             return
 
         try:
-            self._output_result = await self._distributor.next(session)
-            value = self._result_exporter(self._output_result)
+            result = await self._distributor.next(session)
+            value = self._result_exporter(result)
             self.set(value)
+            # self.set() could reset self._output_result
+            self._output_result = result
         except ICursor as cursor:
             if self._value_generator is None:
                 self._output_result = self._result_factory(None)
             else:
                 value = await self._value_generator(session, cursor.position)
-                self._output_result = self._result_factory(value)
-                await cursor.append(session, self._output_result)
+                result = self._result_factory(value)
+                await cursor.append(session, result)
                 self.set(value)
+                # self.set() could reset self._output_result
+                self._output_result = result
