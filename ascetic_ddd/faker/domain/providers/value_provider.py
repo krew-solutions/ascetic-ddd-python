@@ -5,6 +5,7 @@ from ascetic_ddd.faker.domain.providers._mixins import BaseDistributionProvider
 from ascetic_ddd.faker.domain.providers.interfaces import IValueProvider, IValueGenerator
 from ascetic_ddd.faker.domain.providers.value_generators import prepare_value_generator
 from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.faker.domain.values.empty import empty
 
 __all__ = ('ValueProvider',)
 
@@ -46,6 +47,12 @@ class ValueProvider(
     async def populate(self, session: ISession) -> None:
         if self.is_complete():
             return
+
+        if self._input_value is not empty:
+            self._output_result = self._result_factory(self._input_value)
+            # await cursor.append(session, self._output_result)
+            return
+
         try:
             self._output_result = await self._distributor.next(session)
             value = self._result_exporter(self._output_result)
