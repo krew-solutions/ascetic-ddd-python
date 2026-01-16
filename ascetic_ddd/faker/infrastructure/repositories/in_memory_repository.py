@@ -3,8 +3,10 @@ import typing
 from ascetic_ddd.seedwork.domain.identity.interfaces import IAccessible
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
+from ascetic_ddd.seedwork.domain.utils.data import hashable
 
 __all__ = ('InMemoryRepository',)
+
 
 T = typing.TypeVar("T", covariant=True)
 
@@ -22,10 +24,11 @@ class InMemoryRepository(typing.Generic[T]):
     async def insert(self, session: ISession, agg: T):
         state = self._agg_exporter(agg)
         id_ = self._id(state)
-        self._aggregates[id_] = agg
+        self._aggregates[hashable(id_)] = agg
 
-    async def get(self, session: ISession, id_: IAccessible[typing.Any]) -> T | None:
-        return self._aggregates.get(id_.value)
+    async def get(self, session: ISession, id_: IAccessible[typing.Any] | typing.Any) -> T | None:
+        key = id_.value if hasattr(id_, 'value') else id_
+        return self._aggregates.get(hashable(key))
 
     async def find(self, session: ISession, specification: ISpecification) -> typing.Iterable[T]:
         """Add index support by extending the class"""
