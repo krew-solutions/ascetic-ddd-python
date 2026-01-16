@@ -11,6 +11,7 @@ __all__ = (
     'CompositeValueProvider',
 )
 
+
 T_Input = typing.TypeVar("T_Input")
 T_Output = typing.TypeVar("T_Output")
 
@@ -76,10 +77,13 @@ class CompositeValueProvider(
             else:
                 self.set(None)
         except ICursor as cursor:
-            self._output_result = await self._default_factory(session, cursor.position)
-            await cursor.append(session, self._output_result)
-            value = self._result_exporter(self._output_result)
+            result = await self._default_factory(session, cursor.position)
+            value = self._result_exporter(result)
             self.set(value)
+            # self.set() could reset self._output_result
+            self._output_result = result
+            if not self.is_transient():
+                await cursor.append(session, self._output_result)
             # infinite recursion
             # await self.populate(session)
 
