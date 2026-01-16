@@ -89,6 +89,10 @@ class IProvidable(typing.Protocol, metaclass=ABCMeta):
     def is_complete(self) -> bool:
         raise NotImplementedError
 
+    @abstractmethod
+    def is_transient(self) -> bool:
+        raise NotImplementedError
+
 
 class IMutable(typing.Protocol[T_Input, T_Output], metaclass=ABCMeta):
 

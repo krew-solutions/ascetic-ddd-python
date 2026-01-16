@@ -139,6 +139,7 @@ class BaseProvider(
     def set(self, value: T_Input) -> None:
         if self._input_value != value:
             self._input_value = value
+            self._output_result = empty
             self.notify('input_value', self._input_value)
 
     def get(self) -> T_Input:
@@ -150,6 +151,9 @@ class BaseProvider(
 
     def is_complete(self) -> bool:
         return self._output_result is not empty
+
+    def is_transient(self) -> bool:
+        return self._input_value is empty
 
     async def append(self, session: ISession, value: T_Output):
         pass
@@ -208,6 +212,9 @@ class BaseCompositeProvider(
             all(provider.is_complete() for provider in self._providers.values())
         )
 
+    def is_transient(self) -> bool:
+        return any(provider.is_transient() for provider in self._providers.values())
+
     def do_empty(self, clone: typing.Self, shunt: IShunt):
         clone._input_value = empty
         clone._output_result = empty
@@ -223,15 +230,19 @@ class BaseCompositeProvider(
             provider.reset()
 
     def set(self, value: T_Input) -> None:
-        self._input_value = value
-        self.notify('input_value', value)
-        if value is empty:
-            return
-        for attr, val in value.items():
-            """
-            Вложенная композиция поддерживается автоматически.
-            """
-            getattr(self, attr).set(val)
+        """
+        https://docs.python.org/3/library/stdtypes.html#mapping-types-dict
+        """
+        if self._input_value != value:
+            self._input_value = value
+            self._output_result = empty
+            self.notify('input_value', value)
+        if value is not empty:
+            for attr, val in value.items():
+                """
+                Вложенная композиция поддерживается автоматически.
+                """
+                getattr(self, attr).set(val)
 
     def get(self) -> T_Input:
         value = dict()

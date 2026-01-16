@@ -1,6 +1,6 @@
 import typing
 
-from ascetic_ddd.seedwork.domain.utils.data import hashable
+from ascetic_ddd.seedwork.domain.utils.data import freeze
 
 
 __all__ = ('Json', )
@@ -12,4 +12,4 @@ class Json:
         self.obj = obj
 
     def __hash__(self):
-        return hash(hashable(self.obj))
+        return hash(freeze(self.obj))
