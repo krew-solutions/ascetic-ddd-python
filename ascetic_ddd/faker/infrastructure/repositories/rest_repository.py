@@ -80,7 +80,7 @@ class RestRepository(typing.Generic[T]):
 
     def url(self, agg: T) -> str:
         pk = self._get_pk(agg)
-        if pk is empty:
+        if pk is None:
             return os.path.join(self._base_url, self._path)
         return os.path.join(self._base_url, self._path, str(pk))
 
