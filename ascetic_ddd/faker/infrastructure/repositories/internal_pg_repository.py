@@ -70,14 +70,15 @@ class InternalPgRepository(typing.Generic[T]):
                 raise
 
     @check_init
-    async def get(self, session: ISession, id_: IAccessible[typing.Any]) -> T | None:
+    async def get(self, session: ISession, id_: IAccessible[typing.Any] | typing.Any) -> T | None:
         sql = """
             SELECT object FROM %(table)s WHERE id = %%s
         """ % {
             'table': self._table,
         }
+        key = id_.value if hasattr(id_, 'value') else id_
         async with self._extract_connection(session).cursor() as acursor:
-            await acursor.execute(sql, (self._encode(id_.value),))
+            await acursor.execute(sql, (self._encode(key),))
             row = await acursor.fetchone()
             return row and self._deserialize(row[0])
 
