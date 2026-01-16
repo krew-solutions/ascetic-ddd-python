@@ -79,6 +79,7 @@ class ReferenceProvider(
                 await self.aggregate_provider.populate(session)
             else:
                 self.set(None)
+            # self.set() could reset self._output_result
             self._output_result = result
         except ICursor as cursor:
             if self._input_value is not empty and isinstance(self._input_value, dict):
