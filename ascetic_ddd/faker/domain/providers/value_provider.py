@@ -18,15 +18,18 @@ class ValueProvider(
     IValueProvider[T_Input, T_Output],
     typing.Generic[T_Input, T_Output]
 ):
+    _value_generator: IValueGenerator[T_Input] | None
+    _result_factory: typing.Callable[[T_Input], T_Output]  # T_Output of each nested Provider.
+    _result_exporter: typing.Callable[[T_Output], T_Input]
 
     def __init__(
             self,
             distributor: IM2ODistributor,
-            value_generator: IValueGenerator[T_Input],
+            value_generator: IValueGenerator[T_Input] | None = None,
             result_factory: typing.Callable[[T_Input], T_Output] | None = None,
             result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
     ):
-        self._value_generator = prepare_value_generator(value_generator)
+        self._value_generator = prepare_value_generator(value_generator) if value_generator is not None else None
 
         if result_factory is None:
             def result_factory(result):
@@ -58,7 +61,10 @@ class ValueProvider(
             value = self._result_exporter(self._output_result)
             self.set(value)
         except ICursor as cursor:
-            value = await self._value_generator(session, cursor.position)
-            self._output_result = self._result_factory(value)
-            await cursor.append(session, self._output_result)
-            self.set(value)
+            if self._value_generator is None:
+                self._output_result = self._result_factory(None)
+            else:
+                value = await self._value_generator(session, cursor.position)
+                self._output_result = self._result_factory(value)
+                await cursor.append(session, self._output_result)
+                self.set(value)
