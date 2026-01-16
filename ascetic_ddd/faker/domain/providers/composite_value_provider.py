@@ -51,7 +51,10 @@ class CompositeValueProvider(
 
     async def populate(self, session: ISession) -> None:
         if self.is_complete():
+            if self._output_result is empty:
+                self._output_result = await self._default_factory(session)
             return
+
         if self._input_value is empty:
             specification = EmptySpecification()
         else:
@@ -73,13 +76,12 @@ class CompositeValueProvider(
             else:
                 self.set(None)
         except ICursor as cursor:
-            if self.is_complete():
-                self._output_result = await self._default_factory(session, cursor.position)
-                await cursor.append(session, self._output_result)
-                value = self._result_exporter(self._output_result)
-                self.set(value)
-                # infinite recursion
-                # await self.populate(session)
+            self._output_result = await self._default_factory(session, cursor.position)
+            await cursor.append(session, self._output_result)
+            value = self._result_exporter(self._output_result)
+            self.set(value)
+            # infinite recursion
+            # await self.populate(session)
 
     async def _default_factory(self, session: ISession, position: typing.Optional[int] = None):
         data = dict()
