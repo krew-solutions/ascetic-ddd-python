@@ -79,19 +79,18 @@ class AggregateProvider(
         if self._output_result is not empty:
             return self._output_result
         result = await self._default_factory(session)
-        if self.id_provider.is_complete():
+        if self.id_provider.is_complete() and not self.id_provider.is_transient():
             # id_ здесь может быть еще неизвестен, т.к. агрегат не создан.
             # А может быть и известен, если его id_ реиспользуется как FK.
-            id_ = await getattr(self, self._id_attr).create(session)
+            id_ = await self.id_provider.create(session)
+            # Skip repository lookup if id contains empty fields (auto-increment PKs)
             saved_result = await self._repository.get(session, id_)
         else:
             saved_result = None
+
         if saved_result is not None:
             result = saved_result
             state = self._result_exporter(result)
-            # Тут можно пооптимизировать.
-            # Действительно ли нам нужно бояться повторного вызова метода populate()?
-            self.reset()
             self.set(state)
             await self.populate(session)
         else:
