@@ -71,14 +71,15 @@ class ReferenceProvider(
             specification = ObjectPatternSpecification(self._input_value, self.aggregate_provider._result_exporter)
 
         try:
-            self._output_result = await self._distributor.next(session, specification)
-            if self._output_result is not None:
-                value = self.aggregate_provider._result_exporter(self._output_result)
+            result = await self._distributor.next(session, specification)
+            if result is not None:
+                value = self.aggregate_provider._result_exporter(result)
                 self.set(value)
                 self.aggregate_provider.set(value)
                 await self.aggregate_provider.populate(session)
             else:
                 self.set(None)
+            self._output_result = result
         except ICursor as cursor:
             if self._input_value is not empty and isinstance(self._input_value, dict):
                 self.aggregate_provider.set(self._input_value)
