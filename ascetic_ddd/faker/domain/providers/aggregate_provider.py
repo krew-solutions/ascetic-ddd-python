@@ -99,6 +99,7 @@ class AggregateProvider(
             self.id_provider.set(state.get(self._id_attr))
             await self.id_provider.populate(session)
             # await self.id_provider.append(session, getattr(result, self._id_attr))
+        # self.set() could reset self._output_result
         self._output_result = result
         return result
 
