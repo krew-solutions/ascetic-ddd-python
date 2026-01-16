@@ -80,7 +80,7 @@ class ReferenceProvider(
             else:
                 self.set(None)
         except ICursor as cursor:
-            if self._input_value is not empty:
+            if self._input_value is not empty and isinstance(self._input_value, dict):
                 self.aggregate_provider.set(self._input_value)
             await self.aggregate_provider.populate(session)
             self._output_result = await self.aggregate_provider.create(session)
@@ -140,7 +140,10 @@ class SubscriptionAggregateProviderAccessor(IAggregateProviderAccessor, typing.G
         if not self._initialized:
 
             async def _observer(aspect, session, value):
-                await self._reference_provider.append(session, value)
+                # TODO: Optimize me
+                # Если distributor будет использовать таблицу Repository, то эта фигня не нужна.
+                agg = await aggregate_provider._repository.get(session, value)
+                await self._reference_provider.append(session, agg)
 
             aggregate_provider.id_provider.attach(
                 'distributor.value', _observer, self._reference_provider.provider_name
@@ -151,7 +154,8 @@ class SubscriptionAggregateProviderAccessor(IAggregateProviderAccessor, typing.G
 
     def empty(self, shunt: IShunt | None = None):
         # We do not it for recursion tree
-        return type(self)(self._reference_provider, self._delegate.empty(shunt))
+        # Подписка между distributors однократная, т.к. они не клонируются.
+        return self._delegate.empty(shunt)
 
     def reset(self):
         self._delegate.reset()

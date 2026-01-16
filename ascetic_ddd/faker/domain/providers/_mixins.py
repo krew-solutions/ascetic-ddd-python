@@ -225,6 +225,8 @@ class BaseCompositeProvider(
     def set(self, value: T_Input) -> None:
         self._input_value = value
         self.notify('input_value', value)
+        if value is empty:
+            return
         for attr, val in value.items():
             """
             Вложенная композиция поддерживается автоматически.
