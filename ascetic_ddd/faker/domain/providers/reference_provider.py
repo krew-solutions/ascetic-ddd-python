@@ -85,10 +85,12 @@ class ReferenceProvider(
             if self._input_value is not empty and isinstance(self._input_value, dict):
                 self.aggregate_provider.set(self._input_value)
             await self.aggregate_provider.populate(session)
-            self._output_result = await self.aggregate_provider.create(session)
-            await cursor.append(session, self._output_result)
-            value = self.aggregate_provider._result_exporter(self._output_result)
+            result = await self.aggregate_provider.create(session)
+            await cursor.append(session, result)
+            value = self.aggregate_provider._result_exporter(result)
             self.set(value)
+            # self.set() could reset self._output_result
+            self._output_result = result
 
     async def setup(self, session: ISession):
         await super().setup(session)
