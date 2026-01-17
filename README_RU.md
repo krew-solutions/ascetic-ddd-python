@@ -1,0 +1,16 @@
+# ascetic-ddd-python
+
+Toolkit and [seedwork](https://martinfowler.com/bliki/Seedwork.html) for a python DDD project.
+
+Данный проект представляет собой компиляцию различных файлов из различных моих Open Source библиотек,
+а также подсмотренных мною решений в Open Source Reference Applications,
+а так же транспайлинг на Python моих файлов с Golang Reference Application [Grade](https://github.com/emacsway/grade),
+которые я наиболее часто использую в различных проектах.
+
+В ближайших планах - переписать [KarmaBot](https://github.com/emacsway/KarmaBot) с использованием DDD и этого проекта.
+
+## Содержание
+
+1. [Генератор фейковых данных DDD-приложения](./ascetic_ddd/faker/README_RU.md)
+
+Связаться со мной: [@emacsway](https://t.me/emacsway)
