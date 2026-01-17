@@ -117,6 +117,18 @@ class IValueProvider(
     IMutable[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
     ISetupable, typing.Protocol[T_Input, T_Output], metaclass=ABCMeta
 ):
+    """
+    Architecture:
+    (result) <- (distributor) <- (
+        (select from results)
+        or
+        (result_factory) <- (input_value) <- (
+            (generate value)
+            or
+            (preset value)
+        )
+    )
+    """
     pass
 
 
@@ -156,6 +168,18 @@ class ICompositeValueProvider(
     IMutable[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
     ISetupable, typing.Protocol[T_Input, T_Output], metaclass=ABCMeta
 ):
+    """
+    Architecture:
+    (result) <- (distributor) <- (
+        (select from results)
+        or
+        (result_factory) <- Σ(leaf_result) <- (
+            (generate value)
+            or
+            (preset value)
+        )
+    )
+    """
     pass
 
 
