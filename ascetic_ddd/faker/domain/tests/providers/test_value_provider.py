@@ -184,6 +184,44 @@ class ValueProviderBasicTestCase(IsolatedAsyncioTestCase):
 
         self.assertTrue(provider.is_complete())
 
+    async def test_is_complete_true_after_populate_with_cursor(self):
+        """is_complete() should return True after populate() when ICursor is raised."""
+        # Use raise_cursor_at=0 to force ICursor branch
+        distributor = MockDistributor(raise_cursor_at=0)
+        session = MockSession()
+
+        async def generator(session, position=None):
+            return 'generated_value'
+
+        provider = ValueProvider(
+            distributor=distributor,
+            value_generator=generator,
+        )
+        provider.provider_name = 'test_provider'
+
+        await provider.populate(session)
+
+        # Key assertion: is_complete() must be True even when ICursor was raised
+        self.assertTrue(provider.is_complete())
+        self.assertEqual(provider._output_result, 'generated_value')
+
+    async def test_is_complete_true_after_populate_with_cursor_no_generator(self):
+        """is_complete() should return True after populate() with ICursor and no value_generator."""
+        # This tests auto-increment PK scenario
+        distributor = MockDistributor(raise_cursor_at=0)
+        session = MockSession()
+
+        provider = ValueProvider(
+            distributor=distributor,
+            value_generator=None,  # No generator - simulates auto-increment PK
+        )
+        provider.provider_name = 'test_provider'
+
+        await provider.populate(session)
+
+        self.assertTrue(provider.is_complete())
+        self.assertIsNone(provider._output_result)
+
     async def test_reset_clears_state(self):
         """reset() should clear the provider state."""
         distributor = MockDistributor(values=['value'])

@@ -259,6 +259,20 @@ class AggregateProviderAutoIncrementTestCase(IsolatedAsyncioTestCase):
         self.assertIsInstance(result, User)
         self.assertEqual(len(repository._inserted), 1)
 
+    async def test_is_complete_true_after_create(self):
+        """is_complete() should return True after create() and _output_result should be set."""
+        repository = StubRepository(auto_increment_start=1)
+        provider = UserProviderAutoIncrement(repository)
+        provider.provider_name = 'user'
+        session = MockSession()
+
+        await provider.populate(session)
+        result = await provider.create(session)
+
+        self.assertTrue(provider.is_complete())
+        self.assertIs(provider._output_result, result)
+        self.assertIsNot(provider._output_result, empty)
+
     async def test_auto_increment_assigns_id(self):
         """Repository should assign ID via auto-increment."""
         repository = StubRepository(auto_increment_start=42)
@@ -335,6 +349,20 @@ class AggregateProviderPresetPKTestCase(IsolatedAsyncioTestCase):
         self.assertIsInstance(result, User)
         # ID should be from user_id_generator: 100 + position(0) = 100
         self.assertEqual(result.id.value, 100)
+
+    async def test_is_complete_true_after_create_preset_pk(self):
+        """is_complete() should return True after create() with pre-set PK."""
+        repository = StubRepository()
+        provider = UserProviderPresetPK(repository)
+        provider.provider_name = 'user'
+        session = MockSession()
+
+        await provider.populate(session)
+        result = await provider.create(session)
+
+        self.assertTrue(provider.is_complete())
+        self.assertIs(provider._output_result, result)
+        self.assertIsNot(provider._output_result, empty)
 
     async def test_id_provider_complete_before_create(self):
         """id_provider should be complete before create() with pre-set PK."""

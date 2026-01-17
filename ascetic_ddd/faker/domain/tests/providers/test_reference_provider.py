@@ -656,6 +656,25 @@ class ReferenceProviderAutoIncrementBasicTestCase(IsolatedAsyncioTestCase):
         # Verify repository assigned the ID correctly
         self.assertEqual(tenant_repo._inserted[0].id.value, 5)
 
+    async def test_is_complete_after_populate_with_cursor(self):
+        """is_complete() should return True after populate() when ICursor is raised."""
+        tenant_repo = StubTenantRepository(auto_increment_start=1)
+        user_repo = StubUserRepository(auto_increment_start=1)
+        session = MockSession()
+
+        tenant_provider = TenantProviderAutoIncrement(tenant_repo)
+        tenant_provider.provider_name = 'tenant'
+
+        user_provider = UserProviderAutoIncrement(user_repo, tenant_provider)
+        user_provider.provider_name = 'user'
+
+        await user_provider.populate(session)
+
+        # Key assertion: is_complete() must be True after populate()
+        # This tests the ICursor branch where _output_result must be set AFTER set()
+        self.assertTrue(user_provider.tenant_id.is_complete())
+        self.assertIsNotNone(user_provider.tenant_id._output_result)
+
 
 # =============================================================================
 # Test Cases: Auto-increment PK - Multi-level Reference
