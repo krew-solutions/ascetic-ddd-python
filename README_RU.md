@@ -7,7 +7,15 @@ Toolkit and [seedwork](https://martinfowler.com/bliki/Seedwork.html) for a pytho
 а так же транспайлинг на Python моих файлов с Golang Reference Application [Grade](https://github.com/emacsway/grade),
 которые я наиболее часто использую в различных проектах.
 
+В проекте намеренно используется принцип "Program into Your Language, Not in It".
+Богатство языковых конструкций Python намеренно не используется по трем причинам:
+
+1. Я уже успел отвыкнуть от Python.
+2. Код должен легко транспайлиться на другие языки программирования, у которых языковое богатство поскромнее.
+3. Некоторые файлы были траспайлены с Golang.
+
 В ближайших планах - переписать [KarmaBot](https://github.com/emacsway/KarmaBot) с использованием DDD и этого проекта.
+
 
 ## Содержание
 
