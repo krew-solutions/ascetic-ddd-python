@@ -611,7 +611,7 @@ class CompanyProviderWithEmployees(AggregateProvider[dict, Company]):
         self.employees = DependentProvider(
             distributor=employee_distributor,
             aggregate_provider=EmployeeProvider(employee_repository),
-            related_field='company_id',  # FK field in Employee
+            dependency_field='company_id',  # FK field in Employee
         )
         super().__init__(
             repository=repository,

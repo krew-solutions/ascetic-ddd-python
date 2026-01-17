@@ -102,11 +102,11 @@ class AggregateProvider(
         # self.set() could reset self._output_result
         self._output_result = result
 
-        # Create dependent entities AFTER parent is created (they need parent's ID for FK)
+        # Create dependent entities AFTER this aggregate is created (they need its ID for FK)
         if self._dependent_providers:
-            parent_id = self.id_provider.get()
+            dependency_id = self.id_provider.get()
             for attr, dep_provider in self._dependent_providers.items():
-                dep_provider.set_parent_id(parent_id)
+                dep_provider.set_dependency_id(dependency_id)
                 await dep_provider.populate(session)
                 await dep_provider.create(session)
 

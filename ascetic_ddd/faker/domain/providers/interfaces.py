@@ -281,7 +281,7 @@ class IDependentProvider(
         raise NotImplementedError
 
     @abstractmethod
-    def set_parent_id(self, parent_id: typing.Any) -> None:
+    def set_dependency_id(self, dependency_id: typing.Any) -> None:
         raise NotImplementedError
 
 
