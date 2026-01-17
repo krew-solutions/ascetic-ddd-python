@@ -16,7 +16,6 @@ from ascetic_ddd.faker.domain.specification.object_pattern_specification import 
 
 from ascetic_ddd.faker.domain.values.empty import empty
 
-T_Id_Input = typing.TypeVar("T_Id_Input")
 T_Id_Output = typing.TypeVar("T_Id_Output")
 T_Input = typing.TypeVar("T_Input")
 T_Output = typing.TypeVar("T_Output")
