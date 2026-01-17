@@ -9,17 +9,19 @@ from ascetic_ddd.observable.interfaces import IObservable
 
 
 __all__ = (
-    'IValueProvider',
-    'IReferenceProvider',
-    'IEntityProvider',
-    'IRelativeProvider',
     'INameable',
     'IShunt',
     'ICloneable',
     'ISetupable',
+    'IValueProvider',
+    'ICompositeValueProvider',
+    'IEntityProvider',
+    'IReferenceProvider',
+    'IDependentMutable',
+    'IDependentProvider',
+    'IRelativeProvider',
     'IValueGenerator',
     'IValueAnyGenerator',
-    'ICompositeValueProvider',
 )
 
 T_Input = typing.TypeVar("T_Input")
