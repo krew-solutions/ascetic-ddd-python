@@ -72,38 +72,34 @@ BDD (Behavior-driven development) и ATDD (Acceptance Test-Driven Development).
 ## Снятие weights для фиксированного диапазона (выбор из списка)
 
 ```sql
-SELECT json_agg(result.val), json_agg(result.p) FROM (
-    SELECT tc.val, round((tc.c / SUM(tc.c) OVER ())::decimal, 5) AS p, tc.c AS c, SUM(tc.c) OVER () AS s FROM (
-        SELECT
-            status AS val, COUNT(id) AS c
-        FROM employees
-        WHERE status IS NOT NULL
-        GROUP BY status ORDER BY c DESC
-    ) AS tc
-) AS result;
+  SELECT json_agg(val), json_agg(p) FROM (
+      SELECT
+          status AS val,
+          ROUND(COUNT(id)::decimal / SUM(COUNT(id)) OVER (), 5) AS p
+      FROM employees
+      WHERE status IS NOT NULL
+      GROUP BY status
+      ORDER BY COUNT(id) DESC
+  ) AS result;
 ```
 
 
 ## Снятие mean (среднего значения)
 
 ```sql
-SELECT ROUND(total_count::decimal / GREATEST(distinct_count, 1), 5) AS scale FROM (
-    SELECT
-        COUNT(*) AS total_count, COUNT(DISTINCT "company_id") AS distinct_count
-    FROM employees
-    WHERE "company_id" IS NOT NULL
-) AS subquery;
+SELECT ROUND(COUNT(*)::decimal / GREATEST(COUNT(DISTINCT "company_id"), 1), 5) AS scale
+FROM employees
+WHERE "company_id" IS NOT NULL;
 ```
 
 
 ## Снятие null_weight
 
 ```sql
-SELECT tc.val, round((tc.c / SUM(tc.c) OVER ())::decimal, 5) AS p, tc.c AS c, SUM(tc.c) OVER () AS s FROM (
-    SELECT
-        CASE WHEN company_id IS NULL THEN 'NULL' ELSE 'NOT NULL' END AS val, COUNT(device_id) AS c
-    FROM api_device
-    GROUP BY val
-    ORDER BY val DESC
-) AS tc;
+SELECT
+  CASE WHEN company_id IS NULL THEN 'NULL' ELSE 'NOT NULL' END AS val,
+  ROUND(COUNT(id)::decimal / SUM(COUNT(id)) OVER (), 5) AS p
+FROM employees
+GROUP BY 1
+ORDER BY val DESC;
 ```
