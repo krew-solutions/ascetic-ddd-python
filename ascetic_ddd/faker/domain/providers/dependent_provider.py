@@ -84,20 +84,30 @@ class DependentProvider(
     _count: int | None = None
     _weights: list[float] | None = None
     _value_selector: WeightedRangeDistributor | None = None
+    _related_field: str | None = None
+    _parent_id: typing.Any = None
 
     def __init__(
             self,
             distributor: IO2MDistributor,
-            aggregate_provider: IEntityProvider[T_Input, T_Output] | Callable[[], IEntityProvider[T_Input, T_Output]]
+            aggregate_provider: IEntityProvider[T_Input, T_Output] | Callable[[], IEntityProvider[T_Input, T_Output]],
+            related_field: str | None = None,
     ):
         """
         Args:
             distributor: O2M distributor that determines how many children to create
             aggregate_provider: Template provider for children (will be cloned for each child)
+            related_field: Field name in child that references parent's ID (FK field).
+                          If set, this field will be automatically populated with parent's ID.
         """
         super().__init__()
         self._distributor = distributor
+        self._related_field = related_field
         self.aggregate_providers = aggregate_provider
+
+    def set_parent_id(self, parent_id: typing.Any) -> None:
+        """Set parent's ID to be used for related_field in children."""
+        self._parent_id = parent_id
 
     def do_empty(self, clone: typing.Self, shunt: IShunt | None = None):
         clone._input_values = empty
@@ -105,6 +115,7 @@ class DependentProvider(
         clone._count = None
         clone._weights = None
         clone._value_selector = None
+        clone._parent_id = None
         clone._aggregate_providers_accessor = self._aggregate_providers_accessor.empty(shunt)
 
     def reset(self) -> None:
@@ -113,6 +124,7 @@ class DependentProvider(
         self._count = None
         self._weights = None
         self._value_selector = None
+        self._parent_id = None
         self._aggregate_providers_accessor.reset()
         self.notify('input_value', self._input_values)
 
@@ -149,6 +161,13 @@ class DependentProvider(
                 for i, provider in enumerate(providers):
                     if i < len(self._input_values):
                         provider.set(self._input_values[i])
+
+        # Set parent's ID on related_field for each child (FK)
+        if self._related_field is not None and self._parent_id is not None:
+            for provider in providers:
+                related_provider = getattr(provider, self._related_field, None)
+                if related_provider is not None:
+                    related_provider.set(self._parent_id)
 
         # Populate each provider
         for provider in providers:

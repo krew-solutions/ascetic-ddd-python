@@ -9,7 +9,7 @@ from ascetic_ddd.disposable import IDisposable
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
 from ascetic_ddd.faker.domain.providers.interfaces import (
     IValueProvider, INameable, IShunt, ICloneable,
-    ICompositeValueProvider, IValueGenerator
+    ICompositeValueProvider, IValueGenerator, IDependentProvider
 )
 from ascetic_ddd.faker.domain.providers.value_generators import prepare_value_generator
 from ascetic_ddd.faker.domain.session.interfaces import ISession
@@ -258,9 +258,13 @@ class BaseCompositeProvider(
     async def setup(self, session: ISession):
         for provider in self._providers.values():
             await provider.setup(session)
+        for provider in self._dependent_providers.values():
+            await provider.setup(session)
 
     async def cleanup(self, session: ISession):
         for provider in self._providers.values():
+            await provider.cleanup(session)
+        for provider in self._dependent_providers.values():
             await provider.cleanup(session)
 
     @classmethod
@@ -270,14 +274,37 @@ class BaseCompositeProvider(
         attrs = list()
         for cls_ in cls.mro():  # Use self.__dict__ or self.__reduce__() instead?
             if hasattr(cls_, '__annotations__'):
-                for key in cls_.__annotations__.keys():
+                for key, type_hint in cls_.__annotations__.items():
                     if not key.startswith('_') and key not in attrs:
+                        # Skip IDependentProvider - it's handled separately
+                        origin = typing.get_origin(type_hint) or type_hint
+                        if isinstance(origin, type) and issubclass(origin, IDependentProvider):
+                            continue
                         attrs.append(key)
+        return attrs
+
+    @classmethod
+    @property
+    @functools.cache
+    def _dependent_provider_attrs(cls) -> list[str]:
+        """Returns attribute names that are IDependentProvider."""
+        attrs = list()
+        for cls_ in cls.mro():
+            if hasattr(cls_, '__annotations__'):
+                for key, type_hint in cls_.__annotations__.items():
+                    if not key.startswith('_') and key not in attrs:
+                        origin = typing.get_origin(type_hint) or type_hint
+                        if isinstance(origin, type) and issubclass(origin, IDependentProvider):
+                            attrs.append(key)
         return attrs
 
     @property
     def _providers(self) -> dict[str, IValueProvider[typing.Any, typing.Any]]:
         return {i: getattr(self, i) for i in self._provider_attrs}
+
+    @property
+    def _dependent_providers(self) -> dict[str, IDependentProvider[typing.Any, typing.Any, typing.Any]]:
+        return {i: getattr(self, i) for i in self._dependent_provider_attrs}
 
     @property
     def provider_name(self):
@@ -287,6 +314,8 @@ class BaseCompositeProvider(
     def provider_name(self, value):
         self._provider_name = value
         for attr, provider in self._providers.items():
+            provider.provider_name = "%s.%s" % (value, attr)
+        for attr, provider in self._dependent_providers.items():
             provider.provider_name = "%s.%s" % (value, attr)
 
 

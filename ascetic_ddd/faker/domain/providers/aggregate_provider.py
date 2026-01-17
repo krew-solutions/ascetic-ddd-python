@@ -101,6 +101,15 @@ class AggregateProvider(
             # await self.id_provider.append(session, getattr(result, self._id_attr))
         # self.set() could reset self._output_result
         self._output_result = result
+
+        # Create dependent entities AFTER parent is created (they need parent's ID for FK)
+        if self._dependent_providers:
+            parent_id = self.id_provider.get()
+            for attr, dep_provider in self._dependent_providers.items():
+                dep_provider.set_parent_id(parent_id)
+                await dep_provider.populate(session)
+                await dep_provider.create(session)
+
         return result
 
     async def populate(self, session: ISession) -> None:

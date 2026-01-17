@@ -13,7 +13,10 @@ __all__ = (
     'IShunt',
     'ICloneable',
     'ISetupable',
+    'IProvidable',
+    'IMutable',
     'IValueProvider',
+    'ICompositeMutable',
     'ICompositeValueProvider',
     'IEntityProvider',
     'IReferenceProvider',
@@ -27,9 +30,10 @@ __all__ = (
 T_Input = typing.TypeVar("T_Input")
 T_Output = typing.TypeVar("T_Output")
 T_Cloneable = typing.TypeVar("T_Cloneable")
+T_Id_Output = typing.TypeVar("T_Id_Output")
 
 
-class INameable(typing.Protocol, metaclass=ABCMeta):
+class INameable(metaclass=ABCMeta):
 
     @property
     @abstractmethod
@@ -44,17 +48,20 @@ class INameable(typing.Protocol, metaclass=ABCMeta):
 
 class IShunt(metaclass=ABCMeta):
 
+    @abstractmethod
     def __getitem__(self, key: typing.Hashable) -> typing.Any:
         raise NotImplementedError
 
+    @abstractmethod
     def __setitem__(self, key: typing.Hashable, value: typing.Any):
         raise NotImplementedError
 
+    @abstractmethod
     def __contains__(self, key: typing.Hashable):
         raise NotImplementedError
 
 
-class ICloneable(typing.Protocol, metaclass=ABCMeta):
+class ICloneable(metaclass=ABCMeta):
 
     @abstractmethod
     def empty(self, shunt: IShunt | None = None) -> typing.Self:
@@ -66,7 +73,7 @@ class ICloneable(typing.Protocol, metaclass=ABCMeta):
         raise NotImplementedError
 
 
-class ISetupable(typing.Protocol, metaclass=ABCMeta):
+class ISetupable(metaclass=ABCMeta):
 
     @abstractmethod
     async def setup(self, session: ISession):
@@ -77,7 +84,7 @@ class ISetupable(typing.Protocol, metaclass=ABCMeta):
         raise NotImplementedError
 
 
-class IProvidable(typing.Protocol, metaclass=ABCMeta):
+class IProvidable(metaclass=ABCMeta):
 
     @abstractmethod
     def reset(self) -> None:
@@ -96,7 +103,7 @@ class IProvidable(typing.Protocol, metaclass=ABCMeta):
         raise NotImplementedError
 
 
-class IMutable(typing.Protocol[T_Input, T_Output], metaclass=ABCMeta):
+class IMutable(typing.Generic[T_Input, T_Output], metaclass=ABCMeta):
 
     @abstractmethod
     async def create(self, session: ISession) -> T_Output:
@@ -117,7 +124,7 @@ class IMutable(typing.Protocol[T_Input, T_Output], metaclass=ABCMeta):
 
 class IValueProvider(
     IMutable[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
-    ISetupable, typing.Protocol[T_Input, T_Output], metaclass=ABCMeta
+    ISetupable, typing.Generic[T_Input, T_Output], metaclass=ABCMeta
 ):
     """
     Architecture:
@@ -146,7 +153,7 @@ class IValueProvider(
     pass
 
 
-class ICompositeMutable(typing.Protocol[T_Input, T_Output], metaclass=ABCMeta):
+class ICompositeMutable(typing.Generic[T_Input, T_Output], metaclass=ABCMeta):
     """
     Структура Provider не совпадает со структурой агрегата, если агрегат приводится в требуемое состояние многоходово
     (см. агрегат Specialist at grade project).
@@ -180,7 +187,7 @@ class ICompositeMutable(typing.Protocol[T_Input, T_Output], metaclass=ABCMeta):
 
 class ICompositeValueProvider(
     IMutable[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
-    ISetupable, typing.Protocol[T_Input, T_Output], metaclass=ABCMeta
+    ISetupable, typing.Generic[T_Input, T_Output], metaclass=ABCMeta
 ):
     """
     Architecture:
@@ -205,8 +212,10 @@ class ICompositeValueProvider(
     pass
 
 
-class IEntityProvider(ICompositeMutable[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
-                      ISetupable, typing.Protocol[T_Input, T_Output], metaclass=ABCMeta):
+class IEntityProvider(
+    ICompositeMutable[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
+    ISetupable, typing.Generic[T_Input, T_Output], metaclass=ABCMeta
+):
 
     @abstractmethod
     def on_init(self):
@@ -218,11 +227,10 @@ class IEntityProvider(ICompositeMutable[T_Input, T_Output], IProvidable, IObserv
         raise NotImplementedError
 
 
-T_Id_Output = typing.TypeVar("T_Id_Output")
-
-
-class IReferenceProvider(IValueProvider[T_Input, T_Id_Output],
-                         typing.Protocol[T_Input, T_Output, T_Id_Output], metaclass=ABCMeta):
+class IReferenceProvider(
+    IValueProvider[T_Input, T_Id_Output],
+    typing.Generic[T_Input, T_Output, T_Id_Output], metaclass=ABCMeta
+):
 
     @property
     @abstractmethod
@@ -238,14 +246,14 @@ class IReferenceProvider(IValueProvider[T_Input, T_Id_Output],
         raise NotImplementedError
 
 
-class IDependentMutable(typing.Protocol[T_Input, T_Output], metaclass=ABCMeta):
+class IDependentMutable(typing.Generic[T_Input, T_Output], metaclass=ABCMeta):
 
     @abstractmethod
     async def create(self, session: ISession) -> list[T_Output]:
         raise NotImplementedError
 
     @abstractmethod
-    def set(self, value: list[T_Input]) -> None:
+    def set(self, value: list[T_Input], weights: list[float] | None = None) -> None:
         raise NotImplementedError
 
     @abstractmethod
@@ -255,7 +263,7 @@ class IDependentMutable(typing.Protocol[T_Input, T_Output], metaclass=ABCMeta):
 
 class IDependentProvider(
     IDependentMutable[T_Input, T_Id_Output], IProvidable, IObservable, INameable, ICloneable,
-    ISetupable, typing.Protocol[T_Input, T_Output, T_Id_Output], metaclass=ABCMeta
+    ISetupable, typing.Generic[T_Input, T_Output, T_Id_Output], metaclass=ABCMeta
 ):
 
     @property
@@ -272,22 +280,27 @@ class IDependentProvider(
     ) -> None:
         raise NotImplementedError
 
+    @abstractmethod
+    def set_parent_id(self, parent_id: typing.Any) -> None:
+        raise NotImplementedError
 
-class IRelativeProvider(typing.Protocol, metaclass=ABCMeta):
+
+class IRelativeProvider(metaclass=ABCMeta):
 
     @abstractmethod
     def set_scope(self, scope: Hashable) -> None:
         raise NotImplementedError
 
 
-class IValueGenerator(typing.Protocol[T_Input], metaclass=ABCMeta):
+class IValueGenerator(typing.Generic[T_Input], metaclass=ABCMeta):
     """
     Фабрика значений для дистрибьюторов.
     Принимает session и опциональный position (номер в последовательности).
     """
 
+    @abstractmethod
     async def __call__(self, session: ISession, position: int | None = None) -> T_Input:
-        ...
+        raise NotImplementedError
 
 
 IValueAnyGenerator: typing.TypeAlias = (

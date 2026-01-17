@@ -611,6 +611,7 @@ class CompanyProviderWithEmployees(AggregateProvider[dict, Company]):
         self.employees = DependentProvider(
             distributor=employee_distributor,
             aggregate_provider=EmployeeProvider(employee_repository),
+            related_field='company_id',  # FK field in Employee
         )
         super().__init__(
             repository=repository,
@@ -643,7 +644,7 @@ class DependentProviderAsAggregateMemberTestCase(IsolatedAsyncioTestCase):
         2. Company dataclass doesn't have 'employees' field
         3. employees need company_id FK, but company might not have ID yet
         """
-        company_repo = StubCompanyRepository()
+        company_repo = StubCompanyRepository(auto_increment_start=42)  # Not 1!
         employee_repo = StubEmployeeRepository()
         employee_distributor = StubO2MDistributor(count=3)
 
