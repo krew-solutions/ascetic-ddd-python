@@ -12,6 +12,14 @@ T_Output = typing.TypeVar("T_Output")
 
 
 class PredefinedProvider(BaseProvider[T_Input, T_Output], IValueProvider[T_Input, T_Output]):
+    """
+    TODO: Remove me. Use ValueProvaider(
+        distributor= DummyDistributor(),
+        value_generator=lambda session, position: 'predefined_value',
+        result_factory=result_factory,
+        result_exporter=result_exporter,
+    ) instead.
+    """
     _default_input_value: T_Input | Empty = empty
     _provider_name: str | None = None
 
