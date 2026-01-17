@@ -43,9 +43,6 @@ BDD (Behavior-driven development) и ATDD (Acceptance Test-Driven Development).
 Подробнее о пирамиде тестирования микросервисов смотрите в
 [Testing Strategies in a Microservice Architecture](https://martinfowler.com/articles/microservice-testing/).
 
-Внимание!
-Данный пакет проекта пока еще не прошел отладку и оптимизацию, и представляет собой просто черновик моих мыслей.
-
 
 # Распределение для distributor
 
