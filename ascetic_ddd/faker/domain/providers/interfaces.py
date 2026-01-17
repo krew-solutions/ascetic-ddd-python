@@ -236,6 +236,41 @@ class IReferenceProvider(IValueProvider[T_Input, T_Id_Output],
         raise NotImplementedError
 
 
+class IDependentMutable(typing.Protocol[T_Input, T_Output], metaclass=ABCMeta):
+
+    @abstractmethod
+    async def create(self, session: ISession) -> list[T_Output]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def set(self, value: list[T_Input]) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get(self) -> list[T_Input]:
+        raise NotImplementedError
+
+
+class IDependentProvider(
+    IDependentMutable[T_Input, T_Id_Output], IProvidable, IObservable, INameable, ICloneable,
+    ISetupable, typing.Protocol[T_Input, T_Output, T_Id_Output], metaclass=ABCMeta
+):
+
+    @property
+    @abstractmethod
+    def aggregate_providers(self) -> list[IEntityProvider[T_Input, T_Output]]:
+        raise NotImplementedError
+
+    @aggregate_providers.setter
+    @abstractmethod
+    def aggregate_providers(
+            self,
+            aggregate_provider: list[IEntityProvider[T_Input, T_Output] |
+                                     Callable[[], IEntityProvider[T_Input, T_Output]]]
+    ) -> None:
+        raise NotImplementedError
+
+
 class IRelativeProvider(typing.Protocol, metaclass=ABCMeta):
 
     @abstractmethod
