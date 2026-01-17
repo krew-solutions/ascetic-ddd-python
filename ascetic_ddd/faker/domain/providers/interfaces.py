@@ -265,6 +265,14 @@ class IDependentProvider(
     IDependentMutable[T_Input, T_Id_Output], IProvidable, IObservable, INameable, ICloneable,
     ISetupable, typing.Generic[T_Input, T_Output, T_Id_Output], metaclass=ABCMeta
 ):
+    """
+    Я думал над тем, чтоб разбить providers на m2o и o2m, но это было бы неуместно потому,
+    что, например, для генерации значения зарплаты мы можем использовать IO2MDistributor,
+    но это не o2m, это, по сути, m2o.
+
+    Вместо m2o и o2m можно было бы использовать термины belongs и has,
+    но они неуместны по отношению к простым значениями. Не может User принадлежать status.
+    """
 
     @property
     @abstractmethod
