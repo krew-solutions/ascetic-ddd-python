@@ -119,15 +119,27 @@ class IValueProvider(
 ):
     """
     Architecture:
-    (result) <- (distributor) <- (
-        (select from results)
+    IValueProvider = f(input_value | None) = result,
+    where
+    result : T <- Distributor[T] <- (
+        <- result : result ∈ Sᴛ ∧ P(specification) ~ 𝒟(S)  # select from a set with given probability distribution and Specification
         or
-        (result_factory) <- (input_value) <- (
-            (generate value)
-            or
-            (preset value)
-        )
-    )
+        <- result <- result_factory(input_value)
+            <- input_value <- (
+                set(value)
+                or
+                ValueGenerator(position | None) <- position | None
+            )
+        ),
+    where
+        ":" means instance of type,
+        "<-" means "from",
+        "∈" means belongs,
+        "Sᴛ" or "{x : T}" means set of type "T",
+        "∧" means satisfies the condition P(),
+        "~ 𝒟(S)" means according to the probability distribution,
+        "Σx" means composition of "x",
+        "⊆" means subset of a composition.
     """
     pass
 
@@ -170,15 +182,23 @@ class ICompositeValueProvider(
 ):
     """
     Architecture:
-    (result) <- (distributor) <- (
-        (select from results)
+    ICompositeValueProvider = f(Σ input_value | None) = result,
+    where
+    result : T <- Distributor[T] <- (
+        <- result : result ∈ Sᴛ ∧ P(specification) ~ 𝒟(S)  # select from a set with given probability distribution and Specification
         or
-        (result_factory) <- Σ(leaf_result) <- (
-            (generate value)
-            or
-            (preset value)
-        )
-    )
+        <- result <- result_factory(Σ leaf_result)
+            <- Σ IValueProvider(∈ Σ input_value) | ICompositeValueProvider(⊆ Σ input_value)
+    ),
+    where
+        ":" means instance of type,
+        "<-" means "from",
+        "∈" means belongs,
+        "Sᴛ" or "{x : T}" means set of type "T",
+        "∧" means satisfies the condition P(),
+        "~ 𝒟(S)" means according to the probability distribution,
+        "Σx" means composition of "x",
+        "⊆" means subset of a composition.
     """
     pass
 
