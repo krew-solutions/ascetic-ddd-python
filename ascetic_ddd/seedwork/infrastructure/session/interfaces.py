@@ -22,8 +22,8 @@ __all__ = (
 )
 
 
-IIdentityKey = IHashable
-IModel = typing.Any
+IIdentityKey: typing.TypeAlias = IHashable
+IModel: typing.TypeAlias = typing.Any
 
 Query: typing.TypeAlias = typing.Union[str, bytes]
 Params: typing.TypeAlias = typing.Union[typing.Sequence[typing.Any], typing.Mapping[str, typing.Any]]

@@ -26,7 +26,6 @@ from ascetic_ddd.faker.domain.providers.value_provider import ValueProvider
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.values.empty import empty
 from ascetic_ddd.faker.infrastructure.distributors.m2o import pg_distributor_factory
-from ascetic_ddd.faker.infrastructure.session import CompositeSessionPool
 from ascetic_ddd.faker.infrastructure.session.rest_session import RestSessionPool
 from ascetic_ddd.faker.infrastructure.tests.db import make_internal_pg_session_pool
 
@@ -35,6 +34,7 @@ from ascetic_ddd.faker.infrastructure.repositories import (
     InternalPgRepository, InMemoryRepository, RestRepository,
     CompositeAutoPkRepository as CompositeRepository
 )
+from ascetic_ddd.seedwork.infrastructure.session.composite_session import CompositeSessionPool
 from ascetic_ddd.seedwork.infrastructure.tests.mock_server import get_free_port, start_mock_server
 
 # logging.basicConfig(level="INFO")

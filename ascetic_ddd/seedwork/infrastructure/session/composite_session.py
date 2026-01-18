@@ -1,7 +1,7 @@
 import typing
 from collections.abc import Callable, Hashable
 
-from ...domain.session.interfaces import ISessionPool, ISession
+from ascetic_ddd.seedwork.domain.session.interfaces import ISessionPool, ISession
 
 __all__ = (
     "CompositeSessionPool",
@@ -42,13 +42,6 @@ class CompositeSessionPool(ISessionPool):
     def session(self) -> typing.AsyncContextManager[ISession]:
         delegates = tuple(delegate.session() for delegate in self._delegates)
         return CompositeAsyncContextManager[ISession](delegates, CompositeSession)
-
-    @property
-    def response_time(self) -> float:
-        response_time = 0.0
-        for delegate in self._delegates:
-            response_time += delegate.response_time
-        return response_time
 
     def __getitem__(self, item):
         return list(self._delegates)[item]
@@ -101,13 +94,6 @@ class CompositeSession(ISession):
             if hasattr(delegate, item):
                 return getattr(delegate, item)
         raise AttributeError
-
-    @property
-    def response_time(self) -> float:
-        response_time = 0.0
-        for delegate in self._delegates:
-            response_time += delegate.response_time
-        return response_time
 
     def __getitem__(self, item):
         return list(self._delegates)[item]

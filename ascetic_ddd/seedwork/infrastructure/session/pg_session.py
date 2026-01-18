@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from time import perf_counter
 from types import TracebackType
 # from psycopg import AsyncConnection
+from psycopg import IsolationLevel
 
 from ascetic_ddd.observable.observable import Observable
 from ...domain.session.interfaces import ISessionPool, ISession
@@ -35,6 +36,7 @@ class PgSessionPool(Observable, ISessionPool):
     @asynccontextmanager
     async def session(self) -> typing.AsyncIterator[ISession]:
         async with self._pool.connection() as conn:
+            # await conn.set_isolation_level(IsolationLevel.READ_COMMITTED)
             session = self._make_session(conn)
             await self.anotify(
                 aspect='session_started',
@@ -156,13 +158,22 @@ class AsyncCursorStatsDecorator:
         prepare: bool | None = None,
         binary: bool | None = None,
     ):
+        await self._session().anotify(
+            aspect='query_started',
+            query=query,
+            params=params,
+            sender=self,
+            session=self._session,
+        )
         time_start = perf_counter()
         await self._delegate.execute(query, params, prepare=prepare, binary=binary)
         response_time = perf_counter() - time_start
         await self._session().anotify(
-            aspect='query_complete',
+            aspect='query_ended',
             query=query,
             params=params,
+            sender=self,
+            session=self._session,
             response_time=response_time,
         )
         return self

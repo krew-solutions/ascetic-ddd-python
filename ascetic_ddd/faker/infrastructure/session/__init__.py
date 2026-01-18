@@ -1,3 +1,1 @@
-from .interfaces import IExternalPgSession, IInternalPgSession
-from .pg_session import PgSessionPool, PgSession
-from .composite_session import CompositeSessionPool, CompositeSession
+from ascetic_ddd.faker.infrastructure.session.interfaces import IExternalPgSession, IInternalPgSession
