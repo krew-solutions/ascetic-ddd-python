@@ -396,37 +396,3 @@ class PgWeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
 
     _serialize = staticmethod(serializer.serialize)
     _deserialize = staticmethod(serializer.deserialize)
-
-
-class AppendOnlyPgWeightedDistributor(PgWeightedDistributor[T], typing.Generic[T]):
-
-    async def _create_values_table(self, session: ISession):
-        sql = """
-            CREATE TABLE IF NOT EXISTS %(values_table)s (
-                id serial NOT NULL PRIMARY KEY,
-                value JSONB NOT NULL,
-                -- criteria JSONB NOT NULL,  -- Save the whole agg here? It is not a way, since
-                -- two dependent aggregates (Endorser and Specialist) can be created in a multi-stage
-                -- interdependent way and we need to sync the repo and the distributor.
-                object TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS %(index_name)s ON %(values_table)s USING GIN(value jsonb_path_ops);
-        """ % {
-            "values_table": self._tables.values,
-            "index_name": escape("gin_%s" % self.provider_name[:(63 - 4)]),
-        }
-        async with self._extract_connection(session).cursor() as acursor:
-            await acursor.execute(sql)
-
-    async def _append(self, session: ISession, value: T, position: int | None):
-        sql = """
-            INSERT INTO %(values_table)s (value, object)
-            VALUES (%%s, %%s)
-            ON CONFLICT DO NOTHING;
-        """ % {
-            'values_table': self._tables.values,
-        }
-        async with self._extract_connection(session).cursor() as acursor:
-            await acursor.execute(sql, (self._encode(value), self._serialize(value)))
-        # logging.debug("Append: %s", value)
-        await self.anotify('value', session, value)
