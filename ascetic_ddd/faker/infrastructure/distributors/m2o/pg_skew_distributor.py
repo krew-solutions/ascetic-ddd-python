@@ -103,9 +103,6 @@ class PgSkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
                 position=None,
                 callback=self._append,
             )
-        if value is None:
-            value = await self._get_value(session, specification, 0)
-
         return value
 
     async def _append(self, session: ISession, value: T, position: int | None):
@@ -248,24 +245,6 @@ class PgSkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
             # row[0] = object, row[1] = should_create_new, row[2] = total_values
             should_create_new = row[1] if row[2] and row[2] > 0 else True
             return (self._deserialize(row[0]), should_create_new)
-
-    async def _get_value(self, session: ISession, specification: ISpecification[T], offset: int) -> T:
-        visitor = PgSpecificationVisitor()
-        specification.accept(visitor)
-
-        sql = """
-            SELECT object FROM %(values_table)s
-            %(where)s
-            ORDER BY id
-            OFFSET %%s LIMIT 1
-        """ % {
-            'values_table': self._tables.values,
-            'where': "WHERE %s" % visitor.sql if visitor.sql else "",
-        }
-
-        async with self._extract_connection(session).cursor() as acursor:
-            await acursor.execute(sql, visitor.params + (offset,))
-            return self._deserialize((await acursor.fetchone())[0])
 
     # params_table ###################################################################################
 
