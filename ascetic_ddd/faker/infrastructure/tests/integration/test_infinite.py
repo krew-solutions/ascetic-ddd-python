@@ -137,6 +137,10 @@ class SecondModelPk:
         assert self.first_model_id is not empty
         return hash((self.id, self.first_model_id))
 
+    @property
+    def value(self):
+        return dataclasses.asdict(self)
+
 
 @dataclasses.dataclass(kw_only=True)
 class SecondModel:
@@ -159,6 +163,10 @@ class ThirdModelPk:
         assert self.id is not empty
         assert self.first_model_id is not empty
         return hash((self.id, self.first_model_id))
+
+    @property
+    def value(self):
+        return dataclasses.asdict(self)
 
 
 @dataclasses.dataclass(kw_only=True)
