@@ -74,6 +74,12 @@ class ReferenceProvider(
             if result is not None:
                 value = self.aggregate_provider._result_exporter(result)
                 self.set(value)
+                # FIXME: Вот здесь предустановленные значения следующих каскадов связей (вложенных агрегатов)
+                # будут проигнорированы и даже сброшены.
+                # Если нам нужен пользователь с ролью A, мы можем извлечь агрегат с ролью B,
+                # т.к. вложенные связи мы не проверяем.
+                # Вместо критериев выборки вложенной связи в них будет просто предустановлен идентификатор связи.
+                # Specification должен знать как сджойнить связи.
                 self.aggregate_provider.set(value)
                 await self.aggregate_provider.populate(session)
             else:
