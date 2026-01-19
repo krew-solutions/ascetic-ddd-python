@@ -12,13 +12,14 @@ from ascetic_ddd.faker.infrastructure.specification.pg_specification_visitor imp
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.infrastructure.utils.json import JSONEncoder
+from ascetic_ddd.observable.observable import Observable
 
 __all__ = ('InternalPgRepository',)
 
 T = typing.TypeVar("T", covariant=True)
 
 
-class InternalPgRepository(typing.Generic[T]):
+class InternalPgRepository(Observable, typing.Generic[T]):
     _extract_connection = staticmethod(extract_internal_connection)
     _table: str
     _id_attr: str | None
@@ -43,6 +44,7 @@ class InternalPgRepository(typing.Generic[T]):
             id_attr: str = None,
             initialized: bool = False
     ):
+        super().__init__()
         self._table = escape(table)
         self._agg_exporter = agg_exporter
         self._id_attr = id_attr
@@ -69,8 +71,13 @@ class InternalPgRepository(typing.Generic[T]):
             except Exception:
                 raise
 
+        await self.anotify('inserted', session, agg)
+
     @check_init
     async def get(self, session: ISession, id_: IAccessible[typing.Any] | typing.Any) -> T | None:
+        """
+        TODO: Pass Specification() instead of id_?
+        """
         sql = """
             SELECT object FROM %(table)s WHERE value_id = %%s
         """ % {

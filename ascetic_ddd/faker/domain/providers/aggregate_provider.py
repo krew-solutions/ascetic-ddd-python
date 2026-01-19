@@ -3,11 +3,12 @@ from abc import ABCMeta, abstractmethod
 
 from ascetic_ddd.faker.domain.distributors.m2o import IM2ODistributorFactory
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import ICursor
-from ascetic_ddd.faker.domain.providers._mixins import BaseCompositeProvider
+from ascetic_ddd.faker.domain.providers._mixins import BaseCompositeProvider, ObservableMixin
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.domain.providers.interfaces import IEntityProvider
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.values.empty import empty
+from ascetic_ddd.observable.interfaces import IObservable
 
 
 __all__ = ('IAggregateRepository', 'AggregateProvider',)
@@ -17,7 +18,7 @@ T_Input = typing.TypeVar("T_Input")
 T_Output = typing.TypeVar("T_Output")
 
 
-class IAggregateRepository(typing.Protocol[T_Output], metaclass=ABCMeta):
+class IAggregateRepository(IObservable, typing.Protocol[T_Output], metaclass=ABCMeta):
     @abstractmethod
     async def insert(self, session: ISession, agg: T_Output):
         raise NotImplementedError
@@ -49,6 +50,11 @@ class AggregateProvider(
     _repository: IAggregateRepository[T_Output]
     _result_factory: typing.Callable[[...], T_Output]  # T_Output of each nested Provider.
     _result_exporter: typing.Callable[[T_Output], T_Input]
+
+    _aspect_mapping = {
+        "repository": "_repository",
+        **ObservableMixin._aspect_mapping
+    }
 
     def __init__(
             self,

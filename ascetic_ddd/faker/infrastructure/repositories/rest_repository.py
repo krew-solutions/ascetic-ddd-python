@@ -12,6 +12,7 @@ from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.domain.values.empty import empty
 from ascetic_ddd.faker.infrastructure.utils.json import JSONEncoder
 from ascetic_ddd.faker.infrastructure.utils.dataclasses import IDataclass
+from ascetic_ddd.observable.observable import Observable
 
 __all__ = ('RestRepository',)
 
@@ -19,13 +20,14 @@ __all__ = ('RestRepository',)
 T = typing.TypeVar("T", covariant=True, bound=IDataclass)
 
 
-class RestRepository(typing.Generic[T]):
+class RestRepository(Observable, typing.Generic[T]):
     _extract_request = staticmethod(extract_request)
     _base_url: str
     _path: str
     _id_attr: str | None
 
     def __init__(self, base_url: str, path: str | None = None):
+        super().__init__()
         self._base_url = base_url
         if path is not None:
             self._path = path
@@ -42,6 +44,7 @@ class RestRepository(typing.Generic[T]):
         response = await self._extract_request(session).post(url, data=params)
         await self.do_handle_insert_response(agg, session, response)
         await self._set_pk(agg, response)
+        await self.anotify('inserted', session, agg)
 
     async def do_handle_insert_response(self, session: ISession, agg: T, response):
         pass

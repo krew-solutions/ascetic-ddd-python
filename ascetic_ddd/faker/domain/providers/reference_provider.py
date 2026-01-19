@@ -148,15 +148,25 @@ class SubscriptionAggregateProviderAccessor(IAggregateProviderAccessor, typing.G
         aggregate_provider = self._delegate()
         if not self._initialized:
 
+            """
             async def _observer(aspect, session, value):
-                # TODO: Optimize me
-                # Если distributor будет использовать таблицу Repository, то эта фигня не нужна.
-                agg = await aggregate_provider._repository.get(session, value)
-                await self._reference_provider.append(session, agg)
+                if value is not empty:
+                    agg = await aggregate_provider._repository.get(session, value)
+                    await self._reference_provider.append(session, agg)
 
             aggregate_provider.id_provider.attach(
                 'distributor.value', _observer, self._reference_provider.provider_name
             )
+            """
+            async def _observer(aspect, session, agg):
+                # TODO: Optimize me?
+                # Если distributor будет использовать таблицу Repository, то эта фигня не нужна.
+                await self._reference_provider.append(session, agg)
+
+            aggregate_provider.attach(
+                'repository.value', _observer, self._reference_provider.provider_name
+            )
+
             self._initialized = True
 
         return aggregate_provider

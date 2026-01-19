@@ -125,6 +125,19 @@ class StubEmployeeRepository(IAggregateRepository[Employee]):
         self._auto_increment_counter = auto_increment_start
         self._inserted: list[Employee] = []
 
+    # IObservable methods
+    def attach(self, aspect, observer, id_=None):
+        pass
+
+    def detach(self, aspect, observer, id_=None):
+        pass
+
+    def notify(self, aspect, *args, **kwargs):
+        pass
+
+    async def anotify(self, aspect, *args, **kwargs):
+        pass
+
     async def insert(self, session: ISession, agg: Employee):
         if agg.id is None or (isinstance(agg.id, EmployeeId) and agg.id.value == 0):
             new_id = EmployeeId(value=self._auto_increment_counter)
@@ -552,6 +565,19 @@ class StubCompanyRepository(IAggregateRepository[Company]):
         self._storage: dict[int, Company] = {}
         self._auto_increment_counter = auto_increment_start
         self._inserted: list[Company] = []
+
+    # IObservable methods
+    def attach(self, aspect, observer, id_=None):
+        pass
+
+    def detach(self, aspect, observer, id_=None):
+        pass
+
+    def notify(self, aspect, *args, **kwargs):
+        pass
+
+    async def anotify(self, aspect, *args, **kwargs):
+        pass
 
     async def insert(self, session: ISession, agg: Company):
         if agg.id is None or (isinstance(agg.id, CompanyId) and agg.id.value == 0):

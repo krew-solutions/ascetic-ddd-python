@@ -14,6 +14,7 @@ from ascetic_ddd.seedwork.domain.identity.interfaces import IAccessible
 from ascetic_ddd.faker.infrastructure.session.pg_session import extract_external_connection
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
+from ascetic_ddd.observable.observable import Observable
 
 __all__ = ('PgRepository', 'IAggregateState', 'DataclassState',)
 
@@ -21,7 +22,7 @@ __all__ = ('PgRepository', 'IAggregateState', 'DataclassState',)
 T = typing.TypeVar("T", covariant=True)
 
 
-class PgRepository(typing.Generic[T]):
+class PgRepository(Observable, typing.Generic[T]):
     _extract_connection = staticmethod(extract_external_connection)
     _table: str
     _id_attr: str
@@ -29,7 +30,7 @@ class PgRepository(typing.Generic[T]):
     _agg_factory: typing.Callable[[dict], T]
 
     def __init__(self):
-        pass
+        super().__init__()
 
     async def insert(self, session: ISession, agg: T):
         state = self._agg_exporter(agg)
@@ -56,6 +57,8 @@ class PgRepository(typing.Generic[T]):
             else:
                 if state.is_auto_increment_pk():
                     state.pk_setter()(await acursor.fetchone()[0])
+
+        await self.anotify('inserted', session, agg)
 
     async def get(self, session: ISession, id_: IAccessible[typing.Any]) -> T | None:
         raise NotImplementedError

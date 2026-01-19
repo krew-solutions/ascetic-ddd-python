@@ -4,6 +4,7 @@ from ascetic_ddd.seedwork.domain.identity.interfaces import IAccessible
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.seedwork.domain.utils.data import hashable
+from ascetic_ddd.observable.observable import Observable
 
 __all__ = ('InMemoryRepository',)
 
@@ -11,12 +12,13 @@ __all__ = ('InMemoryRepository',)
 T = typing.TypeVar("T", covariant=True)
 
 
-class InMemoryRepository(typing.Generic[T]):
+class InMemoryRepository(Observable, typing.Generic[T]):
     _id_attr: str = None
     _aggregates: dict[T]
     _agg_exporter: typing.Callable[[T], dict]
 
     def __init__(self, agg_exporter: typing.Callable[[T], dict], id_attr: str = None):
+        super().__init__()
         self._agg_exporter = agg_exporter
         self._id_attr = id_attr
         self._aggregates = dict()
@@ -25,6 +27,7 @@ class InMemoryRepository(typing.Generic[T]):
         state = self._agg_exporter(agg)
         id_ = self._id(state)
         self._aggregates[hashable(id_)] = agg
+        await self.anotify('inserted', session, agg)
 
     async def get(self, session: ISession, id_: IAccessible[typing.Any] | typing.Any) -> T | None:
         key = id_.value if hasattr(id_, 'value') else id_

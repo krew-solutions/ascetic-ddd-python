@@ -104,6 +104,19 @@ class StubRepository(IAggregateRepository[User]):
         self._auto_increment_counter = auto_increment_start
         self._inserted: list[User] = []
 
+    # IObservable methods
+    def attach(self, aspect, observer, id_=None):
+        pass
+
+    def detach(self, aspect, observer, id_=None):
+        pass
+
+    def notify(self, aspect, *args, **kwargs):
+        pass
+
+    async def anotify(self, aspect, *args, **kwargs):
+        pass
+
     async def insert(self, session: ISession, agg: User):
         # Simulate auto-increment: if ID is None or 0, assign new ID
         # Modify in-place (typical ORM behavior)

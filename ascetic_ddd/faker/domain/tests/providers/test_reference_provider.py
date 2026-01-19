@@ -155,6 +155,19 @@ class StubTenantRepository(IAggregateRepository[Tenant]):
         self._auto_increment_counter = auto_increment_start
         self._inserted: list[Tenant] = []
 
+    # IObservable methods
+    def attach(self, aspect, observer, id_=None):
+        pass
+
+    def detach(self, aspect, observer, id_=None):
+        pass
+
+    def notify(self, aspect, *args, **kwargs):
+        pass
+
+    async def anotify(self, aspect, *args, **kwargs):
+        pass
+
     async def insert(self, session: ISession, agg: Tenant):
         if agg.id is None or (isinstance(agg.id, TenantId) and agg.id.value == 0):
             new_id = TenantId(value=self._auto_increment_counter)
@@ -185,6 +198,19 @@ class StubUserRepository(IAggregateRepository[User]):
         self._storage: dict[tuple[int, int], User] = {}
         self._auto_increment_counter = auto_increment_start
         self._inserted: list[User] = []
+
+    # IObservable methods
+    def attach(self, aspect, observer, id_=None):
+        pass
+
+    def detach(self, aspect, observer, id_=None):
+        pass
+
+    def notify(self, aspect, *args, **kwargs):
+        pass
+
+    async def anotify(self, aspect, *args, **kwargs):
+        pass
 
     async def insert(self, session: ISession, agg: User):
         if agg.id.internal_user_id is None or (
@@ -220,6 +246,19 @@ class StubResumeRepository(IAggregateRepository[Resume]):
         self._storage: dict[tuple[int, int, int], Resume] = {}
         self._auto_increment_counter = auto_increment_start
         self._inserted: list[Resume] = []
+
+    # IObservable methods
+    def attach(self, aspect, observer, id_=None):
+        pass
+
+    def detach(self, aspect, observer, id_=None):
+        pass
+
+    def notify(self, aspect, *args, **kwargs):
+        pass
+
+    async def anotify(self, aspect, *args, **kwargs):
+        pass
 
     async def insert(self, session: ISession, agg: Resume):
         if agg.id.internal_resume_id is None or (
