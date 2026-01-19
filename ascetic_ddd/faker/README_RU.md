@@ -43,6 +43,8 @@ BDD (Behavior-driven development) и ATDD (Acceptance Test-Driven Development).
 Подробнее о пирамиде тестирования микросервисов смотрите в
 [Testing Strategies in a Microservice Architecture](https://martinfowler.com/articles/microservice-testing/).
 
+Данный пакет проекта может так же использоваться для генерации \*csv, \*.jsonl фидов (feeds) для нагрузочных движков в формате Command Log. Подробней об этом будет позже.
+
 
 # Распределение для distributor
 
