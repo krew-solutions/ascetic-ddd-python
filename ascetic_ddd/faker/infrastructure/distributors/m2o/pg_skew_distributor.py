@@ -166,7 +166,7 @@ class PgSkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     async def _create_values_table(self, session: ISession):
         sql = """
             CREATE TABLE IF NOT EXISTS %(values_table)s (
-                id serial NOT NULL PRIMARY KEY,
+                position serial NOT NULL PRIMARY KEY,
                 value JSONB NOT NULL,
                 object TEXT NOT NULL,
                 UNIQUE (value)
@@ -223,7 +223,7 @@ class PgSkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
                     SELECT object
                     FROM %(values_table)s
                     %(where)s
-                    ORDER BY id
+                    ORDER BY position
                     OFFSET t.pos
                     LIMIT 1
                 ) AS object,
@@ -254,7 +254,7 @@ class PgSkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
                 key VARCHAR(40) NOT NULL PRIMARY KEY,
                 value JSONB NOT NULL,
                 object TEXT NOT NULL
-            )
+            );
         """ % (
             self._tables.params,
         )

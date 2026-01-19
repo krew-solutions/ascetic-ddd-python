@@ -164,7 +164,7 @@ class PgWeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     async def _create_values_table(self, session: ISession):
         sql = """
             CREATE TABLE IF NOT EXISTS %(values_table)s (
-                id serial NOT NULL PRIMARY KEY,
+                position serial NOT NULL PRIMARY KEY,
                 value JSONB NOT NULL,
                 -- criteria JSONB NOT NULL,  -- Save the whole agg here? It is not a way, since
                 -- two dependent aggregates (Endorser and Specialist) can be created in a multi-stage
@@ -217,11 +217,11 @@ class PgWeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
             -- Кумулятивные веса для выбора партиции
             cumulative_weights AS (
                 SELECT
-                    row_number() OVER (ORDER BY id) AS partition_idx,
+                    row_number() OVER (ORDER BY position) AS partition_idx,
                     weight,
-                    SUM(weight) OVER (ORDER BY id) AS cum_weight,
+                    SUM(weight) OVER (ORDER BY position) AS cum_weight,
                     SUM(weight) OVER () AS total_weight,
-                    LAG(weight) OVER (ORDER BY id) AS prev_weight,
+                    LAG(weight) OVER (ORDER BY position) AS prev_weight,
                     COUNT(*) OVER () AS num_partitions
                 FROM %(weights_table)s
             ),
@@ -273,7 +273,7 @@ class PgWeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
                     SELECT object
                     FROM %(values_table)s
                     %(where)s
-                    ORDER BY id
+                    ORDER BY position
                     OFFSET t.pos
                     LIMIT 1
                 ) AS object,
@@ -304,7 +304,7 @@ class PgWeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     async def _create_weights_table(self, session: ISession):
         sql = """
             CREATE TABLE IF NOT EXISTS %s (
-                id serial NOT NULL PRIMARY KEY,
+                position serial NOT NULL PRIMARY KEY,
                 weight NUMERIC(6, 5) NOT NULL -- REAL, DOUBLE PRECISION
             )
         """ % (

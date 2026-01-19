@@ -51,7 +51,7 @@ class InternalPgRepository(typing.Generic[T]):
     @check_init
     async def insert(self, session: ISession, agg: T):
         sql = """
-            INSERT INTO %(table)s (id, value, object)
+            INSERT INTO %(table)s (value_id, value, object)
             VALUES (%%s, %%s, %%s)
         """ % {
             'table': self._table,
@@ -72,7 +72,7 @@ class InternalPgRepository(typing.Generic[T]):
     @check_init
     async def get(self, session: ISession, id_: IAccessible[typing.Any] | typing.Any) -> T | None:
         sql = """
-            SELECT object FROM %(table)s WHERE id = %%s
+            SELECT object FROM %(table)s WHERE value_id = %%s
         """ % {
             'table': self._table,
         }
@@ -119,14 +119,17 @@ class InternalPgRepository(typing.Generic[T]):
 
     async def _setup(self, session: ISession):
         sql = """
-            CREATE TABLE IF NOT EXISTS %s (
-                id JSONB NOT NULL PRIMARY KEY,
+            CREATE TABLE IF NOT EXISTS %(table)s (
+                position serial NOT NULL PRIMARY KEY,  -- for ordering to reuse the table in a distributor.
+                value_id JSONB NOT NULL UNIQUE,
                 value JSONB NOT NULL,
                 object TEXT NOT NULL
-            )
-        """ % (
-            self._table,
-        )
+            );
+            CREATE INDEX IF NOT EXISTS %(index_name)s ON %(table)s USING GIN(value jsonb_path_ops);
+        """ % {
+            "table": self._table,
+            "index_name": escape("gin_%s" % self._table[:(63 - 4)]),
+        }
         async with self._extract_connection(session).cursor() as acursor:
             await acursor.execute(sql)
 
