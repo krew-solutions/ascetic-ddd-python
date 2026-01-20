@@ -1,6 +1,8 @@
 import typing
-from psycopg import AsyncConnection
 from aiohttp import ClientSession
+
+from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.seedwork.infrastructure.session.interfaces import IAsyncConnection
 
 
 __all__ = (
@@ -9,14 +11,12 @@ __all__ = (
     "IRestSession",
 )
 
-from ascetic_ddd.faker.domain.session.interfaces import ISession
-
 
 @typing.runtime_checkable
 class IExternalPgSession(ISession, typing.Protocol):
 
     @property
-    def external_connection(self) -> AsyncConnection[typing.Any]:
+    def external_connection(self) -> IAsyncConnection:
         """For ReadModels (Queries)."""
         ...
 
@@ -25,7 +25,7 @@ class IExternalPgSession(ISession, typing.Protocol):
 class IInternalPgSession(ISession, typing.Protocol):
 
     @property
-    def internal_connection(self) -> AsyncConnection[typing.Any]:
+    def internal_connection(self) -> IAsyncConnection:
         """For ReadModels (Queries)."""
         ...
 

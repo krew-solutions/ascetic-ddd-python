@@ -16,6 +16,8 @@ from .identity_map import IdentityMap
 __all__ = (
     "PgSession",
     "PgSessionPool",
+    "PgTransactionSession",
+    "PgSavepointSession",
     "extract_connection",
     "AsyncCursorStatsDecorator",
     "AsyncConnectionStatsDecorator",
@@ -139,7 +141,11 @@ class PgTransactionSession(PgSession):
                 )
 
     def _make_savepoint_session(self, connection):
-        return PgTransactionSession(connection, self._identity_map, self)
+        return PgSavepointSession(connection, self._identity_map, self)
+
+
+class PgSavepointSession(PgTransactionSession):
+    pass
 
 
 class AsyncCursorStatsDecorator:
