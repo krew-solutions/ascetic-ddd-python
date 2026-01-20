@@ -2,14 +2,10 @@ import math
 import random
 import typing
 
-from ascetic_ddd.faker.domain.distributors.m2o.cursor import Cursor
-from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
-from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.faker.domain.distributors.m2o.weighted_distributor import BaseIndex, BaseDistributor
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
-from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
-from ascetic_ddd.observable.observable import Observable
 
-__all__ = ('SkewDistributor', 'estimate_skew', 'weights_to_skew')
+__all__ = ('SkewDistributor', 'SkewIndex', 'estimate_skew', 'weights_to_skew')
 
 
 def estimate_skew(usage_counts: dict[typing.Any, int], tail_cutoff: float = 0.9) -> tuple[float, float]:
@@ -114,7 +110,11 @@ def weights_to_skew(weights: list[float]) -> float:
 T = typing.TypeVar("T", covariant=True)
 
 
-class SkewIndex(typing.Generic[T]):
+# =============================================================================
+# SkewIndex
+# =============================================================================
+
+class SkewIndex(BaseIndex[T], typing.Generic[T]):
     """
     Индекс со степенным распределением.
     Один параметр skew вместо списка весов.
@@ -123,80 +123,11 @@ class SkewIndex(typing.Generic[T]):
     skew = 2.0 — умеренный перекос к началу (первые значения чаще)
     skew = 3.0+ — сильный перекос
     """
-    _specification: ISpecification[T]
-    _read_offset: int
     _skew: float
-    _values: list[T]
-    _value_set: set[T]
 
-    def __init__(self, skew: float, specification: ISpecification):
+    def __init__(self, skew: float, specification: ISpecification[T]):
         self._skew = skew
-        self._specification = specification
-        self._read_offset = 0
-        self._values = []
-        self._value_set = set()
-
-    @property
-    def read_offset(self):
-        return self._read_offset
-
-    @read_offset.setter
-    def read_offset(self, val: int):
-        self._read_offset = val
-
-    def __contains__(self, value: T):
-        return value in self._value_set
-
-    def __len__(self):
-        return len(self._values)
-
-    def values(self, offset: int = 0):
-        if offset == 0:
-            return self._values
-        else:
-            return self._values[offset:]
-
-    def append(self, value: T, read_offset: int = 0):
-        if value not in self._value_set:
-            self._values.append(value)
-            self._value_set.add(value)
-        if read_offset:
-            self._read_offset = read_offset
-
-    def remove(self, value: T) -> bool:
-        """Удаляет объект из индекса. Возвращает True если объект был удалён."""
-        if value not in self._value_set:
-            return False
-        self._value_set.discard(value)
-        self._values.remove(value)
-        return True
-
-    def get_relative_position(self, value: T) -> float | None:
-        """Возвращает относительную позицию объекта (0.0 - 1.0) или None если не найден."""
-        if value not in self._value_set:
-            return None
-        idx = self._values.index(value)
-        n = len(self._values)
-        return idx / n if n > 0 else 0.0
-
-    def insert_at_relative_position(self, value: T, relative_position: float) -> None:
-        """Вставляет объект в позицию, соответствующую относительной позиции."""
-        if value in self._value_set:
-            return
-        n = len(self._values)
-        idx = int(relative_position * n)
-        idx = max(0, min(idx, n))
-        self._values.insert(idx, value)
-        self._value_set.add(value)
-
-    def populate_from(self, source: 'SkewIndex') -> None:
-        values_length = len(source)
-        if self._read_offset < values_length:
-            current_offset = self._read_offset
-            self._read_offset = values_length
-            for value in source.values(current_offset):
-                if self._specification.is_satisfied_by(value):
-                    self.append(value, values_length)
+        super().__init__(specification)
 
     def _select_idx(self) -> int:
         """Выбирает индекс со степенным распределением. O(1)"""
@@ -208,33 +139,12 @@ class SkewIndex(typing.Generic[T]):
         idx = int(n * (1 - random.random()) ** self._skew)
         return min(idx, n - 1)
 
-    def next(self, expected_mean: float) -> T:
-        """
-        Возвращает случайное значение из индекса.
-        Бросает StopIteration с вероятностью 1/expected_mean (сигнал создать новое).
-        """
-        n = len(self._values)
-        if n == 0:
-            raise StopIteration
 
-        if random.random() < 1.0 / expected_mean:
-            raise StopIteration
+# =============================================================================
+# SkewDistributor
+# =============================================================================
 
-        return self._values[self._select_idx()]
-
-    def select(self) -> T:
-        """Выбор значения без вероятностного отказа (fallback)."""
-        n = len(self._values)
-        if n == 0:
-            raise StopIteration
-
-        return self._values[self._select_idx()]
-
-    def first(self) -> T:
-        return self._values[0]
-
-
-class SkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
+class SkewDistributor(BaseDistributor[T], typing.Generic[T]):
     """
     Дистрибьютор со степенным распределением.
 
@@ -248,11 +158,7 @@ class SkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     - Один параметр вместо списка весов
     - Нет проблемы миграции значений между индексами
     """
-    _mean: float = 50
-    _indexes: dict[ISpecification, SkewIndex[T]]
     _skew: float
-    _default_spec: ISpecification = None
-    _provider_name: str | None = None
 
     def __init__(
             self,
@@ -260,101 +166,7 @@ class SkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
             mean: float | None = None,
     ):
         self._skew = skew
-        if mean is not None:
-            self._mean = mean
-        self._default_spec = EmptySpecification()
-        self._indexes = dict()
-        self._indexes[self._default_spec] = SkewIndex(self._skew, self._default_spec)
-        super().__init__()
+        super().__init__(mean=mean)
 
-    async def next(
-            self,
-            session: ISession,
-            specification: ISpecification[T] | None = None,
-    ) -> T:
-        if specification is None:
-            specification = EmptySpecification()
-
-        if specification != self._default_spec:
-            if specification not in self._indexes:
-                self._indexes[specification] = SkewIndex(self._skew, specification)
-            target_index = self._indexes[specification]
-            source_index = self._indexes[self._default_spec]
-            target_index.populate_from(source_index)
-
-        target_index = self._indexes[specification]
-
-        if self._mean == 1:
-            raise Cursor(
-                position=None,
-                callback=self._append,
-            )
-
-        try:
-            value = target_index.next(self._mean)
-        except StopIteration:
-            raise Cursor(
-                position=None,
-                callback=self._append,
-            )
-
-        # Проверяем, соответствует ли объект спецификации (мог "протухнуть")
-        if not specification.is_satisfied_by(value):
-            self._relocate_stale_value(value, specification)
-            # Retry
-            return await self.next(session, specification)
-
-        return value
-
-    def _relocate_stale_value(self, value: T, current_spec: ISpecification[T]) -> None:
-        """
-        Перемещает протухший объект из текущего индекса в подходящие.
-        """
-        # Удаляем из текущего индекса
-        current_index = self._indexes.get(current_spec)
-        if current_index:
-            current_index.remove(value)
-
-        # Получаем относительную позицию из default индекса
-        default_index = self._indexes[self._default_spec]
-        relative_position = default_index.get_relative_position(value)
-
-        if relative_position is None:
-            return
-
-        # Перебираем все индексы (кроме default и текущего) и вставляем куда подходит
-        for spec, index in self._indexes.items():
-            if spec == self._default_spec or spec == current_spec:
-                continue
-            if spec.is_satisfied_by(value):
-                index.insert_at_relative_position(value, relative_position)
-
-    async def _append(self, session: ISession, value: T, position: int | None = None):
-        if value not in self._indexes[self._default_spec]:
-            self._indexes[self._default_spec].append(value)
-            await self.anotify('value', session, value)
-        return
-
-    async def append(self, session: ISession, value: T):
-        await self._append(session, value, None)
-
-    @property
-    def provider_name(self):
-        return self._provider_name
-
-    @provider_name.setter
-    def provider_name(self, value):
-        if self._provider_name is None:
-            self._provider_name = value
-
-    async def setup(self, session: ISession):
-        pass
-
-    async def cleanup(self, session: ISession):
-        pass
-
-    def __copy__(self):
-        return self
-
-    def __deepcopy__(self, memodict={}):
-        return self
+    def _create_index(self, specification: ISpecification[T]) -> SkewIndex[T]:
+        return SkewIndex(self._skew, specification)
