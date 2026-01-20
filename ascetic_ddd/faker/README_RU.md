@@ -105,3 +105,336 @@ FROM employees
 GROUP BY 1
 ORDER BY val DESC;
 ```
+
+
+# Пример использования
+
+Рассмотрим пример с multi-tenant приложением: Tenant, Author и Book.
+Book имеет композитный ключ (TenantId, InternalBookId).
+
+
+## Доменные модели
+
+```python
+import dataclasses
+
+from psycopg_pool import AsyncConnectionPool
+
+from ascetic_ddd.faker.domain.distributors.m2o.factory import distributor_factory
+from ascetic_ddd.faker.domain.providers.interfaces import (
+    IValueProvider, ICompositeValueProvider, IEntityProvider, IReferenceProvider
+)
+from ascetic_ddd.faker.domain.providers.aggregate_provider import AggregateProvider
+from ascetic_ddd.faker.domain.providers.reference_provider import ReferenceProvider
+from ascetic_ddd.faker.domain.providers.composite_value_provider import CompositeValueProvider
+from ascetic_ddd.faker.domain.providers.value_provider import ValueProvider
+from ascetic_ddd.faker.infrastructure.repositories.composite_repository import CompositeAutoPkRepository
+from ascetic_ddd.faker.infrastructure.repositories.internal_pg_repository import InternalPgRepository
+from ascetic_ddd.faker.infrastructure.repositories.pg_repository import PgRepository
+from ascetic_ddd.faker.infrastructure.session.pg_session import InternalPgSessionPool, ExternalPgSessionPool
+from ascetic_ddd.seedwork.infrastructure.session.composite_session import CompositeSessionPool
+
+from faker import Faker
+fake = Faker()
+
+######################## Domain Model ######################################
+
+########### Tenant aggregate #################
+
+@dataclasses.dataclass()
+class TenantId:
+    value: int | None
+
+
+@dataclasses.dataclass()
+class TenantName:
+    value: str
+
+
+class Tenant:
+    
+    def __init__(self, id: TenantId, name: TenantName):
+        self._id = id
+        self._name = name
+    
+    def export(self, exporter: dict):
+        exporter['id'] = self._id.value
+        exporter['name'] = self._name.value
+
+
+########### Author Aggregate #################
+
+
+@dataclasses.dataclass()
+class InternalAuthorId:
+    value: int | None
+
+
+class AuthorId:
+    tenant_id: TenantId
+    author_id: InternalAuthorId
+
+    @property
+    def value(self):
+        return {
+            'tenant_id': self.tenant_id.value,
+            'author_id': self.author_id.value,
+        }
+
+
+@dataclasses.dataclass()
+class AuthorName:
+    value: str
+
+
+class Author:
+
+    def __init__(self, id: AuthorId, name: AuthorName):
+        self._id = id
+        self._name = name
+
+    def export(self, exporter: dict):
+        exporter['id'] = self._id.value
+        exporter['name'] = self._name.value
+
+
+########### Book aggregate #################
+
+@dataclasses.dataclass()
+class InternalBookId:
+    value: int | None
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class BookId:
+    tenant_id: TenantId
+    book_id: InternalBookId
+
+    @property
+    def value(self):
+        return {
+            'tenant_id': self.tenant_id.value,
+            'book_id': self.book_id.value,
+        }
+
+
+@dataclasses.dataclass()
+class BookTitle:
+    value: str
+
+
+class Book:
+
+    def __init__(self, id: BookId, author_id: AuthorId, title: BookTitle):
+        self._id = id
+        self._author_id = author_id
+        self._title = title
+    
+    def export(self, exporter: dict):
+        exporter['id'] = self._id.value
+        exporter['_author_id'] = self._author_id.value
+        exporter['title'] = self._title.value
+
+
+######################## Providers ######################################
+
+
+class TenantProvider(AggregateProvider[dict, Tenant]):
+    _id_attr = 'id'
+
+    id: IValueProvider[int, TenantId]
+    name: IValueProvider[str, TenantName]
+
+    def __init__(self, repository):
+        self.id = ValueProvider[int, TenantId](
+            distributor=distributor_factory(),  # Receive from DB
+            result_factory=TenantId,
+            result_exporter=lambda x: x.value,
+        )
+        self.name = ValueProvider[str, TenantName](
+            distributor=distributor_factory(sequence=True),
+            result_factory=TenantName,
+            value_generator=lambda session, position: "Tenant %s" % position,
+        )
+        super().__init__(
+            repository=repository,
+            result_factory=Tenant,
+            result_exporter=self._export,
+        )
+
+    @staticmethod
+    def _export(agg: Tenant) -> dict:
+        exporter = dict()
+        agg.export(exporter)
+        return exporter
+
+
+class AuthorIdProvider(CompositeValueProvider[dict, TenantId]):
+    author_id: IValueProvider[int, AuthorId]
+    tenant_id: IReferenceProvider[dict, Tenant, TenantId]
+
+    def __init__(self, tenant_provider: TenantProvider):
+        self.author_id = ValueProvider[int, AuthorId](
+            distributor=distributor_factory(),  # Receive from DB
+            result_factory=InternalAuthorId,
+            result_exporter=lambda x: x.value,
+        )
+        # Ссылка на Tenant с распределением skew=2.0 (перекос к началу)
+        # mean=10 означает в среднем 10 авторов на tenant
+        self.tenant_id = ReferenceProvider[dict, Tenant, TenantId](
+            distributor=distributor_factory(skew=2.0, mean=10),
+            aggregate_provider=tenant_provider
+        )
+
+        super().__init__(
+            result_factory=AuthorId,
+            result_exporter=lambda result: result.value
+        )
+
+
+class AuthorProvider(AggregateProvider[dict, Author]):
+    _id_attr = 'id'
+    id: ICompositeValueProvider[dict, AuthorId]
+    name: IValueProvider[str, AuthorName]
+
+    def __init__(self, repository, tenant_provider: TenantProvider):
+        self.id = AuthorIdProvider(tenant_provider=tenant_provider)
+        self.name = ValueProvider[str, AuthorName](
+            value_generator=lambda session, position: "%s %s" % (fake.first_name(), fake.last_name()),
+        )
+        super().__init__(
+            repository=repository,
+            result_factory=Author,
+            result_exporter=self._export,
+        )
+
+    @staticmethod
+    def _export(agg: Author) -> dict:
+        exporter = dict()
+        agg.export(exporter)
+        return exporter
+
+
+class BookIdProvider(CompositeValueProvider[dict, TenantId]):
+    book_id: IValueProvider[int, BookId]
+    tenant_id: IReferenceProvider[dict, Tenant, TenantId]
+
+    def __init__(self, tenant_provider: TenantProvider):
+        self.book_id = ValueProvider[int, BookId](
+            distributor=distributor_factory(),  # Receive from DB
+            result_factory=InternalBookId,
+            result_exporter=lambda x: x.value,
+        )
+        self.tenant_id = ReferenceProvider[dict, Tenant, TenantId](
+            distributor=distributor_factory(weights=[0.7, 0.2, 0.07, 0.03], mean=50),
+            aggregate_provider=tenant_provider
+        )
+
+        super().__init__(
+            result_factory=AuthorId,
+            result_exporter=lambda result: result.value
+        )
+
+
+class BookProvider(AggregateProvider[dict, Book]):
+    _id_attr = 'id'
+    id: BookIdProvider
+    author_id: IReferenceProvider[dict, Author, AuthorId]
+    title: IValueProvider[str, BookTitle]
+
+    def __init__(self, repository, tenant_provider: TenantProvider, author_provider: AuthorProvider):
+        self.id = BookIdProvider(tenant_provider=tenant_provider)
+        # Ссылка на Author с распределением weights (20% авторов пишут 70% книг)
+        # mean=50 означает в среднем 50 книг на автора
+        self.author_id = ReferenceProvider[dict, Author, AuthorId](
+            distributor=distributor_factory(weights=[0.7, 0.2, 0.07, 0.03], mean=50),
+            aggregate_provider=author_provider,
+        )
+        self.title = ValueProvider[str, BookTitle](
+            distributor=distributor_factory(),
+            value_generator=lambda session, position: fake.sentence(nb_words=3).replace('.', ''),
+        )
+        super().__init__(
+            repository=repository,
+            result_factory=Book,
+            result_exporter=self._export,
+        )
+
+    async def do_populate(self, session, specification=None):
+        # Берём tenant_id из id для согласованности
+        await self.id.populate(session)
+        self.author_id.set(self.id.tenant_id.get())
+        await super().do_populate(session)
+
+    @staticmethod
+    def _export(agg: Book) -> dict:
+        exporter = dict()
+        agg.export(exporter)
+        return exporter
+
+
+######################## Использование ######################################
+
+
+tenant_repository = CompositeAutoPkRepository(
+    external_repository=PgRepository(),  # Use real Repository instead
+    internal_repository=InternalPgRepository(
+        table='tenants',
+        agg_exporter=TenantProvider._export
+    )
+)
+
+
+author_repository = CompositeAutoPkRepository(
+    external_repository=PgRepository(),  # Use real Repository instead
+    internal_repository=InternalPgRepository(
+        table='authors',
+        agg_exporter=AuthorProvider._export
+    )
+)
+
+
+book_repository = CompositeAutoPkRepository(
+    external_repository=PgRepository(),  # Use real Repository instead
+    internal_repository=InternalPgRepository(
+        table='books',
+        agg_exporter=BookProvider._export
+    )
+)
+
+# Создаём провайдеры
+tenant_provider = TenantProvider(tenant_repository)
+author_provider = AuthorProvider(author_repository, tenant_provider)
+book_provider = BookProvider(book_repository, tenant_provider, author_provider)
+
+async def generate_data():
+
+    internal_pg_pool = AsyncConnectionPool('internal_postgresql_url', max_size=4, open=False)
+    await internal_pg_pool.open()
+    internal_session_pool = InternalPgSessionPool(internal_pg_pool)
+
+    external_pg_pool = AsyncConnectionPool('internal_postgresql_url', max_size=4, open=False)
+    await external_pg_pool.open()
+    external_session_pool = ExternalPgSessionPool(external_pg_pool)
+
+    session_pool = CompositeSessionPool(external_session_pool, internal_session_pool)
+
+    # Генерируем 1000 книг
+    for _ in range(1000):
+        with session_pool.session() as session, session.atomic() as ts_session:
+            book_provider.reset()
+            await book_provider.populate(ts_session)
+            book = await book_provider.create(ts_session)
+            print(f"Created: {book._title} by {book._author_id}")
+```
+
+
+## Параметры distributor
+
+| Параметр | Описание |
+|----------|----------|
+| `weights` | Список весов партиций, например `[0.7, 0.2, 0.07, 0.03]` — 70% попадут в первую партицию |
+| `skew` | Параметр перекоса: 1.0 = равномерно, 2.0+ = перекос к началу |
+| `mean` | Среднее количество использований каждого значения. `mean=1` для уникальных значений |
+| `null_weight` | Вероятность вернуть None (0-1) |
+| `sequence` | Передавать порядковый номер в генератор значений |
