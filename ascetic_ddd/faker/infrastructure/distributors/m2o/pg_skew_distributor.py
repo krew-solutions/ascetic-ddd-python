@@ -26,8 +26,8 @@ T = typing.TypeVar("T", covariant=True)
 
 
 class Tables:
-    values: str | None
-    params: str | None
+    values: str | None = None
+    params: str | None = None
 
     def set(self, name: str):
         max_prefix_len = 12
@@ -35,8 +35,10 @@ class Tables:
         max_name_len = max_pg_name_len - max_prefix_len
         if len(name) > max_name_len:
             name = name[-max_name_len:]
-        self.values = escape("values_for_%s" % name)
-        self.params = escape("params_for_%s" % name)
+        if self.values is None:
+            self.values = escape("values_for_%s" % name)
+        if self.params is None:
+            self.params = escape("params_for_%s" % name)
 
 
 class PgSkewDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
