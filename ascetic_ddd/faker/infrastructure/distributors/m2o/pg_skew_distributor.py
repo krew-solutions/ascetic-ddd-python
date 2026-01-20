@@ -58,34 +58,25 @@ class PgSkewDistributor(BasePgDistributor[T], typing.Generic[T]):
         specification.accept(visitor)
 
         sql = """
-            WITH value_stats AS (
-                SELECT COUNT(*) AS total_values
-                FROM %(values_table)s
-                %(where)s
+            WITH filtered AS (
+                SELECT position, object FROM %(values_table)s %(where)s
+            ),
+            stats AS (
+                SELECT COUNT(*) AS n FROM filtered
             ),
             target AS (
                 SELECT
                     -- Степенное распределение: idx = floor(n * (1 - random())^skew)
                     -- skew=1: равномерное, skew=2+: перекос к началу
-                    LEAST(
-                        FLOOR(vs.total_values * POWER(1 - RANDOM(), %(skew)s))::integer,
-                        GREATEST(vs.total_values - 1, 0)
-                    ) AS pos,
-                    vs.total_values
-                FROM value_stats vs
+                    LEAST(FLOOR(n * POWER(1 - RANDOM(), %(skew)s))::integer, GREATEST(n - 1, 0)) AS pos,
+                    n
+                FROM stats
             )
             SELECT
-                (
-                    SELECT object
-                    FROM %(values_table)s
-                    %(where)s
-                    ORDER BY position
-                    OFFSET t.pos
-                    LIMIT 1
-                ) AS object,
+                (SELECT object FROM filtered ORDER BY position OFFSET t.pos LIMIT 1),
                 -- Вероятностный подход: создаём новое с вероятностью 1/mean
-                (t.total_values = 0 OR RANDOM() < 1.0 / %(expected_mean)s) AS should_create_new,
-                t.total_values
+                (t.n = 0 OR RANDOM() < 1.0 / %(expected_mean)s),
+                t.n
             FROM target t
         """ % {
             'values_table': self._values_table,
@@ -95,7 +86,7 @@ class PgSkewDistributor(BasePgDistributor[T], typing.Generic[T]):
         }
 
         async with self._extract_connection(session).cursor() as acursor:
-            await acursor.execute(sql, visitor.params + visitor.params)
+            await acursor.execute(sql, visitor.params)
             row = await acursor.fetchone()
             if not row or not row[0]:
                 return (None, True)

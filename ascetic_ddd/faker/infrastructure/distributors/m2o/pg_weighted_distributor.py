@@ -256,10 +256,11 @@ class PgWeightedDistributor(BasePgDistributor[T], typing.Generic[T]):
         partition_idx, local_skew, num_partitions = self._compute_partition()
 
         sql = """
-            WITH value_stats AS (
-                SELECT COUNT(*) AS total_values
-                FROM %(values_table)s
-                %(where)s
+            WITH filtered AS (
+                SELECT position, object FROM %(values_table)s %(where)s
+            ),
+            stats AS (
+                SELECT COUNT(*) AS n FROM filtered
             ),
             target AS (
                 SELECT
@@ -268,30 +269,20 @@ class PgWeightedDistributor(BasePgDistributor[T], typing.Generic[T]):
                     -- pos = end - 1 - floor(size * (1 - random())^local_skew)
                     -- Смещение к КОНЦУ партиции (ближе к предыдущей)
                     GREATEST(0,
-                        FLOOR((%(partition_idx)s + 1) * vs.total_values::decimal / %(num_partitions)s)::integer - 1 -
+                        FLOOR((%(partition_idx)s + 1) * n::decimal / %(num_partitions)s)::integer - 1 -
                         LEAST(
-                            FLOOR(
-                                CEIL(vs.total_values::decimal / %(num_partitions)s) *
-                                POWER(1 - RANDOM(), %(local_skew)s)
-                            )::integer,
-                            GREATEST(CEIL(vs.total_values::decimal / %(num_partitions)s)::integer - 1, 0)
+                            FLOOR(CEIL(n::decimal / %(num_partitions)s) * POWER(1 - RANDOM(), %(local_skew)s))::integer,
+                            GREATEST(CEIL(n::decimal / %(num_partitions)s)::integer - 1, 0)
                         )
                     ) AS pos,
-                    vs.total_values
-                FROM value_stats vs
+                    n
+                FROM stats
             )
             SELECT
-                (
-                    SELECT object
-                    FROM %(values_table)s
-                    %(where)s
-                    ORDER BY position
-                    OFFSET t.pos
-                    LIMIT 1
-                ) AS object,
+                (SELECT object FROM filtered ORDER BY position OFFSET t.pos LIMIT 1),
                 -- Вероятностный подход: создаём новое с вероятностью 1/mean
-                (t.total_values = 0 OR RANDOM() < 1.0 / %(expected_mean)s) AS should_create_new,
-                t.total_values
+                (t.n = 0 OR RANDOM() < 1.0 / %(expected_mean)s),
+                t.n
             FROM target t
         """ % {
             'values_table': self._values_table,
@@ -303,7 +294,7 @@ class PgWeightedDistributor(BasePgDistributor[T], typing.Generic[T]):
         }
 
         async with self._extract_connection(session).cursor() as acursor:
-            await acursor.execute(sql, visitor.params + visitor.params)
+            await acursor.execute(sql, visitor.params)
             row = await acursor.fetchone()
             if not row or not row[0]:
                 return (None, True)
