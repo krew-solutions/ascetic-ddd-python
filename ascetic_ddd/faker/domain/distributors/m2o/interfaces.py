@@ -16,8 +16,8 @@ __all__ = (
 T = typing.TypeVar("T", covariant=True)
 
 
-class IRepository(IObservable, typing.Protocol[T], metaclass=ABCMeta):
-    pass
+class IRepository(IObservable, typing.Protocol[T]):
+    ...
 
 
 class IM2ODistributor(IObservable, typing.Generic[T], metaclass=ABCMeta):
@@ -81,9 +81,8 @@ class ICursor(typing.Generic[T], StopAsyncIteration, metaclass=ABCMeta):
         raise NotImplementedError
 
 
-class IM2ODistributorFactory(typing.Protocol[T], metaclass=ABCMeta):
+class IM2ODistributorFactory(typing.Protocol[T]):
 
-    @abstractmethod
     def __call__(
         self,
         weights: list[float] | None = None,
@@ -104,4 +103,4 @@ class IM2ODistributorFactory(typing.Protocol[T], metaclass=ABCMeta):
             sequence: Pass sequence number to value generator.
             external_source: Внешний источник данных (repository).
         """
-        raise NotImplementedError
+        ...

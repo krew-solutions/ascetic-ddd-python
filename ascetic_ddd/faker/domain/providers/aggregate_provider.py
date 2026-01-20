@@ -1,5 +1,5 @@
 import typing
-from abc import ABCMeta, abstractmethod
+from abc import ABCMeta
 
 from ascetic_ddd.seedwork.domain.identity.interfaces import IAccessible
 from ascetic_ddd.faker.domain.providers._mixins import BaseCompositeProvider, ObservableMixin
@@ -16,30 +16,25 @@ T_Input = typing.TypeVar("T_Input")
 T_Output = typing.TypeVar("T_Output")
 
 
-class IAggregateRepository(IObservable, typing.Protocol[T_Output], metaclass=ABCMeta):
-    @abstractmethod
+class IAggregateRepository(IObservable, typing.Protocol[T_Output]):
+
     async def insert(self, session: ISession, agg: T_Output):
-        raise NotImplementedError
+        ...
 
-    @abstractmethod
     async def get(self, session: ISession, id_: IAccessible[typing.Any]) -> T_Output | None:
-        raise NotImplementedError
+        ...
 
-    @abstractmethod
     async def update(self, session: ISession, agg: T_Output):
-        raise NotImplementedError
+        ...
 
-    @abstractmethod
     async def find(self, session: ISession, specification: ISpecification) -> typing.Iterable[T_Output]:
-        raise NotImplementedError
+        ...
 
-    @abstractmethod
     async def setup(self, session: ISession):
-        raise NotImplementedError
+        ...
 
-    @abstractmethod
     async def cleanup(self, session: ISession):
-        raise NotImplementedError
+        ...
 
 
 class AggregateProvider(

@@ -1,5 +1,4 @@
 import typing
-from abc import ABCMeta, abstractmethod
 from psycopg import AsyncConnection
 from aiohttp import ClientSession
 
@@ -14,30 +13,27 @@ from ascetic_ddd.faker.domain.session.interfaces import ISession
 
 
 @typing.runtime_checkable
-class IExternalPgSession(ISession, typing.Protocol, metaclass=ABCMeta):
+class IExternalPgSession(ISession, typing.Protocol):
 
     @property
-    @abstractmethod
     def external_connection(self) -> AsyncConnection[typing.Any]:
         """For ReadModels (Queries)."""
-        raise NotImplementedError
+        ...
 
 
 @typing.runtime_checkable
-class IInternalPgSession(ISession, typing.Protocol, metaclass=ABCMeta):
+class IInternalPgSession(ISession, typing.Protocol):
 
     @property
-    @abstractmethod
     def internal_connection(self) -> AsyncConnection[typing.Any]:
         """For ReadModels (Queries)."""
-        raise NotImplementedError
+        ...
 
 
 @typing.runtime_checkable
-class IRestSession(ISession, typing.Protocol, metaclass=ABCMeta):
+class IRestSession(ISession, typing.Protocol):
 
     @property
-    @abstractmethod
     def request(self) -> ClientSession:
         """For ReadModels (Queries)."""
-        raise NotImplementedError
+        ...

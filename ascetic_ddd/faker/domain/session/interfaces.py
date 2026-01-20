@@ -1,5 +1,4 @@
 import typing
-from abc import ABCMeta, abstractmethod
 
 from ascetic_ddd.seedwork.domain.session import ISession as _ISession, ISessionPool as _ISessionPool
 from ascetic_ddd.faker.domain.utils.stats import Collector
@@ -11,18 +10,17 @@ __all__ = (
 )
 
 
-class ISession(_ISession, typing.Protocol, metaclass=ABCMeta):
+class ISession(_ISession, typing.Protocol):
     response_time: float
     stats: Collector
 
 
-class ISessionPool(_ISessionPool, typing.Protocol, metaclass=ABCMeta):
+class ISessionPool(_ISessionPool, typing.Protocol):
     response_time: float
     stats: Collector
 
 
-class IAuthenticator(typing.Protocol, metaclass=ABCMeta):
+class IAuthenticator(typing.Protocol):
 
-    @abstractmethod
     async def authenticate(self, session: ISession):
-        raise NotImplementedError
+        ...
