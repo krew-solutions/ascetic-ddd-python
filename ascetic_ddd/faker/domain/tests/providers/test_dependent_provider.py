@@ -146,6 +146,9 @@ class StubEmployeeRepository(IAggregateRepository[Employee]):
         self._storage[agg.id.value] = agg
         self._inserted.append(agg)
 
+    async def update(self, session: ISession, agg: Employee):
+        self._storage[agg.id.value] = agg
+
     async def get(self, session: ISession, id_: EmployeeId) -> Employee | None:
         if isinstance(id_, EmployeeId):
             return self._storage.get(id_.value)
@@ -586,6 +589,9 @@ class StubCompanyRepository(IAggregateRepository[Company]):
             agg.id = new_id
         self._storage[agg.id.value] = agg
         self._inserted.append(agg)
+
+    async def update(self, session: ISession, agg: Company):
+        self._storage[agg.id.value] = agg
 
     async def get(self, session: ISession, id_: CompanyId) -> Company | None:
         if isinstance(id_, CompanyId):

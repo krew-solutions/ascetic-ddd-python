@@ -176,6 +176,9 @@ class StubTenantRepository(IAggregateRepository[Tenant]):
         self._storage[agg.id.value] = agg
         self._inserted.append(agg)
 
+    async def update(self, session: ISession, agg: Tenant):
+        self._storage[agg.id.value] = agg
+
     async def get(self, session: ISession, id_: TenantId) -> Tenant | None:
         if isinstance(id_, TenantId):
             return self._storage.get(id_.value)
@@ -222,6 +225,10 @@ class StubUserRepository(IAggregateRepository[User]):
         key = (agg.id.tenant_id.value, agg.id.internal_user_id.value)
         self._storage[key] = agg
         self._inserted.append(agg)
+
+    async def update(self, session: ISession, agg: User):
+        key = (agg.id.tenant_id.value, agg.id.internal_user_id.value)
+        self._storage[key] = agg
 
     async def get(self, session: ISession, id_: UserId) -> User | None:
         if isinstance(id_, UserId):
@@ -274,6 +281,14 @@ class StubResumeRepository(IAggregateRepository[Resume]):
         )
         self._storage[key] = agg
         self._inserted.append(agg)
+
+    async def update(self, session: ISession, agg: Resume):
+        key = (
+            agg.id.user_id.tenant_id.value,
+            agg.id.user_id.internal_user_id.value,
+            agg.id.internal_resume_id.value
+        )
+        self._storage[key] = agg
 
     async def get(self, session: ISession, id_: ResumeId) -> Resume | None:
         if isinstance(id_, ResumeId):

@@ -127,6 +127,9 @@ class StubRepository(IAggregateRepository[User]):
         self._storage[agg.id.value] = agg
         self._inserted.append(agg)
 
+    async def update(self, session: ISession, agg: User):
+        self._storage[agg.id.value] = agg
+
     async def get(self, session: ISession, id_: UserId) -> User | None:
         if isinstance(id_, UserId):
             return self._storage.get(id_.value)
