@@ -4,7 +4,7 @@ import typing
 from abc import abstractmethod
 
 from ascetic_ddd.faker.domain.distributors.m2o.cursor import Cursor
-from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
+from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor, IRepository
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
@@ -140,8 +140,11 @@ class BaseDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     _indexes: dict[ISpecification, BaseIndex[T]]
     _default_spec: ISpecification = None
     _provider_name: str | None = None
+    _external_source: IRepository[T] | None = None
 
-    def __init__(self, mean: float | None = None):
+    def __init__(self, mean: float | None = None, external_source: IRepository[T] | None = None):
+        self._external_source = external_source
+        self._external_source = None  # Temporary disable
         if mean is not None:
             self._mean = mean
         self._default_spec = EmptySpecification()
@@ -217,10 +220,11 @@ class BaseDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
                 index.insert_at_relative_position(value, relative_position)
 
     async def _append(self, session: ISession, value: T, position: int | None):
+        if self._external_source:
+            return
         if value not in self._indexes[self._default_spec]:
             self._indexes[self._default_spec].append(value)
             await self.anotify('value', session, value)
-        return
 
     async def append(self, session: ISession, value: T):
         await self._append(session, value, None)
@@ -340,9 +344,10 @@ class WeightedDistributor(BaseDistributor[T], typing.Generic[T]):
             self,
             weights: typing.Iterable[float] = tuple(),
             mean: float | None = None,
+            external_source: IRepository[T] | None = None,
     ):
         self._weights = list(weights)
-        super().__init__(mean=mean)
+        super().__init__(mean=mean, external_source=external_source)
 
     def _create_index(self, specification: ISpecification[T]) -> Index[T]:
         return Index(self._weights, specification)
