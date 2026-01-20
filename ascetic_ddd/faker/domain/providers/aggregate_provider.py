@@ -45,8 +45,8 @@ class AggregateProvider(
 ):
     _id_attr: str
     _repository: IAggregateRepository[T_Output]
-    _result_factory: typing.Callable[[...], T_Output]  # T_Output of each nested Provider.
-    _result_exporter: typing.Callable[[T_Output], T_Input]
+    _result_factory: typing.Callable[[...], T_Output] = None  # T_Output of each nested Provider.
+    _result_exporter: typing.Callable[[T_Output], T_Input] = None
 
     _aspect_mapping = {
         "repository": "_repository",
@@ -60,19 +60,25 @@ class AggregateProvider(
             result_factory: typing.Callable[[...], T_Output] | None = None,  # T_Output of each nested Provider.
             result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
     ):
-        super().__init__()
         self._repository = repository
 
-        if result_factory is None:
-            def result_factory(result):
-                return result
-        self._result_factory = result_factory
+        if self._result_factory is None:
+            if result_factory is None:
 
-        if result_exporter is None:
-            def result_exporter(value):
-                return value
-        self._result_exporter = result_exporter
+                def result_factory(**result):
+                    return result
 
+            self._result_factory = result_factory
+
+        if self._result_exporter is None:
+            if result_exporter is None:
+
+                def result_exporter(value):
+                    return value
+
+            self._result_exporter = result_exporter
+
+        super().__init__()
         self.on_init()
 
     def on_init(self):

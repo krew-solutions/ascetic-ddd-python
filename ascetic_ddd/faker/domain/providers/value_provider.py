@@ -1,5 +1,6 @@
 import typing
 
+from ascetic_ddd.faker.domain.distributors.m2o import DummyDistributor
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import ICursor, IM2ODistributor
 from ascetic_ddd.faker.domain.providers._mixins import BaseDistributionProvider
 from ascetic_ddd.faker.domain.providers.interfaces import IValueProvider, IValueGenerator
@@ -18,30 +19,39 @@ class ValueProvider(
     IValueProvider[T_Input, T_Output],
     typing.Generic[T_Input, T_Output]
 ):
-    _value_generator: IValueGenerator[T_Input] | None
-    _result_factory: typing.Callable[[T_Input], T_Output]  # T_Output of each nested Provider.
-    _result_exporter: typing.Callable[[T_Output], T_Input]
+    _value_generator: IValueGenerator[T_Input] | None = None
+    _result_factory: typing.Callable[[T_Input], T_Output] = None  # T_Output of each nested Provider.
+    _result_exporter: typing.Callable[[T_Output], T_Input] = None
 
     def __init__(
             self,
-            distributor: IM2ODistributor,
+            distributor: IM2ODistributor | None,
             value_generator: IValueGenerator[T_Input] | None = None,
             result_factory: typing.Callable[[T_Input], T_Output] | None = None,
             result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
     ):
-        self._value_generator = prepare_value_generator(value_generator) if value_generator is not None else None
+        if distributor is None:
+            distributor = DummyDistributor()
 
-        if result_factory is None:
-            def result_factory(result):
-                return result
+        if self._value_generator is None and value_generator is not None:
+            self._value_generator = prepare_value_generator(value_generator)
 
-        self._result_factory = result_factory
+        if self._result_factory is None:
+            if result_factory is None:
 
-        if result_exporter is None:
-            def result_exporter(value):
-                return value
+                def result_factory(result):
+                    return result
 
-        self._result_exporter = result_exporter
+            self._result_factory = result_factory
+
+        if self._result_exporter is None:
+            if result_exporter is None:
+
+                def result_exporter(value):
+                    return value
+
+            self._result_exporter = result_exporter
+
         super().__init__(distributor=distributor)
 
     async def create(self, session: ISession) -> T_Output:

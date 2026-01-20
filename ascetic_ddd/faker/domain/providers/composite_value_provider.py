@@ -20,8 +20,8 @@ class CompositeValueProvider(
     BaseCompositeDistributionProvider,
     typing.Generic[T_Input, T_Output]
 ):
-    _result_factory: typing.Callable[[...], T_Output]  # T_Output of each nested Provider.
-    _result_exporter: typing.Callable[[T_Output], T_Input]
+    _result_factory: typing.Callable[[...], T_Output] = None  # T_Output of each nested Provider.
+    _result_exporter: typing.Callable[[T_Output], T_Input] = None
 
     def __init__(
             self,
@@ -29,19 +29,24 @@ class CompositeValueProvider(
             result_factory: typing.Callable[[...], T_Output] | None = None,  # T_Output of each nested Provider.
             result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
     ):
+
+        if self._result_factory is None:
+            if result_factory is None:
+
+                def result_factory(**kwargs):
+                    return kwargs
+
+            self._result_factory = result_factory
+
+        if self._result_exporter is None:
+            if result_exporter is None:
+
+                def result_exporter(value):
+                    return value
+
+            self._result_exporter = result_exporter
+
         super().__init__(distributor=distributor)
-        if result_factory is None:
-            def result_factory(**kwargs):
-                return kwargs
-
-        self._result_factory = result_factory
-
-        if result_exporter is None:
-            def result_exporter(value):
-                return value
-
-        self._result_exporter = result_exporter
-
         self.on_init()
 
     def on_init(self):
