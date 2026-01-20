@@ -9,6 +9,7 @@ __all__ = (
     'IM2ODistributor',
     'IM2ODistributorFactory',
     'ICursor',
+    'IRepository',
 )
 
 
@@ -89,7 +90,8 @@ class IM2ODistributorFactory(typing.Protocol[T], metaclass=ABCMeta):
         skew: float | None = None,
         mean: float | None = None,
         null_weight: float = 0,
-        sequence: bool = False
+        sequence: bool = False,
+        external_source: IRepository[T] | None = None,
     ) -> IM2ODistributor[T]:
         """
         Фабрика для Distributor.
@@ -100,5 +102,6 @@ class IM2ODistributorFactory(typing.Protocol[T], metaclass=ABCMeta):
             mean: Среднее количество использований каждого значения. Use mean = 1 for unique.
             null_weight: Вероятность вернуть None (0-1)
             sequence: Pass sequence number to value generator.
+            external_source: Внешний источник данных (repository).
         """
         raise NotImplementedError
