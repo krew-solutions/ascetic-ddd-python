@@ -29,6 +29,12 @@ class InMemoryRepository(Observable, typing.Generic[T]):
         self._aggregates[hashable(id_)] = agg
         await self.anotify('inserted', session, agg)
 
+    async def update(self, session: ISession, agg: T):
+        state = self._agg_exporter(agg)
+        id_ = self._id(state)
+        self._aggregates[hashable(id_)] = agg
+        await self.anotify('updated', session, agg)
+
     async def get(self, session: ISession, id_: IAccessible[typing.Any] | typing.Any) -> T | None:
         key = id_.value if hasattr(id_, 'value') else id_
         return self._aggregates.get(hashable(key))

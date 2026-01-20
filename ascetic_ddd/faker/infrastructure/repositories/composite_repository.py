@@ -30,6 +30,10 @@ class CompositeRepository(typing.Generic[T]):
         await self._internal_repository.insert(session, agg)  # Lock it first.
         await self._external_repository.insert(session, agg)
 
+    async def update(self, session: ISession, agg: T):
+        await self._internal_repository.update(session, agg)
+        await self._external_repository.update(session, agg)
+
     async def get(self, session: ISession, id_: IAccessible[typing.Any]) -> T | None:
         return await self._internal_repository.get(session, id_)
 

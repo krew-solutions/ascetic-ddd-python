@@ -62,7 +62,7 @@ class InternalPgRepository(Observable, typing.Generic[T]):
         params = (
             self._encode(self._id(state)),
             self._encode(state),
-            self._serialize(agg)
+            self._serialize(agg),
         )
 
         async with self._extract_connection(session).cursor() as acursor:
@@ -88,6 +88,27 @@ class InternalPgRepository(Observable, typing.Generic[T]):
             await acursor.execute(sql, (self._encode(key),))
             row = await acursor.fetchone()
             return row and self._deserialize(row[0])
+
+    async def update(self, session: ISession, agg: T):
+        state = self._agg_exporter(agg)
+        sql = """
+            UPDATE %(table)s SET value = %%s, object = %%s WHERE value_id = %%s
+        """ % {
+            'table': self._table,
+        }
+        params = (
+            self._encode(state),
+            self._serialize(agg),
+            self._encode(self._id(state)),
+        )
+
+        async with self._extract_connection(session).cursor() as acursor:
+            try:
+                await acursor.execute(sql, params)
+            except Exception:
+                raise
+
+        await self.anotify('updated', session, agg)
 
     @check_init
     async def find(self, session: ISession, specification: ISpecification) -> typing.Iterable[T]:

@@ -63,6 +63,9 @@ class PgRepository(Observable, typing.Generic[T]):
     async def get(self, session: ISession, id_: IAccessible[typing.Any]) -> T | None:
         raise NotImplementedError
 
+    async def update(self, session: ISession, agg: T):
+        raise NotImplementedError
+
     async def find(self, session: ISession, specification: ISpecification) -> typing.Iterable[T]:
         raise NotImplementedError
 
