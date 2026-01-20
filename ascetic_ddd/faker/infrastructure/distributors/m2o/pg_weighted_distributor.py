@@ -14,6 +14,7 @@ from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
+from ascetic_ddd.faker.infrastructure.distributors.m2o.interfaces import IPgRepository
 from ascetic_ddd.faker.infrastructure.session.pg_session import extract_internal_connection
 from ascetic_ddd.faker.infrastructure.specification.pg_specification_visitor import PgSpecificationVisitor
 from ascetic_ddd.faker.infrastructure.utils.json import JSONEncoder
@@ -57,13 +58,18 @@ class BasePgDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     _tables: Tables
     _default_key: str = str(frozenset())
     _provider_name: str | None = None
+    _external_source: IPgRepository | None = None
 
     def __init__(
             self,
             mean: float | None = None,
+            external_source: IPgRepository | None = None,
             initialized: bool = False
     ):
+        self._external_source = external_source
         self._tables = self._create_tables()
+        if external_source:
+            self._tables.values = external_source.table
         if mean is not None:
             self._mean = mean
         self._initialized = initialized
@@ -105,6 +111,8 @@ class BasePgDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
         raise NotImplementedError
 
     async def _append(self, session: ISession, value: T, position: int | None):
+        if self._external_source:
+            return
         sql = """
             INSERT INTO %(values_table)s (value, object)
             VALUES (%%s, %%s)
@@ -140,6 +148,8 @@ class BasePgDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
         # FIXME: diamond problem
         self._initialized = False
         for name, t in vars(self._tables).items():
+            if name == 'values' and self._external_source:
+                continue
             async with self._extract_connection(session).cursor() as acursor:
                 await acursor.execute("DROP TABLE IF EXISTS %s" % t)
 
@@ -163,6 +173,8 @@ class BasePgDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     # values_table  #####################################################################################
 
     async def _create_values_table(self, session: ISession):
+        if self._external_source:
+            return
         sql = """
             CREATE TABLE IF NOT EXISTS %(values_table)s (
                 position serial NOT NULL PRIMARY KEY,
@@ -265,10 +277,11 @@ class PgWeightedDistributor(BasePgDistributor[T], typing.Generic[T]):
             self,
             weights: typing.Iterable[float] = tuple(),
             mean: float | None = None,
+            external_source: IPgRepository | None = None,
             initialized: bool = False
     ):
         self._weights = list(weights)
-        super().__init__(mean=mean, initialized=initialized)
+        super().__init__(mean=mean, external_source=external_source, initialized=initialized)
 
     def _create_tables(self) -> WeightedTables:
         return WeightedTables()

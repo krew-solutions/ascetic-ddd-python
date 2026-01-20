@@ -2,6 +2,7 @@ import typing
 
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
+from ascetic_ddd.faker.infrastructure.distributors.m2o.interfaces import IPgRepository
 from ascetic_ddd.faker.infrastructure.distributors.m2o.pg_weighted_distributor import BasePgDistributor
 from ascetic_ddd.faker.infrastructure.specification.pg_specification_visitor import PgSpecificationVisitor
 
@@ -35,10 +36,11 @@ class PgSkewDistributor(BasePgDistributor[T], typing.Generic[T]):
             self,
             skew: float = 2.0,
             mean: float | None = None,
+            external_source: IPgRepository | None = None,
             initialized: bool = False
     ):
         self._skew = skew
-        super().__init__(mean=mean, initialized=initialized)
+        super().__init__(mean=mean, external_source=external_source, initialized=initialized)
 
     async def _setup(self, session: ISession):
         await self._create_values_table(session)
