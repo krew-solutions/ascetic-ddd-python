@@ -5,6 +5,7 @@ import socket
 import threading
 import typing
 import dataclasses
+from abc import abstractmethod
 
 from psycopg.types.json import Jsonb
 
@@ -21,7 +22,7 @@ from ascetic_ddd.seedwork.infrastructure.utils import serializer
 from ascetic_ddd.seedwork.infrastructure.utils.pg import escape
 
 
-__all__ = ('PgWeightedDistributor',)
+__all__ = ('BasePgDistributor', 'Tables', 'PgWeightedDistributor',)
 
 
 T = typing.TypeVar("T", covariant=True)
@@ -30,7 +31,6 @@ T = typing.TypeVar("T", covariant=True)
 class Tables:
     values: str | None = None
     params: str | None = None
-    weights: str | None = None
 
     def set(self, name: str):
         max_prefix_len = 12
@@ -42,38 +42,35 @@ class Tables:
             self.values = escape("values_for_%s" % name)
         if self.params is None:
             self.params = escape("params_for_%s" % name)
-        if self.weights is None:
-            self.weights = escape("weights_for_%s" % name)
 
 
-class PgWeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
+class BasePgDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     """
-    Дистрибьютор с взвешенным распределением в PostgreSQL.
+    Базовый класс для PostgreSQL дистрибьюторов.
 
     Ограничение: при динамическом создании значений ранние значения
-    получают больше вызовов, т.к. доступны дольше. Это даёт ~85% vs 70% для первой
-    партиции вместо точного соответствия весам. Для генератора фейковых данных приемлемо.
+    получают больше вызовов, т.к. доступны дольше. Для генератора фейковых данных приемлемо.
     """
     _extract_connection = staticmethod(extract_internal_connection)
     _initialized: bool = False
     _mean: float = 50
     _tables: Tables
-    _weights: list[float]
     _default_key: str = str(frozenset())
     _provider_name: str | None = None
 
     def __init__(
             self,
-            weights: typing.Iterable[float] = tuple(),
             mean: float | None = None,
             initialized: bool = False
     ):
-        self._tables = Tables()
-        self._weights = list(weights)
+        self._tables = self._create_tables()
         if mean is not None:
             self._mean = mean
         self._initialized = initialized
         super().__init__()
+
+    def _create_tables(self) -> Tables:
+        return Tables()
 
     async def next(
             self,
@@ -102,6 +99,10 @@ class PgWeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
                 callback=self._append,
             )
         return value
+
+    @abstractmethod
+    async def _get_next_value(self, session: ISession, specification: ISpecification[T]) -> tuple[T | None, bool]:
+        raise NotImplementedError
 
     async def _append(self, session: ISession, value: T, position: int | None):
         sql = """
@@ -148,17 +149,14 @@ class PgWeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     def __deepcopy__(self, memodict={}):
         return self
 
+    @abstractmethod
     async def _setup(self, session: ISession):
-        await self._create_weights_table(session)
-        await self._populate_weights(session, self._weights)
-        await self._create_values_table(session)
-        await self._create_params_table(session)
-        await self._set_param(session, 'mean', self._mean)
+        raise NotImplementedError
 
     async def _is_initialized(self, session: ISession) -> bool:
         sql = """SELECT to_regclass(%s)"""
         async with self._extract_connection(session).cursor() as acursor:
-            await acursor.execute(sql, (self._tables.weights, ))
+            await acursor.execute(sql, (self._tables.params,))
             regclass = (await acursor.fetchone())[0]
         return regclass is not None
 
@@ -182,6 +180,105 @@ class PgWeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
         }
         async with self._extract_connection(session).cursor() as acursor:
             await acursor.execute(sql)
+
+    # params_table ###################################################################################
+
+    async def _create_params_table(self, session: ISession):
+        sql = """
+            CREATE TABLE IF NOT EXISTS %s (
+                key VARCHAR(40) NOT NULL PRIMARY KEY,
+                value JSONB NOT NULL,
+                object TEXT NOT NULL
+            )
+        """ % (
+            self._tables.params,
+        )
+        async with self._extract_connection(session).cursor() as acursor:
+            await acursor.execute(sql)
+
+    async def _set_param(self, session: ISession, key: str, value: typing.Any):
+        sql = """
+            INSERT INTO %s (key, value, object) VALUES (%%s, %%s, %%s)
+        """ % (
+            self._tables.params,
+        )
+        async with self._extract_connection(session).cursor() as acursor:
+            await acursor.execute(sql, (key, self._encode(value), self._serialize(value)))
+
+    async def _get_param(self, session: ISession, key: str) -> typing.Any:
+        sql = """
+            SELECT object FROM %s WHERE key = %%s;
+        """ % (
+            self._tables.params,
+        )
+        async with self._extract_connection(session).cursor() as acursor:
+            await acursor.execute(sql, (key,))
+            return self._deserialize((await acursor.fetchone())[0])
+
+    @staticmethod
+    def get_thread_id():
+        return '{0}.{1}.{2}'.format(
+            socket.gethostname(), os.getpid(), threading.get_ident()
+        )
+
+    @staticmethod
+    def _encode(obj):
+        if dataclasses.is_dataclass(obj):
+            obj = dataclasses.asdict(obj)
+        dumps = functools.partial(json.dumps, cls=JSONEncoder)
+        return Jsonb(obj, dumps)
+
+    _serialize = staticmethod(serializer.serialize)
+    _deserialize = staticmethod(serializer.deserialize)
+
+
+# =============================================================================
+# PgWeightedDistributor
+# =============================================================================
+
+class WeightedTables(Tables):
+    weights: str | None = None
+
+    def set(self, name: str):
+        super().set(name)
+        max_prefix_len = 12
+        max_pg_name_len = 63
+        max_name_len = max_pg_name_len - max_prefix_len
+        if len(name) > max_name_len:
+            name = name[-max_name_len:]
+        if self.weights is None:
+            self.weights = escape("weights_for_%s" % name)
+
+
+class PgWeightedDistributor(BasePgDistributor[T], typing.Generic[T]):
+    """
+    Дистрибьютор с взвешенным распределением в PostgreSQL.
+
+    Ограничение: при динамическом создании значений ранние значения
+    получают больше вызовов, т.к. доступны дольше. Это даёт ~85% vs 70% для первой
+    партиции вместо точного соответствия весам. Для генератора фейковых данных приемлемо.
+    """
+    _tables: WeightedTables
+    _weights: list[float]
+
+    def __init__(
+            self,
+            weights: typing.Iterable[float] = tuple(),
+            mean: float | None = None,
+            initialized: bool = False
+    ):
+        self._weights = list(weights)
+        super().__init__(mean=mean, initialized=initialized)
+
+    def _create_tables(self) -> WeightedTables:
+        return WeightedTables()
+
+    async def _setup(self, session: ISession):
+        await self._create_weights_table(session)
+        await self._populate_weights(session, self._weights)
+        await self._create_values_table(session)
+        await self._create_params_table(session)
+        await self._set_param(session, 'mean', self._mean)
 
     async def _get_next_value(self, session: ISession, specification: ISpecification, mean: float = None):
         # TODO: https://dataschool.com/learn-sql/random-sequences/
@@ -328,53 +425,3 @@ class PgWeightedDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
         )
         async with self._extract_connection(session).cursor() as acursor:
             await acursor.execute(sql, weights)
-
-    # params_table ###################################################################################
-
-    async def _create_params_table(self, session: ISession):
-        sql = """
-            CREATE TABLE IF NOT EXISTS %s (
-                key VARCHAR(40) NOT NULL PRIMARY KEY,
-                value JSONB NOT NULL,
-                object TEXT NOT NULL
-            )
-        """ % (
-            self._tables.params,
-        )
-        async with self._extract_connection(session).cursor() as acursor:
-            await acursor.execute(sql)
-
-    async def _set_param(self, session: ISession, key: str, value: typing.Any):
-        sql = """
-            INSERT INTO %s (key, value, object) VALUES (%%s, %%s, %%s)
-        """ % (
-            self._tables.params,
-        )
-        async with self._extract_connection(session).cursor() as acursor:
-            await acursor.execute(sql, (key, self._encode(value), self._serialize(value)))
-
-    async def _get_param(self, session: ISession, key: str) -> typing.Any:
-        sql = """
-            SELECT object FROM %s WHERE key = %%s;
-        """ % (
-            self._tables.params,
-        )
-        async with self._extract_connection(session).cursor() as acursor:
-            await acursor.execute(sql, (key,))
-            return self._deserialize((await acursor.fetchone())[0])
-
-    @staticmethod
-    def get_thread_id():
-        return '{0}.{1}.{2}'.format(
-            socket.gethostname(), os.getpid(), threading.get_ident()
-        )
-
-    @staticmethod
-    def _encode(obj):
-        if dataclasses.is_dataclass(obj):
-            obj = dataclasses.asdict(obj)
-        dumps = functools.partial(json.dumps, cls=JSONEncoder)
-        return Jsonb(obj, dumps)
-
-    _serialize = staticmethod(serializer.serialize)
-    _deserialize = staticmethod(serializer.deserialize)
