@@ -1,5 +1,6 @@
 import typing
 
+from ascetic_ddd.faker.domain.distributors.m2o import DummyDistributor
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import ICursor, IM2ODistributor
 from ascetic_ddd.faker.domain.providers._mixins import BaseCompositeDistributionProvider
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
@@ -25,10 +26,12 @@ class CompositeValueProvider(
 
     def __init__(
             self,
-            distributor: IM2ODistributor[T_Input],
+            distributor: IM2ODistributor[T_Input] | None = None,
             result_factory: typing.Callable[[...], T_Output] | None = None,  # T_Output of each nested Provider.
             result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
     ):
+        if distributor is None:
+            distributor = DummyDistributor()
 
         if self._result_factory is None:
             if result_factory is None:
