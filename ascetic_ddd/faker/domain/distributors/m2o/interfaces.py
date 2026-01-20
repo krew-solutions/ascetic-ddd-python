@@ -15,6 +15,10 @@ __all__ = (
 T = typing.TypeVar("T", covariant=True)
 
 
+class IRepository(IObservable, typing.Protocol[T], metaclass=ABCMeta):
+    pass
+
+
 class IM2ODistributor(IObservable, typing.Generic[T], metaclass=ABCMeta):
 
     @abstractmethod

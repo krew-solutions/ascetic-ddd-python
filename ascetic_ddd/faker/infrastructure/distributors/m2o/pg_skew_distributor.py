@@ -42,13 +42,7 @@ class PgSkewDistributor(BasePgDistributor[T], typing.Generic[T]):
         self._skew = skew
         super().__init__(mean=mean, external_source=external_source, initialized=initialized)
 
-    async def _setup(self, session: ISession):
-        await self._create_values_table(session)
-        await self._create_params_table(session)
-        await self._set_param(session, 'mean', self._mean)
-        await self._set_param(session, 'skew', self._skew)
-
-    async def _get_next_value(self, session: ISession, specification: ISpecification[T]):
+    async def _get_next_value(self, session: ISession, specification: ISpecification[T]) -> tuple[T | None, bool]:
         """
         Выбор значения со степенным распределением:
         idx = floor(total_values * (1 - random())^skew)
@@ -64,12 +58,7 @@ class PgSkewDistributor(BasePgDistributor[T], typing.Generic[T]):
         specification.accept(visitor)
 
         sql = """
-            WITH params AS (
-                SELECT
-                    (SELECT value::decimal FROM %(params_table)s WHERE key = 'mean' LIMIT 1) AS expected_mean,
-                    (SELECT value::decimal FROM %(params_table)s WHERE key = 'skew' LIMIT 1) AS skew
-            ),
-            value_stats AS (
+            WITH value_stats AS (
                 SELECT COUNT(*) AS total_values
                 FROM %(values_table)s
                 %(where)s
@@ -79,13 +68,11 @@ class PgSkewDistributor(BasePgDistributor[T], typing.Generic[T]):
                     -- Степенное распределение: idx = floor(n * (1 - random())^skew)
                     -- skew=1: равномерное, skew=2+: перекос к началу
                     LEAST(
-                        FLOOR(vs.total_values * POWER(1 - RANDOM(), p.skew))::integer,
+                        FLOOR(vs.total_values * POWER(1 - RANDOM(), %(skew)s))::integer,
                         GREATEST(vs.total_values - 1, 0)
                     ) AS pos,
-                    vs.total_values,
-                    p.expected_mean
+                    vs.total_values
                 FROM value_stats vs
-                CROSS JOIN params p
             )
             SELECT
                 (
@@ -97,13 +84,14 @@ class PgSkewDistributor(BasePgDistributor[T], typing.Generic[T]):
                     LIMIT 1
                 ) AS object,
                 -- Вероятностный подход: создаём новое с вероятностью 1/mean
-                (t.total_values = 0 OR RANDOM() < 1.0 / GREATEST(t.expected_mean, 1)) AS should_create_new,
+                (t.total_values = 0 OR RANDOM() < 1.0 / %(expected_mean)s) AS should_create_new,
                 t.total_values
             FROM target t
         """ % {
-            'params_table': self._tables.params,
-            'values_table': self._tables.values,
+            'values_table': self._values_table,
             'where': "WHERE %s" % visitor.sql if visitor.sql else "",
+            'skew': self._skew,
+            'expected_mean': max(self._mean, 1),
         }
 
         async with self._extract_connection(session).cursor() as acursor:
@@ -111,6 +99,5 @@ class PgSkewDistributor(BasePgDistributor[T], typing.Generic[T]):
             row = await acursor.fetchone()
             if not row or not row[0]:
                 return (None, True)
-            # row[0] = object, row[1] = should_create_new, row[2] = total_values
             should_create_new = row[1] if row[2] and row[2] > 0 else True
             return (self._deserialize(row[0]), should_create_new)
