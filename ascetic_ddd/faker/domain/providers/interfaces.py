@@ -127,6 +127,7 @@ class IValueProvider(
     ISetupable, typing.Generic[T_Input, T_Output], metaclass=ABCMeta
 ):
     """
+    Immutable.
     Architecture:
     IValueProvider = f(input_value | None) = result,
     where
@@ -190,6 +191,7 @@ class ICompositeValueProvider(
     ISetupable, typing.Generic[T_Input, T_Output], metaclass=ABCMeta
 ):
     """
+    Immutable. Composite ValueObject.
     Architecture:
     ICompositeValueProvider = f(Σ input_value | None) = result,
     where
@@ -216,6 +218,9 @@ class IEntityProvider(
     ICompositeMutable[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
     ISetupable, typing.Generic[T_Input, T_Output], metaclass=ABCMeta
 ):
+    """
+    Mutable. Saved as part of aggregate.
+    """
 
     @abstractmethod
     def on_init(self):
