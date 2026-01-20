@@ -14,9 +14,9 @@ __all__ = (
     'ICloneable',
     'ISetupable',
     'IProvidable',
-    'IMutable',
+    'IInputOutput',
     'IValueProvider',
-    'ICompositeMutable',
+    'ICompositeInputOutput',
     'ICompositeValueProvider',
     'IEntityProvider',
     'IReferenceProvider',
@@ -103,7 +103,7 @@ class IProvidable(metaclass=ABCMeta):
         raise NotImplementedError
 
 
-class IMutable(typing.Generic[T_Input, T_Output], metaclass=ABCMeta):
+class IInputOutput(typing.Generic[T_Input, T_Output], metaclass=ABCMeta):
 
     @abstractmethod
     async def create(self, session: ISession) -> T_Output:
@@ -123,7 +123,7 @@ class IMutable(typing.Generic[T_Input, T_Output], metaclass=ABCMeta):
 
 
 class IValueProvider(
-    IMutable[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
+    IInputOutput[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
     ISetupable, typing.Generic[T_Input, T_Output], metaclass=ABCMeta
 ):
     """
@@ -154,7 +154,7 @@ class IValueProvider(
     pass
 
 
-class ICompositeMutable(typing.Generic[T_Input, T_Output], metaclass=ABCMeta):
+class ICompositeInputOutput(typing.Generic[T_Input, T_Output], metaclass=ABCMeta):
     """
     Структура Provider не совпадает со структурой агрегата, если агрегат приводится в требуемое состояние многоходово
     (см. агрегат Specialist at grade project).
@@ -187,7 +187,7 @@ class ICompositeMutable(typing.Generic[T_Input, T_Output], metaclass=ABCMeta):
 
 
 class ICompositeValueProvider(
-    IMutable[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
+    IInputOutput[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
     ISetupable, typing.Generic[T_Input, T_Output], metaclass=ABCMeta
 ):
     """
@@ -215,7 +215,7 @@ class ICompositeValueProvider(
 
 
 class IEntityProvider(
-    ICompositeMutable[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
+    ICompositeInputOutput[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
     ISetupable, typing.Generic[T_Input, T_Output], metaclass=ABCMeta
 ):
     """
