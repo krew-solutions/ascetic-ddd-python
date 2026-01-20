@@ -161,6 +161,7 @@ class SubscriptionAggregateProviderAccessor(IAggregateProviderAccessor, typing.G
             async def _observer(aspect, session, agg):
                 # TODO: Optimize me?
                 # Если distributor будет использовать таблицу Repository, то эта фигня не нужна.
+                # Пока еще нужна для in-memory distributor and repository.
                 await self._reference_provider.append(session, agg)
 
             aggregate_provider.attach(

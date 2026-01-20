@@ -2,6 +2,7 @@ import typing
 
 from ascetic_ddd.faker.domain.distributors.m2o import NullableDistributor, DummyDistributor
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
+from ascetic_ddd.faker.infrastructure.distributors.m2o.interfaces import IPgRepository
 from ascetic_ddd.faker.infrastructure.distributors.m2o.pg_sequence_distributor import PgSequenceDistributor
 from ascetic_ddd.faker.infrastructure.distributors.m2o.pg_skew_distributor import PgSkewDistributor
 from ascetic_ddd.faker.infrastructure.distributors.m2o import PgWeightedDistributor
@@ -17,7 +18,8 @@ def pg_distributor_factory(
     skew: float | None = None,
     mean: float | None = None,
     null_weight: float = 0,
-    sequence: bool = False
+    sequence: bool = False,
+    external_source: IPgRepository | None = None,
 ) -> IM2ODistributor[T]:
     """
     Фабрика для Distributor.
@@ -28,11 +30,12 @@ def pg_distributor_factory(
         mean: Среднее количество использований каждого значения. Use mean = 1 for unique.
         null_weight: Вероятность вернуть None (0-1)
         sequence: Pass sequence number to value generator.
+        external_source: Внешний источник данных (repository). Если указан, distributor читает из его таблицы.
     """
     if weights is not None:
-        dist = PgWeightedDistributor[T](weights, mean)
+        dist = PgWeightedDistributor[T](weights, mean, external_source=external_source)
     elif skew is not None:
-        dist = PgSkewDistributor[T](skew=skew, mean=mean)
+        dist = PgSkewDistributor[T](skew=skew, mean=mean, external_source=external_source)
     elif sequence:
         dist = PgSequenceDistributor[T]()
     else:
