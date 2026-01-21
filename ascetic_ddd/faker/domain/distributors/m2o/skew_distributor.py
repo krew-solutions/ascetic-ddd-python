@@ -68,10 +68,11 @@ def estimate_skew(usage_counts: dict[typing.Any, int], tail_cutoff: float = 0.9)
                      for x, y in zip(log_rank, log_freq))
         r_squared = max(0, 1 - ss_res / ss_tot)
 
-    # skew из alpha: при alpha≈1 (Zipf) skew≈2
-    # Эмпирическая формула: skew ≈ 1 + alpha
-    skew = 1.0 + max(0, alpha)
-    skew = max(1.0, min(skew, 10.0))  # ограничить разумным диапазоном
+    # skew из alpha: skew = 1 / (1 - alpha)
+    # Вывод: p(x) ∝ x^(1/skew - 1), Zipf: freq ∝ rank^(-alpha)
+    # Сравнивая показатели: -alpha = 1/skew - 1 → skew = 1/(1-alpha)
+    alpha = max(0, min(alpha, 0.9))  # ограничить: alpha >= 0.9 → skew >= 10
+    skew = 1.0 / (1.0 - alpha) if alpha < 1.0 else 10.0
 
     return skew, r_squared
 
