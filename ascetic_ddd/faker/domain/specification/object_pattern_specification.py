@@ -69,7 +69,12 @@ class ObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
         self._resolved_pattern = await self._do_resolve_nested(session)
 
     async def _do_resolve_nested(self, session: ISession) -> dict:
-        """Рекурсивно резолвит вложенные dict в конкретные ID."""
+        """Depth-first resolution: рекурсивно резолвит вложенные dict в конкретные ID.
+
+        {'fk_id': {'nested_fk': {'status': 'active'}}}
+        → сначала резолвит nested_fk с status='active'
+        → потом возвращает {'fk_id': <конкретный ID>}
+        """
         from ascetic_ddd.faker.domain.providers.interfaces import IReferenceProvider
 
         providers = self._providers_accessor()
