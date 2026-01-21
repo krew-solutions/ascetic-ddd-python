@@ -65,10 +65,13 @@ class ReferenceProvider(
         if self.is_complete():
             return
 
-        # Depth-first: сначала резолвим вложенные constraints в конкретные ID
+        # Создаём specification с providers_accessor для lazy resolve_nested
         if self._input_value is not empty and isinstance(self._input_value, dict):
-            resolved_spec = await self._resolve_nested_constraints(session)
-            specification = ObjectPatternSpecification(resolved_spec, self.aggregate_provider._result_exporter)
+            specification = ObjectPatternSpecification(
+                self._input_value,
+                self.aggregate_provider._result_exporter,
+                providers_accessor=lambda: self.aggregate_provider._providers,
+            )
         elif self._input_value is empty:
             specification = EmptySpecification()
         else:
@@ -95,28 +98,6 @@ class ReferenceProvider(
             self.set(value)
             # self.set() could reset self._output_result
             self._output_result = result
-
-    async def _resolve_nested_constraints(self, session: ISession) -> dict:
-        """
-        Depth-first resolution: рекурсивно резолвит вложенные dict в конкретные ID.
-
-        {'fk_id': {'nested_fk': {'status': 'active'}}}
-        → сначала резолвит nested_fk с status='active'
-        → потом возвращает {'fk_id': <конкретный ID>}
-        """
-        resolved = {}
-        for key, value in self._input_value.items():
-            if isinstance(value, dict):
-                nested_provider = self.aggregate_provider._providers.get(key)
-                if isinstance(nested_provider, ReferenceProvider):
-                    nested_provider.set(value)
-                    await nested_provider.populate(session)
-                    resolved[key] = nested_provider.get()
-                else:
-                    resolved[key] = value
-            else:
-                resolved[key] = value
-        return resolved
 
     async def setup(self, session: ISession):
         await super().setup(session)

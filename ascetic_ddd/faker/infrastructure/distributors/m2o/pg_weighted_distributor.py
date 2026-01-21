@@ -77,6 +77,10 @@ class BasePgDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
                 callback=self._append,
             )
 
+        # Резолвим вложенные constraints (если есть)
+        if hasattr(specification, 'resolve_nested'):
+            await specification.resolve_nested(session)
+
         value, should_create_new = await self._get_next_value(session, specification)
         if should_create_new:
             raise Cursor(

@@ -188,6 +188,10 @@ class BaseDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
                 callback=self._append,
             )
 
+        # Резолвим вложенные constraints (если есть)
+        if hasattr(specification, 'resolve_nested'):
+            await specification.resolve_nested(session)
+
         # Проверяем, соответствует ли объект спецификации (мог "протухнуть")
         if not specification.is_satisfied_by(value):
             self._relocate_stale_value(value, specification)
