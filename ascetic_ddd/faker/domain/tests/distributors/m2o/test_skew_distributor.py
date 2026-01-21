@@ -223,6 +223,94 @@ class CollectionSkewDistributorTestCase(_BaseSkewDistributorTestCase):
         self._check_skew_distribution(result)
 
 
+class SkewIndexSelectIdxTestCase(IsolatedAsyncioTestCase):
+    """
+    Тесты для SkewIndex._select_idx().
+
+    Проверяем формулу: idx = int(n * (1 - random())^skew)
+    Теоретически: P(idx < x*n) = x^(1/skew)
+    """
+
+    def _simulate_select_idx(self, n: int, skew: float, samples: int = 100000) -> list[int]:
+        """Симулирует SkewIndex._select_idx()"""
+        import random
+        results = []
+        for _ in range(samples):
+            idx = int(n * (1 - random.random()) ** skew)
+            idx = min(idx, n - 1)
+            results.append(idx)
+        return results
+
+    def _get_percentile_ratio(self, results: list[int], n: int, percentile: float) -> float:
+        """Возвращает долю результатов в первых percentile% индексов."""
+        cutoff = int(n * percentile)
+        count_in_range = sum(1 for r in results if r < cutoff)
+        return count_in_range / len(results)
+
+    async def test_select_idx_uniform(self):
+        """При skew=1.0 распределение равномерное."""
+        n = 1000
+        results = self._simulate_select_idx(n, skew=1.0)
+
+        # Первые 25% должны получать ~25% вызовов
+        ratio = self._get_percentile_ratio(results, n, 0.25)
+        self.assertAlmostEqual(ratio, 0.25, delta=0.02)
+
+        # Первые 50% должны получать ~50% вызовов
+        ratio = self._get_percentile_ratio(results, n, 0.50)
+        self.assertAlmostEqual(ratio, 0.50, delta=0.02)
+
+    async def test_select_idx_theoretical_formula(self):
+        """
+        Проверка теоретической формулы: P(idx < x*n) = x^(1/skew).
+
+        Математическое обоснование:
+        - idx = n * (1 - u)^skew, где u ~ Uniform[0,1)
+        - P(idx < k) = P(n*(1-u)^skew < k) = P((1-u) < (k/n)^(1/skew))
+        - P(idx < k) = (k/n)^(1/skew)
+        """
+        n = 1000
+        samples = 100000
+
+        test_cases = [
+            # (skew, percentile, expected_ratio, tolerance)
+            (2.0, 0.10, 0.10 ** 0.5, 0.02),      # 10% → 31.6%
+            (2.0, 0.25, 0.25 ** 0.5, 0.02),      # 25% → 50%
+            (2.0, 0.50, 0.50 ** 0.5, 0.02),      # 50% → 70.7%
+            (3.0, 0.10, 0.10 ** (1/3), 0.02),    # 10% → 46.4%
+            (3.0, 0.25, 0.25 ** (1/3), 0.02),    # 25% → 63%
+            (4.0, 0.10, 0.10 ** 0.25, 0.02),     # 10% → 56.2%
+            (4.0, 0.50, 0.50 ** 0.25, 0.02),     # 50% → 84.1%
+        ]
+
+        for skew, percentile, expected, tolerance in test_cases:
+            with self.subTest(skew=skew, percentile=percentile):
+                results = self._simulate_select_idx(n, skew, samples)
+                actual = self._get_percentile_ratio(results, n, percentile)
+
+                self.assertAlmostEqual(
+                    actual, expected, delta=tolerance,
+                    msg=f"skew={skew}, первые {percentile*100:.0f}%: "
+                        f"ожидалось {expected*100:.1f}%, получено {actual*100:.1f}%"
+                )
+
+    async def test_select_idx_skew_increases_bias(self):
+        """Больший skew → больший перекос к началу."""
+        n = 1000
+        percentile = 0.25
+
+        prev_ratio = 0
+        for skew in [1.0, 2.0, 3.0, 4.0]:
+            results = self._simulate_select_idx(n, skew)
+            ratio = self._get_percentile_ratio(results, n, percentile)
+
+            self.assertGreater(
+                ratio, prev_ratio,
+                msg=f"skew={skew} должен давать больший перекос чем предыдущий"
+            )
+            prev_ratio = ratio
+
+
 class EstimateSkewTestCase(IsolatedAsyncioTestCase):
     """
     Тесты для estimate_skew().
