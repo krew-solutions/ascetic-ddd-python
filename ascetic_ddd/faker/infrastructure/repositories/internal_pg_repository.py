@@ -50,6 +50,10 @@ class InternalPgRepository(Observable, typing.Generic[T]):
         self._id_attr = id_attr
         self._initialized = initialized
 
+    @property
+    def table(self) -> str:
+        return self._table
+
     @check_init
     async def insert(self, session: ISession, agg: T):
         sql = """

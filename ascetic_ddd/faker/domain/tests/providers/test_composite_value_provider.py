@@ -108,6 +108,9 @@ class StubDistributor(IM2ODistributor):
     async def anotify(self, aspect, *args, **kwargs):
         pass
 
+    def bind_external_source(self, external_source: typing.Any) -> None:
+        pass
+
 
 class MockSession:
     """Mock session for testing."""

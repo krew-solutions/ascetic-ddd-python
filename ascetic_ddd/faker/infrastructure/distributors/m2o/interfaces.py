@@ -3,10 +3,11 @@ import typing
 from ascetic_ddd.observable.interfaces import IObservable
 
 
-__all__ = ('IPgRepository',)
+__all__ = ('IPgExternalSource',)
 
 
-class IPgRepository(IObservable, typing.Protocol):
+@typing.runtime_checkable
+class IPgExternalSource(IObservable, typing.Protocol):
     @property
     def table(self) -> str:
         ...

@@ -150,20 +150,15 @@ class SubscriptionAggregateProviderAccessor(IAggregateProviderAccessor, typing.G
         aggregate_provider = self._delegate()
         if not self._initialized:
 
-            """
-            async def _observer(aspect, session, value):
-                if value is not empty:
-                    agg = await aggregate_provider._repository.get(session, value)
-                    await self._reference_provider.append(session, agg)
+            # Привязываем repository как external_source для distributor
+            if hasattr(aggregate_provider, '_repository'):
+                self._reference_provider._distributor.bind_external_source(
+                    aggregate_provider._repository
+                )
 
-            aggregate_provider.id_provider.attach(
-                'distributor.value', _observer, self._reference_provider.provider_name
-            )
-            """
             async def _observer(aspect, session, agg):
-                # TODO: Optimize me?
-                # Если distributor будет использовать таблицу Repository, то эта фигня не нужна.
-                # Пока еще нужна для in-memory distributor and repository.
+                # Нужна для in-memory distributor and repository.
+                # Для Pg distributor с external_source — это no-op (append проверяет _external_source).
                 await self._reference_provider.append(session, agg)
 
             aggregate_provider.attach(

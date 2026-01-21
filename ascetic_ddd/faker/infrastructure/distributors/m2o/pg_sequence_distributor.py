@@ -165,6 +165,10 @@ class PgSequenceDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     def __deepcopy__(self, memodict={}):
         return self
 
+    def bind_external_source(self, external_source: typing.Any) -> None:
+        """PgSequenceDistributor не использует external_source."""
+        pass
+
     async def _is_initialized(self, session: ISession) -> bool:
         sql = """SELECT to_regclass(%s)"""
         async with self._extract_connection(session).cursor() as acursor:

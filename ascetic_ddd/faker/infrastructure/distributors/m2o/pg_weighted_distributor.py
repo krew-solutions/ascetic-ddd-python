@@ -16,7 +16,7 @@ from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
-from ascetic_ddd.faker.infrastructure.distributors.m2o.interfaces import IPgRepository
+from ascetic_ddd.faker.infrastructure.distributors.m2o.interfaces import IPgExternalSource
 from ascetic_ddd.faker.infrastructure.session.pg_session import extract_internal_connection
 from ascetic_ddd.faker.infrastructure.specification.pg_specification_visitor import PgSpecificationVisitor
 from ascetic_ddd.faker.infrastructure.utils.json import JSONEncoder
@@ -44,21 +44,25 @@ class BasePgDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     _values_table: str | None = None
     _default_key: str = str(frozenset())
     _provider_name: str | None = None
-    _external_source: IPgRepository | None = None
+    _external_source: IPgExternalSource | None = None
 
     def __init__(
             self,
             mean: float | None = None,
-            external_source: IPgRepository | None = None,
             initialized: bool = False
     ):
-        self._external_source = external_source
-        if external_source:
-            self._values_table = external_source.table
+        self._external_source = None
         if mean is not None:
             self._mean = mean
         self._initialized = initialized
         super().__init__()
+
+    def bind_external_source(self, external_source: typing.Any) -> None:
+        """Привязывает внешний источник данных (repository) и обновляет таблицу."""
+        if not isinstance(external_source, IPgExternalSource):
+            raise TypeError("Expected IPgExternalSource, got %s" % type(external_source))
+        self._external_source = external_source
+        self._values_table = external_source.table
 
     async def next(
             self,
@@ -204,11 +208,10 @@ class PgWeightedDistributor(BasePgDistributor[T], typing.Generic[T]):
             self,
             weights: typing.Iterable[float] = tuple(),
             mean: float | None = None,
-            external_source: IPgRepository | None = None,
             initialized: bool = False
     ):
         self._weights = list(weights)
-        super().__init__(mean=mean, external_source=external_source, initialized=initialized)
+        super().__init__(mean=mean, initialized=initialized)
 
     def _compute_partition(self) -> tuple[int, float, int]:
         """

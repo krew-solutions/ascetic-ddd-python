@@ -4,6 +4,7 @@ from collections.abc import Callable, Hashable
 from ascetic_ddd.faker.domain.providers.aggregate_provider import IAggregateRepository
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
+from ascetic_ddd.faker.infrastructure.distributors.m2o.interfaces import IPgExternalSource
 from ascetic_ddd.seedwork.domain.identity.interfaces import IAccessible
 from ascetic_ddd.disposable.interfaces import IDisposable
 
@@ -16,7 +17,7 @@ T = typing.TypeVar("T", covariant=True)
 
 class CompositeRepository(typing.Generic[T]):
     _external_repository: IAggregateRepository[T]
-    _internal_repository: IAggregateRepository[T]
+    _internal_repository: IAggregateRepository[T] | IPgExternalSource
 
     def __init__(
             self,
@@ -25,6 +26,10 @@ class CompositeRepository(typing.Generic[T]):
     ):
         self._external_repository = external_repository
         self._internal_repository = internal_repository
+
+    @property
+    def table(self) -> str:
+        return self._internal_repository.table
 
     async def insert(self, session: ISession, agg: T):
         await self._internal_repository.insert(session, agg)  # Lock it first.

@@ -91,6 +91,9 @@ class StubDistributor(IM2ODistributor):
     async def anotify(self, aspect, *args, **kwargs):
         pass
 
+    def bind_external_source(self, external_source) -> None:
+        pass
+
 
 # =============================================================================
 # Stub Repository

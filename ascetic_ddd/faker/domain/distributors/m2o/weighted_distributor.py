@@ -4,7 +4,7 @@ import typing
 from abc import abstractmethod
 
 from ascetic_ddd.faker.domain.distributors.m2o.cursor import Cursor
-from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor, IRepository
+from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor, IExternalSource
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
@@ -140,17 +140,23 @@ class BaseDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     _indexes: dict[ISpecification, BaseIndex[T]]
     _default_spec: ISpecification = None
     _provider_name: str | None = None
-    _external_source: IRepository[T] | None = None
+    _external_source: IExternalSource[T] | None = None
 
-    def __init__(self, mean: float | None = None, external_source: IRepository[T] | None = None):
-        self._external_source = external_source
-        self._external_source = None  # Temporary disable
+    def __init__(self, mean: float | None = None):
+        self._external_source = None
         if mean is not None:
             self._mean = mean
         self._default_spec = EmptySpecification()
         self._indexes = dict()
         self._indexes[self._default_spec] = self._create_index(self._default_spec)
         super().__init__()
+
+    def bind_external_source(self, external_source: typing.Any) -> None:
+        """Привязывает внешний источник данных (repository)."""
+        if not isinstance(external_source, IExternalSource):
+            raise TypeError("Expected IExternalSource, got %s" % type(external_source))
+        self._external_source = external_source
+        self._external_source = None  # Temporary disable
 
     @abstractmethod
     def _create_index(self, specification: ISpecification[T]) -> BaseIndex[T]:
@@ -348,10 +354,9 @@ class WeightedDistributor(BaseDistributor[T], typing.Generic[T]):
             self,
             weights: typing.Iterable[float] = tuple(),
             mean: float | None = None,
-            external_source: IRepository[T] | None = None,
     ):
         self._weights = list(weights)
-        super().__init__(mean=mean, external_source=external_source)
+        super().__init__(mean=mean)
 
     def _create_index(self, specification: ISpecification[T]) -> Index[T]:
         return Index(self._weights, specification)

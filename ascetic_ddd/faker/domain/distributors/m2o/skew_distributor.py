@@ -3,7 +3,6 @@ import random
 import typing
 
 from ascetic_ddd.faker.domain.distributors.m2o.weighted_distributor import BaseIndex, BaseDistributor
-from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IRepository
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 
 __all__ = ('SkewDistributor', 'SkewIndex', 'estimate_skew', 'weights_to_skew')
@@ -166,10 +165,9 @@ class SkewDistributor(BaseDistributor[T], typing.Generic[T]):
             self,
             skew: float = 2.0,
             mean: float | None = None,
-            external_source: IRepository[T] | None = None,
     ):
         self._skew = skew
-        super().__init__(mean=mean, external_source=external_source)
+        super().__init__(mean=mean)
 
     def _create_index(self, specification: ISpecification[T]) -> SkewIndex[T]:
         return SkewIndex(self._skew, specification)

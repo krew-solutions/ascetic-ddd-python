@@ -9,14 +9,15 @@ __all__ = (
     'IM2ODistributor',
     'IM2ODistributorFactory',
     'ICursor',
-    'IRepository',
+    'IExternalSource',
 )
 
 
 T = typing.TypeVar("T", covariant=True)
 
 
-class IRepository(IObservable, typing.Protocol[T]):
+@typing.runtime_checkable
+class IExternalSource(IObservable, typing.Protocol[T]):
     ...
 
 
@@ -68,6 +69,11 @@ class IM2ODistributor(IObservable, typing.Generic[T], metaclass=ABCMeta):
     def __deepcopy__(self, memodict={}):
         raise NotImplementedError
 
+    @abstractmethod
+    def bind_external_source(self, external_source: typing.Any) -> None:
+        """Привязывает внешний источник данных (repository)."""
+        raise NotImplementedError
+
 
 class ICursor(typing.Generic[T], StopAsyncIteration, metaclass=ABCMeta):
     """
@@ -90,7 +96,6 @@ class IM2ODistributorFactory(typing.Protocol[T]):
         mean: float | None = None,
         null_weight: float = 0,
         sequence: bool = False,
-        external_source: IRepository[T] | None = None,
     ) -> IM2ODistributor[T]:
         """
         Фабрика для Distributor.
@@ -101,6 +106,5 @@ class IM2ODistributorFactory(typing.Protocol[T]):
             mean: Среднее количество использований каждого значения. Use mean = 1 for unique.
             null_weight: Вероятность вернуть None (0-1)
             sequence: Pass sequence number to value generator.
-            external_source: Внешний источник данных (repository).
         """
         ...
