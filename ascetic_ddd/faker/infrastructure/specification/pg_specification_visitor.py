@@ -33,7 +33,6 @@ class PgSpecificationVisitor(ISpecificationVisitor):
         return self._params
 
     def visit_jsonpath_specification(self, jsonpath: str, params: typing.Tuple[typing.Any, ...]):
-        # TODO: Set target
         self._sql += "jsonb_path_match(%s, '%s')" % (self._target_value_expr, jsonpath)  # jsonb_path_match_tz?
         self._params += params
 
