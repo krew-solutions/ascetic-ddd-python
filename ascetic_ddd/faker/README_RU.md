@@ -363,7 +363,7 @@ class BookProvider(AggregateProvider[dict, Book]):
     async def do_populate(self, session, specification=None):
         # Берём tenant_id из id для согласованности
         await self.id.populate(session)
-        self.author_id.set(self.id.tenant_id.get())
+        self.author_id.set({'tenant_id': self.id.tenant_id.get(),})
         await super().do_populate(session)
 
     @staticmethod
