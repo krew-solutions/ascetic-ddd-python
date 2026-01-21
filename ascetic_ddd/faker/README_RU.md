@@ -86,23 +86,30 @@ Skew вычисляется через log-log линейную регресси
 - `skew = 1 / (1 - alpha)`
 
 ```sql
-SELECT
-    1.0 / (1.0 - ABS(REGR_SLOPE(log_freq, log_rank))) AS skew,
-    ABS(REGR_SLOPE(log_freq, log_rank)) AS alpha,
-    REGR_R2(log_freq, log_rank) AS r_squared
-FROM (
+WITH ranked AS (
     SELECT
-        LN(ROW_NUMBER() OVER (ORDER BY c DESC)) AS log_rank,
-        LN(c) AS log_freq
-    FROM (
-        SELECT company_id, COUNT(*) AS c
-        FROM employees
-        WHERE company_id IS NOT NULL
-        GROUP BY company_id
-        HAVING COUNT(*) > 0
-    ) AS per_company
-) AS log_data;
+        company_id,
+        COUNT(*) AS freq,
+        ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC) AS rank
+    FROM employees
+    WHERE company_id IS NOT NULL
+    GROUP BY company_id
+),
+log_data AS (
+    SELECT
+        LN(rank::float) AS log_rank,
+        LN(freq::float) AS log_freq
+    FROM ranked
+    WHERE rank <= (SELECT COUNT(*) * 0.9 FROM ranked)  -- отбросить хвост
+)
+SELECT
+    1.0 / (1.0 + REGR_SLOPE(log_freq, log_rank)) AS skew,
+    -REGR_SLOPE(log_freq, log_rank) AS alpha,
+    REGR_R2(log_freq, log_rank) AS r_squared
+FROM log_data;
 ```
+
+Примечание: `slope < 0` для Zipf-данных, поэтому `1 + slope = 1 - alpha`.
 
 Интерпретация:
 - `alpha ≈ 0` → `skew ≈ 1.0` — равномерное распределение
