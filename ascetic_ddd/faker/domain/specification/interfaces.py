@@ -7,7 +7,11 @@ T = typing.TypeVar("T", covariant=True)
 
 class ISpecificationVisitor(typing.Protocol):
 
-    def visit_object_pattern_specification(self, object_pattern: typing.Any):
+    def visit_object_pattern_specification(
+            self,
+            object_pattern: typing.Any,
+            aggregate_provider_accessor: typing.Callable[[], typing.Any] | None = None
+    ):
         ...
 
     def visit_empty_specification(self):

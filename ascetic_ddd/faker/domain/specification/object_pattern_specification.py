@@ -15,20 +15,20 @@ class ObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
     _object_pattern: dict
     _hash: int | None
     _object_exporter: typing.Callable[[T], dict]
-    _providers_accessor: typing.Callable[[], dict] | None
+    _aggregate_provider_accessor: typing.Callable[[], typing.Any] | None
     _resolved_pattern: dict | None
 
-    __slots__ = ('_object_pattern', '_object_exporter', '_hash', '_providers_accessor', '_resolved_pattern')
+    __slots__ = ('_object_pattern', '_object_exporter', '_hash', '_aggregate_provider_accessor', '_resolved_pattern')
 
     def __init__(
             self,
             object_pattern: dict,
             object_exporter: typing.Callable[[T], dict],
-            providers_accessor: typing.Callable[[], dict] | None = None,
+            aggregate_provider_accessor: typing.Callable[[], typing.Any] | None = None,
     ):
         self._object_pattern = object_pattern
         self._object_exporter = object_exporter
-        self._providers_accessor = providers_accessor
+        self._aggregate_provider_accessor = aggregate_provider_accessor
         self._resolved_pattern = None
         self._hash = None
 
@@ -49,7 +49,7 @@ class ObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
         return is_subset(pattern, state)
 
     def accept(self, visitor: ISpecificationVisitor):
-        visitor.visit_object_pattern_specification(self._object_pattern)
+        visitor.visit_object_pattern_specification(self._object_pattern, self._aggregate_provider_accessor)
 
     async def resolve_nested(self, session: ISession) -> None:
         """
@@ -62,7 +62,7 @@ class ObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
         if self._resolved_pattern is not None:
             return
 
-        if self._providers_accessor is None:
+        if self._aggregate_provider_accessor is None:
             self._resolved_pattern = self._object_pattern
             return
 
@@ -77,7 +77,8 @@ class ObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
         """
         from ascetic_ddd.faker.domain.providers.interfaces import IReferenceProvider
 
-        providers = self._providers_accessor()
+        aggregate_provider = self._aggregate_provider_accessor()
+        providers = aggregate_provider._providers
         resolved = {}
 
         for key, value in self._object_pattern.items():

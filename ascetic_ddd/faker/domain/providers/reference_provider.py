@@ -65,12 +65,12 @@ class ReferenceProvider(
         if self.is_complete():
             return
 
-        # Создаём specification с providers_accessor для lazy resolve_nested
+        # Создаём specification с aggregate_provider_accessor для lazy resolve_nested и subqueries
         if self._input_value is not empty and isinstance(self._input_value, dict):
             specification = ObjectPatternSpecification(
                 self._input_value,
                 self.aggregate_provider._result_exporter,
-                providers_accessor=lambda: self.aggregate_provider._providers,
+                aggregate_provider_accessor=lambda: self.aggregate_provider,
             )
         elif self._input_value is empty:
             specification = EmptySpecification()
