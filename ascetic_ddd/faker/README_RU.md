@@ -54,35 +54,65 @@ BDD (Behavior-driven development) и ATDD (Acceptance Test-Driven Development).
 ## Снятие weights для большого диапазона
 
 ```sql
-  SELECT array_agg(weight ORDER BY part)
+SELECT array_agg(weight ORDER BY part)
+FROM (
+  SELECT
+      ntile(4) OVER (ORDER BY c DESC) AS part,
+      SUM(c) OVER (PARTITION BY ntile(4) OVER (ORDER BY c DESC)) /
+      SUM(c) OVER () AS weight
   FROM (
-      SELECT
-          ntile(4) OVER (ORDER BY c DESC) AS part,
-          SUM(c) OVER (PARTITION BY ntile(4) OVER (ORDER BY c DESC)) /
-          SUM(c) OVER () AS weight
-      FROM (
-          SELECT company_id, COUNT(*) AS c
-          FROM employees
-          WHERE company_id IS NOT NULL
-          GROUP BY company_id
-      ) AS per_company
-  ) AS t
-  GROUP BY part;
+      SELECT company_id, COUNT(*) AS c
+      FROM employees
+      WHERE company_id IS NOT NULL
+      GROUP BY company_id
+  ) AS per_company
+) AS t
+GROUP BY part;
 ```
+
+
+## Снятие skew
+
+Skew вычисляется через log-log линейную регрессию (степенной закон Ципфа).
+Формула: `skew = 1 + alpha`, где `alpha` — наклон регрессии `log(freq) ~ log(rank)`.
+
+```sql
+SELECT
+    1 + ABS(REGR_SLOPE(log_freq, log_rank)) AS skew,
+    REGR_R2(log_freq, log_rank) AS r_squared
+FROM (
+    SELECT
+        LN(ROW_NUMBER() OVER (ORDER BY c DESC)) AS log_rank,
+        LN(c) AS log_freq
+    FROM (
+        SELECT company_id, COUNT(*) AS c
+        FROM employees
+        WHERE company_id IS NOT NULL
+        GROUP BY company_id
+        HAVING COUNT(*) > 0
+    ) AS per_company
+) AS log_data;
+```
+
+Интерпретация:
+- `skew ≈ 1.0` — равномерное распределение
+- `skew ≈ 2.0` — умеренный перекос (20% значений получают ~60% вызовов)
+- `skew ≈ 3.0` — сильный перекос (10% значений получают ~70% вызовов)
+- `r_squared` — качество подгонки (0-1), чем ближе к 1, тем лучше данные описываются степенным законом
 
 
 ## Снятие weights для фиксированного диапазона (выбор из списка)
 
 ```sql
-  SELECT json_agg(val), json_agg(p) FROM (
-      SELECT
-          status AS val,
-          ROUND(COUNT(id)::decimal / SUM(COUNT(id)) OVER (), 5) AS p
-      FROM employees
-      WHERE status IS NOT NULL
-      GROUP BY status
-      ORDER BY COUNT(id) DESC
-  ) AS result;
+SELECT json_agg(val), json_agg(p) FROM (
+  SELECT
+      status AS val,
+      ROUND(COUNT(id)::decimal / SUM(COUNT(id)) OVER (), 5) AS p
+  FROM employees
+  WHERE status IS NOT NULL
+  GROUP BY status
+  ORDER BY COUNT(id) DESC
+) AS result;
 ```
 
 
