@@ -74,11 +74,21 @@ GROUP BY part;
 ## Снятие skew
 
 Skew вычисляется через log-log линейную регрессию (степенной закон Ципфа).
-Формула: `skew = 1 + alpha`, где `alpha` — наклон регрессии `log(freq) ~ log(rank)`.
+
+Математическое обоснование:
+- SkewDistributor использует формулу: `idx = floor(n * (1 - random())^skew)`
+- Это даёт плотность вероятности: `p(x) ∝ x^(1/skew - 1)`
+- Закон Ципфа: `freq(rank) ∝ rank^(-alpha)`
+- Сравнивая показатели: `-alpha = 1/skew - 1`
+
+Формулы преобразования:
+- `alpha = 1 - 1/skew = (skew - 1) / skew`
+- `skew = 1 / (1 - alpha)`
 
 ```sql
 SELECT
-    1 + ABS(REGR_SLOPE(log_freq, log_rank)) AS skew,
+    1.0 / (1.0 - ABS(REGR_SLOPE(log_freq, log_rank))) AS skew,
+    ABS(REGR_SLOPE(log_freq, log_rank)) AS alpha,
     REGR_R2(log_freq, log_rank) AS r_squared
 FROM (
     SELECT
@@ -95,9 +105,10 @@ FROM (
 ```
 
 Интерпретация:
-- `skew ≈ 1.0` — равномерное распределение
-- `skew ≈ 2.0` — умеренный перекос (20% значений получают ~60% вызовов)
-- `skew ≈ 3.0` — сильный перекос (10% значений получают ~70% вызовов)
+- `alpha ≈ 0` → `skew ≈ 1.0` — равномерное распределение
+- `alpha ≈ 0.5` → `skew ≈ 2.0` — умеренный перекос
+- `alpha ≈ 0.67` → `skew ≈ 3.0` — сильный перекос
+- `alpha → 1` → `skew → ∞` — экстремальный перекос (всё в одно значение)
 - `r_squared` — качество подгонки (0-1), чем ближе к 1, тем лучше данные описываются степенным законом
 
 
