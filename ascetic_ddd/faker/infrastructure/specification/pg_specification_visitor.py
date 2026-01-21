@@ -14,15 +14,13 @@ __all__ = ("PgSpecificationVisitor",)
 
 class PgSpecificationVisitor(ISpecificationVisitor):
     _target_value_expr: str
-    _target_agg_expr: str
     _sql: str
     _params: typing.Tuple[typing.Any, ...]
 
     __slots__ = ("_target_obj_expr", "_sql", "_params",)
 
-    def __init__(self, target_value_expr: str = "value", target_obj_expr: str = "a.value"):
+    def __init__(self, target_value_expr: str = "value"):
         self._target_value_expr = target_value_expr
-        self._target_agg_expr = escape(target_obj_expr)
         self._sql = ""
         self._params = tuple()
 
