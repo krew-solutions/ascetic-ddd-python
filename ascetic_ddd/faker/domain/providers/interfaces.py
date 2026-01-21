@@ -20,7 +20,7 @@ __all__ = (
     'ICompositeValueProvider',
     'IEntityProvider',
     'IReferenceProvider',
-    'IDependentMutable',
+    'IDependentInputOutput',
     'IDependentProvider',
     'IRelativeProvider',
     'IValueGenerator',
@@ -251,7 +251,7 @@ class IReferenceProvider(
         raise NotImplementedError
 
 
-class IDependentMutable(typing.Generic[T_Input, T_Output], metaclass=ABCMeta):
+class IDependentInputOutput(typing.Generic[T_Input, T_Output], metaclass=ABCMeta):
 
     @abstractmethod
     async def create(self, session: ISession) -> list[T_Output]:
@@ -267,7 +267,7 @@ class IDependentMutable(typing.Generic[T_Input, T_Output], metaclass=ABCMeta):
 
 
 class IDependentProvider(
-    IDependentMutable[T_Input, T_Id_Output], IProvidable, IObservable, INameable, ICloneable,
+    IDependentInputOutput[T_Input, T_Id_Output], IProvidable, IObservable, INameable, ICloneable,
     ISetupable, typing.Generic[T_Input, T_Output, T_Id_Output], metaclass=ABCMeta
 ):
     """
