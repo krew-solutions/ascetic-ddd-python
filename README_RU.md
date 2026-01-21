@@ -2,7 +2,7 @@
 
 Toolkit and [seedwork](https://martinfowler.com/bliki/Seedwork.html) for a python DDD project.
 
-Данный проект представляет собой компиляцию различных файлов из различных моих Open Source библиотек,
+Данный проект представляет собой компиляцию файлов из различных моих Open Source библиотек,
 а также подсмотренных мною решений в Open Source Reference Applications,
 а так же транспайлинг на Python моих файлов с Golang Reference Application [Grade](https://github.com/emacsway/grade),
 которые я наиболее часто использую в различных проектах.
@@ -24,7 +24,7 @@ Toolkit and [seedwork](https://martinfowler.com/bliki/Seedwork.html) for a pytho
 Внимание!
 Данный проект пока еще не прошел отладку и оптимизацию, и представляет собой просто черновик моих мыслей.
 Структура проекта и обратная совместимость до версии 1.0.0 не гарантируется.
-Некоторые пакеты (например, jsonpath parsers) сгенерированы Claude и еще не прошли моей инспекции.
+Некоторые пакеты (например, jsonpath parsers) сгенерированы Claude и еще не прошли моей проверки.
 
 Связаться со мной: [@emacsway](https://t.me/emacsway)
 
@@ -36,7 +36,7 @@ Toolkit and [seedwork](https://martinfowler.com/bliki/Seedwork.html) for a pytho
 
 Причины три:
 
-1. Проект может быть распилен на ряд самостоятельных библиотек.\
+1. Проект может быть распилен в будущем на ряд самостоятельных библиотек.\
    Этим и продиктована его структура (много пакетов в корне).
 2. Это, прежде всего, [seedwork](https://martinfowler.com/bliki/Seedwork.html), и его структура сделана таким образом,\
    чтобы было удобно копировать только релевантные его пакеты вместе с тестами.
