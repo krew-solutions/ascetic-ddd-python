@@ -30,6 +30,13 @@ dev = [
 ]
 
 
+[tool.poetry]
+packages = [{include = "ascetic_ddd"}]
+exclude = [
+    "ascetic_ddd/**/tests",
+    "ascetic_ddd/**/tests/**",
+]
+
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
