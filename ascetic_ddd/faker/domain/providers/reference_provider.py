@@ -64,7 +64,12 @@ class ReferenceProvider(
     async def populate(self, session: ISession) -> None:
         if self.is_complete():
             return
-        if self._input_value is empty:
+
+        # Depth-first: сначала резолвим вложенные constraints в конкретные ID
+        if self._input_value is not empty and isinstance(self._input_value, dict):
+            resolved_spec = await self._resolve_nested_constraints(session)
+            specification = ObjectPatternSpecification(resolved_spec, self.aggregate_provider._result_exporter)
+        elif self._input_value is empty:
             specification = EmptySpecification()
         else:
             specification = ObjectPatternSpecification(self._input_value, self.aggregate_provider._result_exporter)
@@ -74,12 +79,6 @@ class ReferenceProvider(
             if result is not None:
                 value = self.aggregate_provider._result_exporter(result)
                 self.set(value)
-                # FIXME: Вот здесь предустановленные значения следующих каскадов связей (вложенных агрегатов)
-                # будут проигнорированы и даже сброшены.
-                # Если нам нужен пользователь с ролью A, мы можем извлечь агрегат с ролью B,
-                # т.к. вложенные связи мы не проверяем.
-                # Вместо критериев выборки вложенной связи в них будет просто предустановлен идентификатор связи.
-                # Specification должен знать как сджойнить связи.
                 self.aggregate_provider.set(value)
                 await self.aggregate_provider.populate(session)
             else:
@@ -96,6 +95,28 @@ class ReferenceProvider(
             self.set(value)
             # self.set() could reset self._output_result
             self._output_result = result
+
+    async def _resolve_nested_constraints(self, session: ISession) -> dict:
+        """
+        Depth-first resolution: рекурсивно резолвит вложенные dict в конкретные ID.
+
+        {'fk_id': {'nested_fk': {'status': 'active'}}}
+        → сначала резолвит nested_fk с status='active'
+        → потом возвращает {'fk_id': <конкретный ID>}
+        """
+        resolved = {}
+        for key, value in self._input_value.items():
+            if isinstance(value, dict):
+                nested_provider = self.aggregate_provider._providers.get(key)
+                if isinstance(nested_provider, ReferenceProvider):
+                    nested_provider.set(value)
+                    await nested_provider.populate(session)
+                    resolved[key] = nested_provider.get()
+                else:
+                    resolved[key] = value
+            else:
+                resolved[key] = value
+        return resolved
 
     async def setup(self, session: ISession):
         await super().setup(session)
