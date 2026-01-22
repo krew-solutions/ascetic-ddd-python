@@ -51,6 +51,9 @@ class IterableGenerator(typing.Generic[T]):
 
 
 class HypothesisStrategyGenerator(typing.Generic[T]):
+    """
+    Он нужен? self._strategy.example() -- обычная функция. Есть же CallableGenerator.
+    """
 
     def __init__(self, strategy: strategies.SearchStrategy[T]):
         self._strategy = strategy
