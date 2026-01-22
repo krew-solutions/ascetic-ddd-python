@@ -243,23 +243,34 @@ class UserFaker(AggregateProvider[dict, User]):
 class ObjectPatternSpecificationBasicTestCase(IsolatedAsyncioTestCase):
     """Basic tests for ObjectPatternSpecification."""
 
-    def test_is_satisfied_by_simple_pattern(self):
+    async def test_is_satisfied_by_simple_pattern(self):
         """Simple pattern matching should work."""
         spec = ObjectPatternSpecification(
             {'status': 'active'},
             lambda obj: obj
         )
+        session = MockSession()
+        await spec.resolve_nested(session)
         self.assertTrue(spec.is_satisfied_by({'status': 'active', 'name': 'test'}))
         self.assertFalse(spec.is_satisfied_by({'status': 'inactive', 'name': 'test'}))
 
-    def test_is_satisfied_by_nested_pattern(self):
+    async def test_is_satisfied_by_nested_pattern(self):
         """Nested pattern matching should work."""
         spec = ObjectPatternSpecification(
             {'address': {'city': 'Moscow'}},
             lambda obj: obj
         )
+        session = MockSession()
+        await spec.resolve_nested(session)
         self.assertTrue(spec.is_satisfied_by({'address': {'city': 'Moscow', 'street': 'Main'}}))
         self.assertFalse(spec.is_satisfied_by({'address': {'city': 'London'}}))
+
+    def test_is_satisfied_by_unresolved_raises_exception(self):
+        """is_satisfied_by() on unresolved specification should raise TypeError."""
+        spec = ObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
+        with self.assertRaises(TypeError) as ctx:
+            spec.is_satisfied_by({'status': 'active'})
+        self.assertIn("unresolved", str(ctx.exception))
 
     async def test_hash_equality(self):
         """Specifications with same resolved pattern should be equal."""

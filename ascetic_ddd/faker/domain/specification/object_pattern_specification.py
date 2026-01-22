@@ -54,10 +54,14 @@ class ObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
         return self._resolved_pattern == other._resolved_pattern
 
     def is_satisfied_by(self, obj: T) -> bool:
+        if self._resolved_pattern is None:
+            raise TypeError(
+                "Cannot use unresolved ObjectPatternSpecification. "
+                "Call resolve_nested() first."
+            )
         state = self._object_exporter(obj)
-        pattern = self._resolved_pattern or self._object_pattern
         # return predicates.is_match(state, self._object_pattern)
-        return is_subset(pattern, state)
+        return is_subset(self._resolved_pattern, state)
 
     def accept(self, visitor: ISpecificationVisitor):
         visitor.visit_object_pattern_specification(self._object_pattern, self._aggregate_provider_accessor)
