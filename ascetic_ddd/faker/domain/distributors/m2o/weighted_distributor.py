@@ -169,7 +169,7 @@ class BaseDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
             specification: ISpecification[T] | None = None,
     ) -> T:
         if specification is None:
-            specification = EmptySpecification()
+            specification = self._default_spec
 
         # Резолвим вложенные constraints (если есть)
         if hasattr(specification, 'resolve_nested'):
