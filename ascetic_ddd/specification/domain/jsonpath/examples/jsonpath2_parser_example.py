@@ -184,7 +184,7 @@ def main():
     print("  ✨ Supports RFC 9535 logical operators: &&, ||, ! (auto-normalized)")
     print("  • Full RFC 9535 JSONPath standard compliance")
     print("  • Strict syntax validation with detailed errors")
-    print("  • Full compatibility with jsonpath_ng and Native parsers")
+    print("  • Full compatibility with Native parsers")
     print("  • Fast parsing based on ANTLR")
 
 
