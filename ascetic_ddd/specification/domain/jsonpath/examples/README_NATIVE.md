@@ -182,10 +182,10 @@ spec.match(store, (500.0,))  # True
 
 ```bash
 # Запустить тесты нативного парсера
-python -m pytest ascetic_ddd/specification/domain/jsonpath/test_jsonpath_parser_native.py -v
+python -m unittest ascetic_ddd.specification.domain.jsonpath.test_jsonpath_parser_native -v
 
 # Все тесты
-python -m pytest ascetic_ddd/specification/ -v
+python -m unittest discover -s ascetic_ddd/specification -p "test_*.py" -v
 ```
 
 ## Полный пример использования

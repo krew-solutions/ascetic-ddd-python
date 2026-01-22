@@ -377,13 +377,13 @@ spec.match(user, {"min_age": 25, "max_age": 35})  # True
 
 ```bash
 # Запустить тесты RFC 9535 парсера
-python -m pytest ascetic_ddd/specification/domain/jsonpath/test_jsonpath_parser_rfc9535.py -v
+python -m unittest ascetic_ddd.specification.domain.jsonpath.test_jsonpath_parser_rfc9535 -v
 
 # Запустить примеры
 python ascetic_ddd/specification/domain/jsonpath/example_usage_rfc9535.py
 
 # Все тесты
-python -m pytest ascetic_ddd/specification/ -v
+python -m unittest discover -s ascetic_ddd/specification -p "test_*.py" -v
 ```
 
 ## Преимущества RFC 9535

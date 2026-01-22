@@ -323,10 +323,10 @@ spec.match(store, {"min_price": 500.0})  # True
 
 ```bash
 # Запустить тесты jsonpath2 парсера
-python -m pytest ascetic_ddd/specification/domain/jsonpath/test_jsonpath_parser_jsonpath2.py -v
+python -m unittest ascetic_ddd.specification.domain.jsonpath.test_jsonpath_parser_jsonpath2 -v
 
 # Все тесты
-python -m pytest ascetic_ddd/specification/ -v
+python -m unittest discover -s ascetic_ddd/specification -p "test_*.py" -v
 ```
 
 ## Зависимости

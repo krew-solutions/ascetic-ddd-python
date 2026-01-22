@@ -115,7 +115,7 @@ python -m ascetic_ddd.jsonpath_rfc9535_ext.examples.jsonpath_parameterized_examp
 
 ```bash
 # Запустить тесты (24 теста)
-python -m pytest ascetic_ddd/jsonpath_rfc9535_ext/domain/tests/ -v
+python -m unittest discover -s ascetic_ddd/jsonpath_rfc9535_ext/domain/tests -p "test_*.py" -v
 ```
 
 ## API

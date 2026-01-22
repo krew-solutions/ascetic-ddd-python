@@ -302,10 +302,10 @@ Equal(
 
 ```bash
 # Запустить тесты lambda парсера
-python -m pytest ascetic_ddd/specification/domain/lambda_filter/test_lambda_parser.py -v
+python -m unittest ascetic_ddd.specification.domain.lambda_filter.test_lambda_parser -v
 
 # Все тесты (26 тестов: сравнения, логика, арифметика, wildcard, вложенные wildcard)
-python -m pytest ascetic_ddd/specification/domain/lambda_filter/ -v
+python -m unittest discover -s ascetic_ddd/specification/domain/lambda_filter -p "test_*.py" -v
 ```
 
 ## Сравнение с другими парсерами
