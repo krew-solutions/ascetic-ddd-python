@@ -5,7 +5,7 @@ from abc import ABCMeta, abstractmethod
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import ICursor, IM2ODistributor
 from ascetic_ddd.faker.domain.providers._mixins import BaseDistributionProvider
 from ascetic_ddd.faker.domain.providers.interfaces import (
-    IReferenceProvider, IEntityProvider, IShunt, ISetupable
+    IReferenceProvider, IEntityProvider, ICloningShunt, ISetupable
 )
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 
@@ -34,7 +34,7 @@ class IAggregateProviderAccessor(ISetupable, typing.Generic[T_Input, T_Output], 
         raise NotImplementedError
 
     @abstractmethod
-    def empty(self, shunt: IShunt | None = None) -> typing.Self:
+    def empty(self, shunt: ICloningShunt | None = None) -> typing.Self:
         raise NotImplementedError
 
 
@@ -53,7 +53,7 @@ class ReferenceProvider(
         self.aggregate_provider = aggregate_provider
         super().__init__(distributor=distributor)
 
-    def do_empty(self, clone: typing.Self, shunt: IShunt | None = None):
+    def do_empty(self, clone: typing.Self, shunt: ICloningShunt | None = None):
         super().do_empty(clone, shunt)
         clone._aggregate_provider_accessor = self._aggregate_provider_accessor.empty(shunt)
 
@@ -169,7 +169,7 @@ class SubscriptionAggregateProviderAccessor(IAggregateProviderAccessor, typing.G
 
         return aggregate_provider
 
-    def empty(self, shunt: IShunt | None = None):
+    def empty(self, shunt: ICloningShunt | None = None):
         # We do not it for recursion tree
         # Подписка между distributors однократная, т.к. они не клонируются.
         return self._delegate.empty(shunt)
@@ -194,7 +194,7 @@ class AggregateProviderAccessor(IAggregateProviderAccessor, typing.Generic[T_Inp
     def __call__(self) -> IEntityProvider[T_Input, T_Output]:
         return self._aggregate_provider
 
-    def empty(self, shunt: IShunt | None = None):
+    def empty(self, shunt: ICloningShunt | None = None):
         return AggregateProviderAccessor(self._aggregate_provider.empty(shunt))
 
     def reset(self):
@@ -219,7 +219,7 @@ class LazyAggregateProviderAccessor(IAggregateProviderAccessor, typing.Generic[T
             self._aggregate_provider = self._aggregate_provider_factory()
         return self._aggregate_provider
 
-    def empty(self, shunt: IShunt | None = None):
+    def empty(self, shunt: ICloningShunt | None = None):
         return LazyAggregateProviderAccessor(self._aggregate_provider_factory)
 
     def reset(self):

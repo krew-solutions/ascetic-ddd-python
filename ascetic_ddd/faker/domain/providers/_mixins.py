@@ -8,7 +8,7 @@ from collections.abc import Hashable, Callable
 from ascetic_ddd.disposable import IDisposable
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
 from ascetic_ddd.faker.domain.providers.interfaces import (
-    IValueProvider, INameable, IShunt, ICloneable,
+    IValueProvider, INameable, ICloningShunt, ICloneable,
     ICompositeValueProvider, IValueGenerator, IDependentProvider
 )
 from ascetic_ddd.faker.domain.providers.value_generators import prepare_value_generator
@@ -22,7 +22,7 @@ __all__ = (
     'ObservableMixin',
     'NameableMixin',
     'CloneableMixin',
-    'Shunt',
+    'CloningShunt',
     'BaseProvider',
     'BaseDistributionProvider',
     'BaseCompositeProvider',
@@ -89,7 +89,7 @@ class NameableMixin(INameable, metaclass=abc.ABCMeta):
             self._provider_name = value
 
 
-class Shunt(IShunt):
+class CloningShunt(ICloningShunt):
 
     def __init__(self):
         self._data = {}
@@ -106,9 +106,9 @@ class Shunt(IShunt):
 
 class CloneableMixin(ICloneable):
 
-    def empty(self, shunt: IShunt | None = None) -> typing.Self:
+    def empty(self, shunt: ICloningShunt | None = None) -> typing.Self:
         if shunt is None:
-            shunt = Shunt()
+            shunt = CloningShunt()
         if self in shunt:
             return shunt[self]
         c = copy.copy(self)
@@ -116,7 +116,7 @@ class CloneableMixin(ICloneable):
         shunt[self] = c
         return c
 
-    def do_empty(self, clone: typing.Self, shunt: IShunt):
+    def do_empty(self, clone: typing.Self, shunt: ICloningShunt):
         pass
 
 
@@ -145,7 +145,7 @@ class BaseProvider(
     def get(self) -> T_Input:
         return self._input_value
 
-    def do_empty(self, clone: typing.Self, shunt: IShunt):
+    def do_empty(self, clone: typing.Self, shunt: ICloningShunt):
         clone._input_value = empty
         clone._output_result = empty
 
@@ -215,7 +215,7 @@ class BaseCompositeProvider(
     def is_transient(self) -> bool:
         return any(provider.is_transient() for provider in self._providers.values())
 
-    def do_empty(self, clone: typing.Self, shunt: IShunt):
+    def do_empty(self, clone: typing.Self, shunt: ICloningShunt):
         clone._input_value = empty
         clone._output_result = empty
         for attr, provider in self._providers.items():

@@ -10,7 +10,7 @@ from ascetic_ddd.observable.interfaces import IObservable
 
 __all__ = (
     'INameable',
-    'IShunt',
+    'ICloningShunt',
     'ICloneable',
     'ISetupable',
     'IProvidable',
@@ -46,7 +46,7 @@ class INameable(metaclass=ABCMeta):
         raise NotImplementedError
 
 
-class IShunt(metaclass=ABCMeta):
+class ICloningShunt(metaclass=ABCMeta):
 
     @abstractmethod
     def __getitem__(self, key: typing.Hashable) -> typing.Any:
@@ -64,12 +64,12 @@ class IShunt(metaclass=ABCMeta):
 class ICloneable(metaclass=ABCMeta):
 
     @abstractmethod
-    def empty(self, shunt: IShunt | None = None) -> typing.Self:
+    def empty(self, shunt: ICloningShunt | None = None) -> typing.Self:
         # For older python: def empty(self: T_Cloneable, shunt: IShunt | None = None) -> T_Cloneable:
         raise NotImplementedError
 
     @abstractmethod
-    def do_empty(self, clone: typing.Self, shunt: IShunt):
+    def do_empty(self, clone: typing.Self, shunt: ICloningShunt):
         raise NotImplementedError
 
 

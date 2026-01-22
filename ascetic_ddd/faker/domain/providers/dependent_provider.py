@@ -8,7 +8,7 @@ from ascetic_ddd.faker.domain.providers._mixins import (
     ObservableMixin, NameableMixin, CloneableMixin
 )
 from ascetic_ddd.faker.domain.providers.interfaces import (
-    IDependentProvider, IEntityProvider, IShunt, ISetupable
+    IDependentProvider, IEntityProvider, ICloningShunt, ISetupable
 )
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.values.empty import empty, Empty
@@ -40,7 +40,7 @@ class IAggregateProvidersAccessor(ISetupable, typing.Generic[T_Input, T_Output],
         raise NotImplementedError
 
     @abstractmethod
-    def empty(self, shunt: IShunt | None = None) -> typing.Self:
+    def empty(self, shunt: ICloningShunt | None = None) -> typing.Self:
         raise NotImplementedError
 
 
@@ -109,7 +109,7 @@ class DependentProvider(
         """Set dependency's ID to be used for related_field in dependents."""
         self._dependency_id = dependency_id
 
-    def do_empty(self, clone: typing.Self, shunt: IShunt | None = None):
+    def do_empty(self, clone: typing.Self, shunt: ICloningShunt | None = None):
         clone._input_values = empty
         clone._output_results = empty
         clone._count = None
@@ -305,7 +305,7 @@ class EagerAggregateProvidersAccessor(IAggregateProvidersAccessor, typing.Generi
             self._providers.append(cloned)
         return self._providers[:count]
 
-    def empty(self, shunt: IShunt | None = None) -> typing.Self:
+    def empty(self, shunt: ICloningShunt | None = None) -> typing.Self:
         return EagerAggregateProvidersAccessor(self._template_provider.empty(shunt))
 
     def reset(self):
@@ -347,7 +347,7 @@ class LazyAggregateProvidersAccessor(IAggregateProvidersAccessor, typing.Generic
             self._providers.append(cloned)
         return self._providers[:count]
 
-    def empty(self, shunt: IShunt | None = None) -> typing.Self:
+    def empty(self, shunt: ICloningShunt | None = None) -> typing.Self:
         return LazyAggregateProvidersAccessor(self._template_provider_factory)
 
     def reset(self):
