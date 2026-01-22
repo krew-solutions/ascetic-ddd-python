@@ -261,19 +261,40 @@ class ObjectPatternSpecificationBasicTestCase(IsolatedAsyncioTestCase):
         self.assertTrue(spec.is_satisfied_by({'address': {'city': 'Moscow', 'street': 'Main'}}))
         self.assertFalse(spec.is_satisfied_by({'address': {'city': 'London'}}))
 
-    def test_hash_equality(self):
-        """Specifications with same pattern should be equal."""
+    async def test_hash_equality(self):
+        """Specifications with same resolved pattern should be equal."""
         spec1 = ObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
         spec2 = ObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
+        session = MockSession()
+        await spec1.resolve_nested(session)
+        await spec2.resolve_nested(session)
         self.assertEqual(hash(spec1), hash(spec2))
         self.assertEqual(spec1, spec2)
 
-    def test_hash_inequality(self):
-        """Specifications with different patterns should not be equal."""
+    async def test_hash_inequality(self):
+        """Specifications with different resolved patterns should not be equal."""
         spec1 = ObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
         spec2 = ObjectPatternSpecification({'status': 'inactive'}, lambda obj: obj)
+        session = MockSession()
+        await spec1.resolve_nested(session)
+        await spec2.resolve_nested(session)
         self.assertNotEqual(hash(spec1), hash(spec2))
         self.assertNotEqual(spec1, spec2)
+
+    def test_hash_unresolved_raises_exception(self):
+        """Hash of unresolved specification should raise RuntimeError."""
+        spec = ObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
+        with self.assertRaises(RuntimeError) as ctx:
+            hash(spec)
+        self.assertIn("unresolved", str(ctx.exception))
+
+    def test_eq_unresolved_raises_exception(self):
+        """Comparing unresolved specifications should raise RuntimeError."""
+        spec1 = ObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
+        spec2 = ObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
+        with self.assertRaises(RuntimeError) as ctx:
+            spec1 == spec2
+        self.assertIn("unresolved", str(ctx.exception))
 
 
 class ObjectPatternSpecificationResolveNestedTestCase(IsolatedAsyncioTestCase):

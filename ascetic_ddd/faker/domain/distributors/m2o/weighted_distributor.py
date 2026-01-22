@@ -171,6 +171,10 @@ class BaseDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
         if specification is None:
             specification = EmptySpecification()
 
+        # Резолвим вложенные constraints (если есть)
+        if hasattr(specification, 'resolve_nested'):
+            await specification.resolve_nested(session)
+
         if specification != self._default_spec:
             if specification not in self._indexes:
                 self._indexes[specification] = self._create_index(specification)
@@ -194,11 +198,7 @@ class BaseDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
                 callback=self._append,
             )
 
-        # Резолвим вложенные constraints (если есть)
-        if hasattr(specification, 'resolve_nested'):
-            await specification.resolve_nested(session)
-
-        # Проверяем, соответствует ли объект спецификации (мог "протухнуть")
+        # Проверяем, не "протух" ли объект, если он был изменён?
         if not specification.is_satisfied_by(value):
             self._relocate_stale_value(value, specification)
             # Retry

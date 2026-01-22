@@ -33,14 +33,25 @@ class ObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
         self._hash = None
 
     def __hash__(self) -> int:
+        if self._resolved_pattern is None:
+            raise TypeError(
+                "Cannot hash unresolved ObjectPatternSpecification. "
+                "Call resolve_nested() first."
+            )
         if self._hash is None:
-            self._hash = hash(hashable(self._object_pattern))
+            self._hash = hash(hashable(self._resolved_pattern))
         return self._hash
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ObjectPatternSpecification):
             return False
-        return hash(self) == hash(other)
+        # Оба должны быть resolved для сравнения
+        if self._resolved_pattern is None or other._resolved_pattern is None:
+            raise TypeError(
+                "Cannot compare unresolved ObjectPatternSpecification. "
+                "Call resolve_nested() first."
+            )
+        return self._resolved_pattern == other._resolved_pattern
 
     def is_satisfied_by(self, obj: T) -> bool:
         state = self._object_exporter(obj)
