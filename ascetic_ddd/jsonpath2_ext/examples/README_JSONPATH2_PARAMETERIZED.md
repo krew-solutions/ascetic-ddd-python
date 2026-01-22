@@ -9,7 +9,7 @@
 ## Установка
 
 ```python
-from building_blocks.jsonpath2_ext.domain.jsonpath2_parameterized_parser import parse
+from ascetic_ddd.jsonpath2_ext.domain.jsonpath2_parameterized_parser import parse
 ```
 
 ## Использование
@@ -77,7 +77,7 @@ results = path.find(data, (27,))
 ## Примеры
 
 ```python
-from building_blocks.jsonpath2_ext.domain.jsonpath2_parameterized_parser import parse
+from ascetic_ddd.jsonpath2_ext.domain.jsonpath2_parameterized_parser import parse
 
 users = [
     {"name": "Alice", "age": 30},
@@ -124,5 +124,5 @@ results = path.find(data, {"name": user_input})
 ## Тестирование
 
 ```bash
-python -m unittest building_blocks.jsonpath2_ext.domain.tests.test_jsonpath2_parameterized_parser -v
+python -m unittest ascetic_ddd.jsonpath2_ext.domain.tests.test_jsonpath2_parameterized_parser -v
 ```

@@ -22,7 +22,7 @@
 ## Использование
 
 ```python
-from building_blocks.specification.domain.jsonpath.jsonpath_rfc9535_parser import parse
+from ascetic_ddd.specification.domain.jsonpath.jsonpath_rfc9535_parser import parse
 
 # Создать спецификацию
 spec = parse("$[?@.age > %d]")
@@ -134,7 +134,7 @@ parse("$[?@.age >= %(min_age)d && @.age <= %(max_age)d]")
 ```python
 spec = parse("$.items[*][?@.price > %f]")
 
-from building_blocks.specification.domain.evaluate_visitor import CollectionContext
+from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext
 
 item1 = DictContext({"name": "Laptop", "price": 999.99})
 item2 = DictContext({"name": "Mouse", "price": 29.99})
@@ -169,7 +169,7 @@ spec.match(store, (500.0,))  # True
 ### Базовое использование
 
 ```python
-from building_blocks.specification.domain.jsonpath.jsonpath_rfc9535_parser import parse
+from ascetic_ddd.specification.domain.jsonpath.jsonpath_rfc9535_parser import parse
 
 # Простое сравнение (RFC 9535: ==)
 spec = parse("$[?@.age > %d]")
@@ -209,7 +209,7 @@ spec.match(user_inactive, (True,))  # True
 ### Работа с коллекциями
 
 ```python
-from building_blocks.specification.domain.evaluate_visitor import CollectionContext
+from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext
 
 spec = parse("$.users[*][?@.age >= %d]")
 
@@ -226,7 +226,7 @@ spec.match(root, (28,))  # True (Alice)
 ### Вложенные Wildcards ✨ NEW!
 
 ```python
-from building_blocks.specification.domain.evaluate_visitor import CollectionContext
+from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext
 
 # Вложенные wildcards: фильтрация по вложенным коллекциям
 spec = parse("$.categories[*][?@.items[*][?@.price > %f]]")
@@ -377,13 +377,13 @@ spec.match(user, {"min_age": 25, "max_age": 35})  # True
 
 ```bash
 # Запустить тесты RFC 9535 парсера
-python -m pytest building_blocks/specification/domain/jsonpath/test_jsonpath_parser_rfc9535.py -v
+python -m pytest ascetic_ddd/specification/domain/jsonpath/test_jsonpath_parser_rfc9535.py -v
 
 # Запустить примеры
-python building_blocks/specification/domain/jsonpath/example_usage_rfc9535.py
+python ascetic_ddd/specification/domain/jsonpath/example_usage_rfc9535.py
 
 # Все тесты
-python -m pytest building_blocks/specification/ -v
+python -m pytest ascetic_ddd/specification/ -v
 ```
 
 ## Преимущества RFC 9535
@@ -398,7 +398,7 @@ python -m pytest building_blocks/specification/ -v
 ## Зависимости
 
 - `jsonpath-rfc9535` - парсинг JSONPath выражений (RFC 9535 compliant)
-- Модули из `building_blocks.specification.domain`:
+- Модули из `ascetic_ddd.specification.domain`:
   - `nodes` - AST узлы спецификации
   - `evaluate_visitor` - выполнение спецификаций
 

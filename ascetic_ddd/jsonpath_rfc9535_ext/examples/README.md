@@ -50,7 +50,7 @@ jsonpath_rfc9535_ext/
 ### Базовый пример
 
 ```python
-from building_blocks.jsonpath_rfc9535_ext.domain.jsonpath_parameterized_parser import parse
+from ascetic_ddd.jsonpath_rfc9535_ext.domain.jsonpath_parameterized_parser import parse
 
 # Создать параметризованное выражение
 expr = parse("$[?@.age > %d]")
@@ -108,14 +108,14 @@ results = expr.find(data, (27,))
 
 ```bash
 # Запустить примеры
-python -m building_blocks.jsonpath_rfc9535_ext.examples.jsonpath_parameterized_example
+python -m ascetic_ddd.jsonpath_rfc9535_ext.examples.jsonpath_parameterized_example
 ```
 
 ## Тестирование
 
 ```bash
 # Запустить тесты (24 теста)
-python -m pytest building_blocks/jsonpath_rfc9535_ext/domain/tests/ -v
+python -m pytest ascetic_ddd/jsonpath_rfc9535_ext/domain/tests/ -v
 ```
 
 ## API
@@ -244,7 +244,7 @@ $[?@.orders[*][?@.total > 100]]
 ### Пример SQL компилятора
 
 ```python
-from building_blocks.jsonpath_rfc9535_ext.infrastructure.jsonpath_to_raw_sql import (
+from ascetic_ddd.jsonpath_rfc9535_ext.infrastructure.jsonpath_to_raw_sql import (
     JSONPathToSQLCompiler, SchemaDef, TableDef, ColumnDef, RelationshipDef, RelationType
 )
 

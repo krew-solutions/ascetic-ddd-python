@@ -69,7 +69,7 @@ JSONPath → jsonpath2.Path.parse_str() → AST → Visitor → SQLAlchemy Query
 
 ```python
 from sqlalchemy import Column, Float, Integer, String, MetaData, Table
-from building_blocks.jsonpath2_ext.infrastructure.jsonpath2_to_sqlalchemy_sql import (
+from ascetic_ddd.jsonpath2_ext.infrastructure.jsonpath2_to_sqlalchemy_sql import (
     JSONPathToSQLCompiler,
     SchemaMetadata,
     RelationshipMetadata,
@@ -174,7 +174,7 @@ query = compiler.compile("$.orders[?(@.status = 'completed')]")
 ## Запуск примера
 
 ```bash
-python -m building_blocks.jsonpath2_ext.examples.jsonpath2_to_raw_sql_example
+python -m ascetic_ddd.jsonpath2_ext.examples.jsonpath2_to_raw_sql_example
 ```
 
 ## Расширение функциональности

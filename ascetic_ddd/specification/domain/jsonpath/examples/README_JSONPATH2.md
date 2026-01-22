@@ -21,7 +21,7 @@
 ## Использование
 
 ```python
-from building_blocks.specification.domain.jsonpath.jsonpath2_parser import parse
+from ascetic_ddd.specification.domain.jsonpath.jsonpath2_parser import parse
 
 # Создать спецификацию
 spec = parse("$[?(@.age > %d)]")
@@ -84,7 +84,7 @@ parse("$[?(@.name = %(name)s)]")
 ```python
 spec = parse("$.items[*][?(@.price > %f)]")
 
-from building_blocks.specification.domain.evaluate_visitor import CollectionContext
+from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext
 
 item1 = DictContext({"name": "Laptop", "price": 999.99})
 item2 = DictContext({"name": "Mouse", "price": 29.99})
@@ -158,7 +158,7 @@ spec = parse("$[?(@.profile.age > %d && @.profile.status = %s)]")
 ### Примеры использования вложенных путей
 
 ```python
-from building_blocks.specification.domain.jsonpath.jsonpath2_parser import parse
+from ascetic_ddd.specification.domain.jsonpath.jsonpath2_parser import parse
 
 # Класс контекста с поддержкой вложенных объектов
 class NestedDictContext:
@@ -234,7 +234,7 @@ spec.match(user, {"enabled": True})  # True
 ### Базовое использование
 
 ```python
-from building_blocks.specification.domain.jsonpath.jsonpath2_parser import parse
+from ascetic_ddd.specification.domain.jsonpath.jsonpath2_parser import parse
 
 # Простое сравнение
 spec = parse("$[?(@.age > %d)]")
@@ -255,7 +255,7 @@ spec.match(student, {"min_score": 80})  # True
 ### Работа с коллекциями
 
 ```python
-from building_blocks.specification.domain.evaluate_visitor import CollectionContext
+from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext
 
 spec = parse("$.users[*][?(@.age >= %d)]")
 
@@ -274,7 +274,7 @@ spec.match(root, (28,))  # True (Alice)
 JSONPath2 парсер поддерживает вложенные wildcards для фильтрации по вложенным коллекциям:
 
 ```python
-from building_blocks.specification.domain.evaluate_visitor import CollectionContext
+from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext
 
 # Вложенные wildcards: фильтрация по вложенным коллекциям
 spec = parse("$.categories[*][?@.items[*][?@.price > %f]]")
@@ -323,16 +323,16 @@ spec.match(store, {"min_price": 500.0})  # True
 
 ```bash
 # Запустить тесты jsonpath2 парсера
-python -m pytest building_blocks/specification/domain/jsonpath/test_jsonpath_parser_jsonpath2.py -v
+python -m pytest ascetic_ddd/specification/domain/jsonpath/test_jsonpath_parser_jsonpath2.py -v
 
 # Все тесты
-python -m pytest building_blocks/specification/ -v
+python -m pytest ascetic_ddd/specification/ -v
 ```
 
 ## Зависимости
 
 - `jsonpath2` - парсинг JSONPath выражений (RFC 9535)
-- Модули из `building_blocks.specification.domain`:
+- Модули из `ascetic_ddd.specification.domain`:
   - `nodes` - AST узлы спецификации
   - `evaluate_visitor` - выполнение спецификаций
 

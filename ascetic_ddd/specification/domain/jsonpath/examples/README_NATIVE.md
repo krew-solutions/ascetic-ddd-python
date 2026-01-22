@@ -19,7 +19,7 @@
 ## Использование
 
 ```python
-from building_blocks.specification.domain.jsonpath.jsonpath_native_parser import parse
+from ascetic_ddd.specification.domain.jsonpath.jsonpath_native_parser import parse
 
 # Создать спецификацию
 spec = parse("$[?(@.age > %d)]")
@@ -116,7 +116,7 @@ parse("$[?!(@.active == %s)]")              # NOT
 ```python
 spec = parse("$.items[*][?(@.price > %f)]")
 
-from building_blocks.specification.domain.evaluate_visitor import CollectionContext
+from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext
 
 item1 = DictContext({"name": "Laptop", "price": 999.99})
 item2 = DictContext({"name": "Mouse", "price": 29.99})
@@ -182,10 +182,10 @@ spec.match(store, (500.0,))  # True
 
 ```bash
 # Запустить тесты нативного парсера
-python -m pytest building_blocks/specification/domain/jsonpath/test_jsonpath_parser_native.py -v
+python -m pytest ascetic_ddd/specification/domain/jsonpath/test_jsonpath_parser_native.py -v
 
 # Все тесты
-python -m pytest building_blocks/specification/ -v
+python -m pytest ascetic_ddd/specification/ -v
 ```
 
 ## Полный пример использования
@@ -193,7 +193,7 @@ python -m pytest building_blocks/specification/ -v
 Запустите интерактивный пример с 11 демонстрациями:
 
 ```bash
-python -m building_blocks.specification.domain.jsonpath.example_usage_native
+python -m ascetic_ddd.specification.domain.jsonpath.example_usage_native
 ```
 
 Пример демонстрирует:
@@ -212,7 +212,7 @@ python -m building_blocks.specification.domain.jsonpath.example_usage_native
 ### Базовое использование
 
 ```python
-from building_blocks.specification.domain.jsonpath.jsonpath_native_parser import parse
+from ascetic_ddd.specification.domain.jsonpath.jsonpath_native_parser import parse
 
 # Простое сравнение
 spec = parse("$[?@.age > %d]")
@@ -243,7 +243,7 @@ spec.match(item, (True,))  # True
 ### Работа с коллекциями
 
 ```python
-from building_blocks.specification.domain.evaluate_visitor import CollectionContext
+from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext
 
 spec = parse("$.users[*][?(@.age >= %d)]")
 
@@ -260,7 +260,7 @@ spec.match(root, (28,))  # True (Alice)
 ### Вложенные Wildcards ✨ NEW!
 
 ```python
-from building_blocks.specification.domain.evaluate_visitor import CollectionContext
+from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext
 
 # Вложенные wildcards: фильтрация по вложенным коллекциям
 spec = parse("$.categories[*][?@.items[*][?@.price > %f]]")

@@ -21,8 +21,8 @@
 ### Базовые примеры
 
 ```python
-from building_blocks.specification.domain.lambda_filter import parse
-from building_blocks.specification.domain.evaluate_visitor import EvaluateVisitor
+from ascetic_ddd.specification.domain.lambda_filter import parse
+from ascetic_ddd.specification.domain.evaluate_visitor import EvaluateVisitor
 
 # Простое сравнение
 spec = parse(lambda user: user.age > 25)
@@ -59,7 +59,7 @@ spec = parse(lambda user: user.age >= 18 and user.age <= 65 and user.active == T
 ### Wildcard коллекции (any)
 
 ```python
-from building_blocks.specification.domain.evaluate_visitor import CollectionContext
+from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext
 
 # Generator expression
 spec = parse(lambda store: any(item.price > 500 for item in store.items))
@@ -302,10 +302,10 @@ Equal(
 
 ```bash
 # Запустить тесты lambda парсера
-python -m pytest building_blocks/specification/domain/lambda_filter/test_lambda_parser.py -v
+python -m pytest ascetic_ddd/specification/domain/lambda_filter/test_lambda_parser.py -v
 
 # Все тесты (26 тестов: сравнения, логика, арифметика, wildcard, вложенные wildcard)
-python -m pytest building_blocks/specification/domain/lambda_filter/ -v
+python -m pytest ascetic_ddd/specification/domain/lambda_filter/ -v
 ```
 
 ## Сравнение с другими парсерами
