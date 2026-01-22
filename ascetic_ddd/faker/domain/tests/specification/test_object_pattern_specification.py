@@ -307,6 +307,55 @@ class ObjectPatternSpecificationBasicTestCase(IsolatedAsyncioTestCase):
             spec1 == spec2
         self.assertIn("unresolved", str(ctx.exception))
 
+    async def test_hash_uses_resolved_pattern_not_object_pattern(self):
+        """hash() should use _resolved_pattern, not _object_pattern."""
+        spec = ObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
+        session = MockSession()
+        await spec.resolve_nested(session)
+
+        # Manually change _resolved_pattern to verify hash uses it
+        spec._resolved_pattern = {'status': 'modified'}
+        spec._hash = None  # Reset cached hash
+
+        from ascetic_ddd.seedwork.domain.utils.data import hashable
+        expected_hash = hash(hashable({'status': 'modified'}))
+        self.assertEqual(hash(spec), expected_hash)
+
+    async def test_eq_uses_resolved_pattern_not_object_pattern(self):
+        """__eq__() should compare _resolved_pattern, not _object_pattern."""
+        # Same _object_pattern but different _resolved_pattern
+        spec1 = ObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
+        spec2 = ObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
+        session = MockSession()
+        await spec1.resolve_nested(session)
+        await spec2.resolve_nested(session)
+
+        # Manually set different _resolved_pattern
+        spec1._resolved_pattern = {'status': 'value1'}
+        spec2._resolved_pattern = {'status': 'value2'}
+
+        self.assertNotEqual(spec1, spec2)
+
+        # Same _resolved_pattern
+        spec2._resolved_pattern = {'status': 'value1'}
+        self.assertEqual(spec1, spec2)
+
+    async def test_is_satisfied_by_uses_resolved_pattern_not_object_pattern(self):
+        """is_satisfied_by() should use _resolved_pattern, not _object_pattern."""
+        spec = ObjectPatternSpecification(
+            {'status': 'original'},
+            lambda obj: obj
+        )
+        session = MockSession()
+        await spec.resolve_nested(session)
+
+        # Manually set different _resolved_pattern
+        spec._resolved_pattern = {'status': 'resolved'}
+
+        # Should match against _resolved_pattern, not _object_pattern
+        self.assertTrue(spec.is_satisfied_by({'status': 'resolved', 'extra': 'field'}))
+        self.assertFalse(spec.is_satisfied_by({'status': 'original'}))
+
 
 class ObjectPatternSpecificationResolveNestedTestCase(IsolatedAsyncioTestCase):
     """Tests for ObjectPatternSpecification.resolve_nested()."""
@@ -539,3 +588,48 @@ class ObjectPatternSpecificationAcceptTestCase(IsolatedAsyncioTestCase):
         spec.accept(visitor)
 
         self.assertIsNone(received_accessor[0])
+
+    def test_accept_passes_object_pattern_when_unresolved(self):
+        """accept() should pass _object_pattern when specification is not resolved."""
+        received_pattern = [None]
+
+        class MockVisitor:
+            def visit_object_pattern_specification(self, pattern, accessor=None):
+                received_pattern[0] = pattern
+
+        original_pattern = {'status_id': {'name': 'Active'}}
+        spec = ObjectPatternSpecification(
+            original_pattern,
+            lambda obj: obj
+        )
+
+        visitor = MockVisitor()
+        spec.accept(visitor)
+
+        # Should pass original pattern (with nested dict)
+        self.assertEqual(received_pattern[0], original_pattern)
+        self.assertIs(received_pattern[0], original_pattern)
+
+    async def test_accept_passes_resolved_pattern_when_resolved(self):
+        """accept() should pass _resolved_pattern when specification is resolved."""
+        received_pattern = [None]
+
+        class MockVisitor:
+            def visit_object_pattern_specification(self, pattern, accessor=None):
+                received_pattern[0] = pattern
+
+        original_pattern = {'status': 'active'}
+        spec = ObjectPatternSpecification(
+            original_pattern,
+            lambda obj: obj
+        )
+
+        session = MockSession()
+        await spec.resolve_nested(session)
+
+        visitor = MockVisitor()
+        spec.accept(visitor)
+
+        # Should pass resolved pattern
+        self.assertEqual(received_pattern[0], spec._resolved_pattern)
+        self.assertIs(received_pattern[0], spec._resolved_pattern)
