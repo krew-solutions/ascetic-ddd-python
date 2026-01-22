@@ -64,7 +64,10 @@ class ObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
         return is_subset(self._resolved_pattern, state)
 
     def accept(self, visitor: ISpecificationVisitor):
-        visitor.visit_object_pattern_specification(self._object_pattern, self._aggregate_provider_accessor)
+        visitor.visit_object_pattern_specification(
+            self._resolved_pattern or self._object_pattern,
+            self._aggregate_provider_accessor
+        )
 
     async def resolve_nested(self, session: ISession) -> None:
         """
