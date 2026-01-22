@@ -282,17 +282,17 @@ class ObjectPatternSpecificationBasicTestCase(IsolatedAsyncioTestCase):
         self.assertNotEqual(spec1, spec2)
 
     def test_hash_unresolved_raises_exception(self):
-        """Hash of unresolved specification should raise RuntimeError."""
+        """Hash of unresolved specification should raise TypeError."""
         spec = ObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
-        with self.assertRaises(RuntimeError) as ctx:
+        with self.assertRaises(TypeError) as ctx:
             hash(spec)
         self.assertIn("unresolved", str(ctx.exception))
 
     def test_eq_unresolved_raises_exception(self):
-        """Comparing unresolved specifications should raise RuntimeError."""
+        """Comparing unresolved specifications should raise TypeError."""
         spec1 = ObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
         spec2 = ObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
-        with self.assertRaises(RuntimeError) as ctx:
+        with self.assertRaises(TypeError) as ctx:
             spec1 == spec2
         self.assertIn("unresolved", str(ctx.exception))
 
