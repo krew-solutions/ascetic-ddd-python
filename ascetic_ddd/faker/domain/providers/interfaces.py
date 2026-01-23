@@ -23,8 +23,8 @@ __all__ = (
     'IDependentInputOutput',
     'IDependentProvider',
     'IRelativeProvider',
-    'IValueGenerator',
-    'IValueAnyGenerator',
+    'IInputGenerator',
+    'IAnyInputGenerator',
 )
 
 T_Input = typing.TypeVar("T_Input")
@@ -305,17 +305,16 @@ class IRelativeProvider(metaclass=ABCMeta):
         raise NotImplementedError
 
 
-class IValueGenerator(typing.Generic[T_Input], metaclass=ABCMeta):
+class IInputGenerator(typing.Protocol[T_Input]):
     """
-    Фабрика значений для дистрибьюторов.
+    Генератор значений.
     Принимает session и опциональный position (номер в последовательности).
     """
 
-    @abstractmethod
     async def __call__(self, session: ISession, position: int | None = None) -> T_Input:
-        raise NotImplementedError
+        ...
 
 
-IValueAnyGenerator: typing.TypeAlias = (
-    IValueGenerator[T_Input] | typing.Iterable[T_Input] | strategies.SearchStrategy[T_Input] | Callable
+IAnyInputGenerator: typing.TypeAlias = (
+        IInputGenerator[T_Input] | typing.Iterable[T_Input] | strategies.SearchStrategy[T_Input] | Callable
 )

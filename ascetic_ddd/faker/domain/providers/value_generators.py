@@ -6,7 +6,7 @@ import typing
 import operator
 from hypothesis import strategies
 
-from ascetic_ddd.faker.domain.providers.interfaces import IValueGenerator
+from ascetic_ddd.faker.domain.providers.interfaces import IInputGenerator
 
 
 __all__ = (
@@ -130,7 +130,7 @@ class RangeGenerator(typing.Generic[T]):
 
 class TemplateGenerator(typing.Generic[T]):
 
-    def __init__(self, delegate: IValueGenerator[typing.Any], template: T):
+    def __init__(self, delegate: IInputGenerator[typing.Any], template: T):
         assert isinstance(template, str) and "%s" in template
         self._template = template
         self._delegate = delegate

@@ -3,7 +3,7 @@ import typing
 from ascetic_ddd.faker.domain.distributors.m2o import DummyDistributor
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import ICursor, IM2ODistributor
 from ascetic_ddd.faker.domain.providers._mixins import BaseDistributionProvider
-from ascetic_ddd.faker.domain.providers.interfaces import IValueProvider, IValueGenerator
+from ascetic_ddd.faker.domain.providers.interfaces import IValueProvider, IInputGenerator
 from ascetic_ddd.faker.domain.providers.value_generators import prepare_value_generator
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.values.empty import empty
@@ -19,14 +19,14 @@ class ValueProvider(
     IValueProvider[T_Input, T_Output],
     typing.Generic[T_Input, T_Output]
 ):
-    _value_generator: IValueGenerator[T_Input] | None = None
+    _value_generator: IInputGenerator[T_Input] | None = None
     _result_factory: typing.Callable[[T_Input], T_Output] = None  # T_Output of each nested Provider.
     _result_exporter: typing.Callable[[T_Output], T_Input] = None
 
     def __init__(
             self,
             distributor: IM2ODistributor | None,
-            value_generator: IValueGenerator[T_Input] | None = None,
+            value_generator: IInputGenerator[T_Input] | None = None,
             result_factory: typing.Callable[[T_Input], T_Output] | None = None,
             result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
     ):
