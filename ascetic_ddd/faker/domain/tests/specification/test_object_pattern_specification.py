@@ -307,8 +307,8 @@ class ObjectPatternSpecificationBasicTestCase(IsolatedAsyncioTestCase):
             spec1 == spec2
         self.assertIn("unresolved", str(ctx.exception))
 
-    async def test_hash_uses_not_resolved_pattern_but_object_pattern(self):
-        """hash() should use not _resolved_pattern, but _object_pattern."""
+    async def test_hash_uses_resolved_pattern_not_object_pattern(self):
+        """hash() should use _resolved_pattern, not _object_pattern."""
         spec = ObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
         session = MockSession()
         await spec.resolve_nested(session)
@@ -319,10 +319,10 @@ class ObjectPatternSpecificationBasicTestCase(IsolatedAsyncioTestCase):
 
         from ascetic_ddd.seedwork.domain.utils.data import hashable
         expected_hash = hash(hashable({'status': 'modified'}))
-        self.assertNotEqual(hash(spec), expected_hash)
+        self.assertEqual(hash(spec), expected_hash)
 
-    async def test_eq_uses_not_resolved_pattern_but_object_pattern(self):
-        """__eq__() should compare not _resolved_pattern, but _object_pattern."""
+    async def test_eq_uses_resolved_pattern_not_object_pattern(self):
+        """__eq__() should compare _resolved_pattern, not _object_pattern."""
         # Same _object_pattern but different _resolved_pattern
         spec1 = ObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
         spec2 = ObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
@@ -334,7 +334,7 @@ class ObjectPatternSpecificationBasicTestCase(IsolatedAsyncioTestCase):
         spec1._resolved_pattern = {'status': 'value1'}
         spec2._resolved_pattern = {'status': 'value2'}
 
-        self.assertEqual(spec1, spec2)
+        self.assertNotEqual(spec1, spec2)
 
         # Same _resolved_pattern
         spec2._resolved_pattern = {'status': 'value1'}
