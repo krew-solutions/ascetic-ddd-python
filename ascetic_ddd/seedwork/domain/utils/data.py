@@ -6,15 +6,15 @@ def hashable(o):
     if isinstance(o, dict):
         return tuple(sorted((k, hashable(v)) for k, v in o.items()))
     if isinstance(o, list):
-        return tuple([hashable(v) for v in o])
+        return tuple([hashable(v) for v in sorted(o)])
     return o
 
 
 def freeze(o):
     if isinstance(o, dict):
-        return frozenset({k: freeze(v) for k, v in o.items()}.items())
+        return frozenset(sorted((k, freeze(v)) for k, v in o.items()))
     if isinstance(o, list):
-        return frozenset([freeze(v) for v in o])
+        return frozenset([freeze(v) for v in sorted(o)])
     return o
 
 
