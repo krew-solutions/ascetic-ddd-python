@@ -297,7 +297,7 @@ class TenantProvider(AggregateProvider[dict, Tenant]):
         self.id = ValueProvider[int, TenantId](
             distributor=distributor_factory(),  # Receive from DB
             output_factory=TenantId,
-            result_exporter=lambda x: x.value,
+            output_exporter=lambda x: x.value,
         )
         self.name = ValueProvider[str, TenantName](
             distributor=distributor_factory(sequence=True),
@@ -307,7 +307,7 @@ class TenantProvider(AggregateProvider[dict, Tenant]):
         super().__init__(
             repository=repository,
             output_factory=Tenant,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -325,7 +325,7 @@ class AuthorIdProvider(CompositeValueProvider[dict, TenantId]):
         self.author_id = ValueProvider[int, AuthorId](
             distributor=distributor_factory(),  # Receive from DB
             output_factory=InternalAuthorId,
-            result_exporter=lambda x: x.value,
+            output_exporter=lambda x: x.value,
         )
         # Ссылка на Tenant с распределением skew=2.0 (перекос к началу)
         # mean=10 означает в среднем 10 авторов на tenant
@@ -336,7 +336,7 @@ class AuthorIdProvider(CompositeValueProvider[dict, TenantId]):
 
         super().__init__(
             output_factory=AuthorId,
-            result_exporter=lambda result: result.value
+            output_exporter=lambda result: result.value
         )
 
 
@@ -353,7 +353,7 @@ class AuthorProvider(AggregateProvider[dict, Author]):
         super().__init__(
             repository=repository,
             output_factory=Author,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -371,7 +371,7 @@ class BookIdProvider(CompositeValueProvider[dict, TenantId]):
         self.book_id = ValueProvider[int, BookId](
             distributor=distributor_factory(),  # Receive from DB
             output_factory=InternalBookId,
-            result_exporter=lambda x: x.value,
+            output_exporter=lambda x: x.value,
         )
         self.tenant_id = ReferenceProvider[dict, Tenant, TenantId](
             distributor=distributor_factory(weights=[0.7, 0.2, 0.07, 0.03], mean=50),
@@ -380,7 +380,7 @@ class BookIdProvider(CompositeValueProvider[dict, TenantId]):
 
         super().__init__(
             output_factory=AuthorId,
-            result_exporter=lambda result: result.value
+            output_exporter=lambda result: result.value
         )
 
 
@@ -405,7 +405,7 @@ class BookProvider(AggregateProvider[dict, Book]):
         super().__init__(
             repository=repository,
             output_factory=Book,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     async def do_populate(self, session, specification=None):

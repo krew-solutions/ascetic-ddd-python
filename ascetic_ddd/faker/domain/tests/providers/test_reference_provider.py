@@ -360,18 +360,18 @@ class UserIdProvider(CompositeValueProvider[dict, UserId]):
             distributor=tenant_id_distributor,
             input_generator=tenant_id_generator,
             output_factory=TenantId,
-            result_exporter=lambda x: x.value,
+            output_exporter=lambda x: x.value,
         )
         self.internal_user_id = ValueProvider(
             distributor=internal_user_id_distributor,
             input_generator=internal_user_id_generator,
             output_factory=InternalUserId,
-            result_exporter=lambda x: x.value,
+            output_exporter=lambda x: x.value,
         )
         super().__init__(
             distributor=StubDistributor(raise_cursor_at=0),
             output_factory=UserId,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -398,12 +398,12 @@ class ResumeIdProvider(CompositeValueProvider[dict, ResumeId]):
             distributor=internal_resume_id_distributor,
             input_generator=internal_resume_id_generator,
             output_factory=InternalResumeId,
-            result_exporter=lambda x: x.value,
+            output_exporter=lambda x: x.value,
         )
         super().__init__(
             distributor=StubDistributor(raise_cursor_at=0),
             output_factory=ResumeId,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -430,7 +430,7 @@ class TenantProviderAutoIncrement(AggregateProvider[dict, Tenant]):
             distributor=StubDistributor(raise_cursor_at=0),
             input_generator=lambda: 0,
             output_factory=TenantId,
-            result_exporter=lambda x: x.value,
+            output_exporter=lambda x: x.value,
         )
         self.name = ValueProvider(
             distributor=StubDistributor(raise_cursor_at=0),
@@ -439,7 +439,7 @@ class TenantProviderAutoIncrement(AggregateProvider[dict, Tenant]):
         super().__init__(
             repository=repository,
             output_factory=Tenant,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -477,7 +477,7 @@ class UserProviderAutoIncrement(AggregateProvider[dict, User]):
         super().__init__(
             repository=repository,
             output_factory=User,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -518,7 +518,7 @@ class ResumeProviderAutoIncrement(AggregateProvider[dict, Resume]):
         super().__init__(
             repository=repository,
             output_factory=Resume,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -546,7 +546,7 @@ class TenantProviderPresetPK(AggregateProvider[dict, Tenant]):
             distributor=StubDistributor(raise_cursor_at=0),
             input_generator=tenant_id_generator,
             output_factory=TenantId,
-            result_exporter=lambda x: x.value,
+            output_exporter=lambda x: x.value,
         )
         self.name = ValueProvider(
             distributor=StubDistributor(raise_cursor_at=0),
@@ -555,7 +555,7 @@ class TenantProviderPresetPK(AggregateProvider[dict, Tenant]):
         super().__init__(
             repository=repository,
             output_factory=Tenant,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -591,7 +591,7 @@ class UserProviderPresetPK(AggregateProvider[dict, User]):
         super().__init__(
             repository=repository,
             output_factory=User,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -632,7 +632,7 @@ class ResumeProviderPresetPK(AggregateProvider[dict, Resume]):
         super().__init__(
             repository=repository,
             output_factory=Resume,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod

@@ -22,12 +22,12 @@ class EntityProvider(
 ):
     _id_attr: str
     _output_factory: typing.Callable[[...], T_Output] = None
-    _result_exporter: typing.Callable[[T_Output], T_Input] = None
+    _output_exporter: typing.Callable[[T_Output], T_Input] = None
 
     def __init__(
             self,
             output_factory: typing.Callable[[...], T_Output] | None = None,  # T_Output of each nested Provider.
-            result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
+            output_exporter: typing.Callable[[T_Output], T_Input] | None = None,
     ):
 
         if self._output_factory is None:
@@ -38,13 +38,13 @@ class EntityProvider(
 
             self._output_factory = output_factory
 
-        if self._result_exporter is None:
-            if result_exporter is None:
+        if self._output_exporter is None:
+            if output_exporter is None:
 
-                def result_exporter(value):
+                def output_exporter(value):
                     return value
 
-            self._result_exporter = result_exporter
+            self._output_exporter = output_exporter
 
         super().__init__()
         self.on_init()

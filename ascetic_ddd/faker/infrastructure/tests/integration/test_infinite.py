@@ -235,7 +235,7 @@ class FirstModelFaker(AggregateProvider[dict, FirstModel]):
         super().__init__(
             repository=repository,
             output_factory=FirstModel,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -264,7 +264,7 @@ class SecondModelPkFaker(CompositeValueProvider[dict, SecondModelPk]):
         super().__init__(
             distributor=make_distributor(),
             output_factory=SecondModelPk,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -294,7 +294,7 @@ class SecondModelFaker(AggregateProvider[dict, SecondModel]):
         super().__init__(
             repository=repository,
             output_factory=SecondModel,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -328,7 +328,7 @@ class ThirdModelPkFaker(CompositeValueProvider[dict, ThirdModelPk]):
         super().__init__(
             distributor=make_distributor(),
             output_factory=ThirdModelPk,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -365,7 +365,7 @@ class SecondModelFkFaker(CompositeValueProvider[dict, SecondModelPk]):
                 null_weight=null_weight,
             ),
             output_factory=SecondModelPk,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -405,7 +405,7 @@ class ThirdModelFaker(AggregateProvider[dict, ThirdModel]):
         super().__init__(
             repository=repository,
             output_factory=ThirdModel,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod

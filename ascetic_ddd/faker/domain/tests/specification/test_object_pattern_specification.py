@@ -184,7 +184,7 @@ class StatusFaker(AggregateProvider[dict, Status]):
         super().__init__(
             repository=repository,
             output_factory=Status,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -224,7 +224,7 @@ class UserFaker(AggregateProvider[dict, User]):
         super().__init__(
             repository=repository,
             output_factory=User,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -536,7 +536,7 @@ class ObjectPatternSpecificationResolveNestedTestCase(IsolatedAsyncioTestCase):
         # So nested dict should stay unchanged
         spec = ObjectPatternSpecification(
             {'name': {'nested': 'value'}},  # name is ValueProvider
-            user_provider._result_exporter,
+            user_provider._output_exporter,
             aggregate_provider_accessor=lambda: user_provider
         )
 

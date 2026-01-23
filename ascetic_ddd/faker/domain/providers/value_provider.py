@@ -22,14 +22,14 @@ class ValueProvider(
 ):
     _input_generator: IInputGenerator[T_Input] | None = None
     _output_factory: typing.Callable[[T_Input], T_Output] = None  # T_Output of each nested Provider.
-    _result_exporter: typing.Callable[[T_Output], T_Input] = None
+    _output_exporter: typing.Callable[[T_Output], T_Input] = None
 
     def __init__(
             self,
             distributor: IM2ODistributor | None,
             input_generator: IInputGenerator[T_Input] | None = None,
             output_factory: typing.Callable[[T_Input], T_Output] | None = None,
-            result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
+            output_exporter: typing.Callable[[T_Output], T_Input] | None = None,
     ):
         if distributor is None:
             distributor = DummyDistributor()
@@ -45,13 +45,13 @@ class ValueProvider(
 
             self._output_factory = output_factory
 
-        if self._result_exporter is None:
-            if result_exporter is None:
+        if self._output_exporter is None:
+            if output_exporter is None:
 
-                def result_exporter(value):
+                def output_exporter(value):
                     return value
 
-            self._result_exporter = result_exporter
+            self._output_exporter = output_exporter
 
         super().__init__(distributor=distributor)
 
@@ -69,7 +69,7 @@ class ValueProvider(
 
         try:
             result = await self._distributor.next(session)
-            value = self._result_exporter(result)
+            value = self._output_exporter(result)
             self.set(value)
             # self.set() could reset self._output
             self._output = result

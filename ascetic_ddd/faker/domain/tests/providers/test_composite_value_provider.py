@@ -147,18 +147,18 @@ class UserIdProvider(CompositeValueProvider[dict, UserId]):
             distributor=StubDistributor(raise_cursor_at=0),
             input_generator=tenant_id_generator,
             output_factory=TenantId,
-            result_exporter=lambda x: x.value,
+            output_exporter=lambda x: x.value,
         )
         self.internal_user_id = ValueProvider(
             distributor=StubDistributor(raise_cursor_at=0),
             input_generator=internal_user_id_generator,
             output_factory=InternalUserId,
-            result_exporter=lambda x: x.value,
+            output_exporter=lambda x: x.value,
         )
         super().__init__(
             distributor=distributor,
             output_factory=UserId,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -180,12 +180,12 @@ class ResumeIdProvider(CompositeValueProvider[dict, ResumeId]):
             distributor=StubDistributor(raise_cursor_at=0),
             input_generator=internal_resume_id_generator,
             output_factory=InternalResumeId,
-            result_exporter=lambda x: x.value,
+            output_exporter=lambda x: x.value,
         )
         super().__init__(
             distributor=distributor,
             output_factory=ResumeId,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod

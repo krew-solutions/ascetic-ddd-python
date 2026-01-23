@@ -193,7 +193,7 @@ class StatusFaker(AggregateProvider[dict, Status]):
         super().__init__(
             repository=repository,
             output_factory=Status,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -233,7 +233,7 @@ class DepartmentFaker(AggregateProvider[dict, Department]):
         super().__init__(
             repository=repository,
             output_factory=Department,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -274,7 +274,7 @@ class UserFaker(AggregateProvider[dict, User]):
         super().__init__(
             repository=repository,
             output_factory=User,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -323,7 +323,7 @@ class CompanyFaker(AggregateProvider[dict, Company]):
         super().__init__(
             repository=repository,
             output_factory=Company,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod

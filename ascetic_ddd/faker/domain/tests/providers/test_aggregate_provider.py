@@ -191,7 +191,7 @@ class UserProviderAutoIncrement(AggregateProvider[dict, User]):
             distributor=StubDistributor(raise_cursor_at=0),
             input_generator=lambda: 0,  # Returns 0 - will be replaced by auto-increment
             output_factory=UserId,
-            result_exporter=lambda x: x.value,
+            output_exporter=lambda x: x.value,
         )
         self.name = ValueProvider(
             distributor=StubDistributor(raise_cursor_at=0),
@@ -204,7 +204,7 @@ class UserProviderAutoIncrement(AggregateProvider[dict, User]):
         super().__init__(
             repository=repository,
             output_factory=User,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -233,7 +233,7 @@ class UserProviderPresetPK(AggregateProvider[dict, User]):
             distributor=StubDistributor(raise_cursor_at=0),
             input_generator=user_id_generator,
             output_factory=UserId,
-            result_exporter=lambda x: x.value,
+            output_exporter=lambda x: x.value,
         )
         self.name = ValueProvider(
             distributor=StubDistributor(raise_cursor_at=0),
@@ -246,7 +246,7 @@ class UserProviderPresetPK(AggregateProvider[dict, User]):
         super().__init__(
             repository=repository,
             output_factory=User,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod

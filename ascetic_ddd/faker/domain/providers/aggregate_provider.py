@@ -46,7 +46,7 @@ class AggregateProvider(
     _id_attr: str
     _repository: IAggregateRepository[T_Output]
     _output_factory: typing.Callable[[...], T_Output] = None  # T_Output of each nested Provider.
-    _result_exporter: typing.Callable[[T_Output], T_Input] = None
+    _output_exporter: typing.Callable[[T_Output], T_Input] = None
 
     _aspect_mapping = {
         "repository": "_repository",
@@ -58,7 +58,7 @@ class AggregateProvider(
             repository: IAggregateRepository,
             # distributor_factory: IM2ODistributorFactory,
             output_factory: typing.Callable[[...], T_Output] | None = None,  # T_Output of each nested Provider.
-            result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
+            output_exporter: typing.Callable[[T_Output], T_Input] | None = None,
     ):
         self._repository = repository
 
@@ -70,13 +70,13 @@ class AggregateProvider(
 
             self._output_factory = output_factory
 
-        if self._result_exporter is None:
-            if result_exporter is None:
+        if self._output_exporter is None:
+            if output_exporter is None:
 
-                def result_exporter(value):
+                def output_exporter(value):
                     return value
 
-            self._result_exporter = result_exporter
+            self._output_exporter = output_exporter
 
         super().__init__()
         self.on_init()
@@ -99,12 +99,12 @@ class AggregateProvider(
 
         if saved_result is not None:
             result = saved_result
-            state = self._result_exporter(result)
+            state = self._output_exporter(result)
             self.set(state)
             await self.populate(session)
         else:
             await self._repository.insert(session, result)
-            state = self._result_exporter(result)
+            state = self._output_exporter(result)
             self.id_provider.set(state.get(self._id_attr))
             await self.id_provider.populate(session)
             # await self.id_provider.append(session, getattr(result, self._id_attr))

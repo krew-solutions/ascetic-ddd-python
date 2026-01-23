@@ -22,13 +22,13 @@ class CompositeValueProvider(
     typing.Generic[T_Input, T_Output]
 ):
     _output_factory: typing.Callable[[...], T_Output] = None  # T_Output of each nested Provider.
-    _result_exporter: typing.Callable[[T_Output], T_Input] = None
+    _output_exporter: typing.Callable[[T_Output], T_Input] = None
 
     def __init__(
             self,
             distributor: IM2ODistributor[T_Input] | None = None,
             output_factory: typing.Callable[[...], T_Output] | None = None,  # T_Output of each nested Provider.
-            result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
+            output_exporter: typing.Callable[[T_Output], T_Input] | None = None,
     ):
         if distributor is None:
             distributor = DummyDistributor()
@@ -41,13 +41,13 @@ class CompositeValueProvider(
 
             self._output_factory = output_factory
 
-        if self._result_exporter is None:
-            if result_exporter is None:
+        if self._output_exporter is None:
+            if output_exporter is None:
 
-                def result_exporter(value):
+                def output_exporter(value):
                     return value
 
-            self._result_exporter = result_exporter
+            self._output_exporter = output_exporter
 
         super().__init__(distributor=distributor)
         self.on_init()
@@ -67,7 +67,7 @@ class CompositeValueProvider(
         if self._input is empty:
             specification = EmptySpecification()
         else:
-            specification = ObjectPatternSpecification(self._input, self._result_exporter)
+            specification = ObjectPatternSpecification(self._input, self._output_exporter)
 
         await self.do_populate(session)
         cursors = {}
@@ -80,7 +80,7 @@ class CompositeValueProvider(
         try:
             result = await self._distributor.next(session, specification)
             if result is not None:
-                value = self._result_exporter(result)
+                value = self._output_exporter(result)
                 self.set(value)
             else:
                 self.set(None)
@@ -88,7 +88,7 @@ class CompositeValueProvider(
             self._output = result
         except ICursor as cursor:
             result = await self._default_factory(session, cursor.position)
-            value = self._result_exporter(result)
+            value = self._output_exporter(result)
             self.set(value)
             # self.set() could reset self._output
             self._output = result

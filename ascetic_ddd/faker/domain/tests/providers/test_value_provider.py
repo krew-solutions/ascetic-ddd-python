@@ -248,7 +248,7 @@ class ValueProviderBasicTestCase(IsolatedAsyncioTestCase):
 
 
 class ValueProviderWithFactoriesTestCase(IsolatedAsyncioTestCase):
-    """Tests for ValueProvider with output_factory and result_exporter."""
+    """Tests for ValueProvider with output_factory and output_exporter."""
 
     async def test_output_factory_transforms_generated_value(self):
         """output_factory should transform the generated value to output."""
@@ -271,17 +271,17 @@ class ValueProviderWithFactoriesTestCase(IsolatedAsyncioTestCase):
 
         self.assertEqual(provider._output, 'transformed_42')
 
-    async def test_result_exporter_extracts_input_from_output(self):
-        """result_exporter should extract input value from distributor output."""
+    async def test_output_exporter_extracts_input_from_output(self):
+        """output_exporter should extract input value from distributor output."""
         distributor = MockDistributor(values=[{'id': 1, 'name': 'test'}])
         generator = AsyncMock()
-        result_exporter = lambda x: x['name']
+        output_exporter = lambda x: x['name']
         session = MockSession()
 
         provider = ValueProvider(
             distributor=distributor,
             input_generator=generator,
-            result_exporter=result_exporter,
+            output_exporter=output_exporter,
         )
         provider.provider_name = 'test_provider'
 

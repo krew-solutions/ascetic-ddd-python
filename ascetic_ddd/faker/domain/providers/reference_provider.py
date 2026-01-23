@@ -67,18 +67,18 @@ class ReferenceProvider(
         if self._input is not empty and isinstance(self._input, dict):
             specification = ObjectPatternSpecification(
                 self._input,
-                self.aggregate_provider._result_exporter,
+                self.aggregate_provider._output_exporter,
                 aggregate_provider_accessor=lambda: self.aggregate_provider,
             )
         elif self._input is empty:
             specification = EmptySpecification()
         else:
-            specification = ObjectPatternSpecification(self._input, self.aggregate_provider._result_exporter)
+            specification = ObjectPatternSpecification(self._input, self.aggregate_provider._output_exporter)
 
         try:
             result = await self._distributor.next(session, specification)
             if result is not None:
-                value = self.aggregate_provider._result_exporter(result)
+                value = self.aggregate_provider._output_exporter(result)
                 self.set(value)
                 self.aggregate_provider.set(value)
                 await self.aggregate_provider.populate(session)
@@ -92,7 +92,7 @@ class ReferenceProvider(
             await self.aggregate_provider.populate(session)
             result = await self.aggregate_provider.create(session)
             await cursor.append(session, result)
-            value = self.aggregate_provider._result_exporter(result)
+            value = self.aggregate_provider._output_exporter(result)
             self.set(value)
             # self.set() could reset self._output
             self._output = result

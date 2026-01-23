@@ -206,7 +206,7 @@ class EmployeeProvider(AggregateProvider[dict, Employee]):
             distributor=StubM2ODistributor(),
             input_generator=lambda: 0,
             output_factory=EmployeeId,
-            result_exporter=lambda x: x.value,
+            output_exporter=lambda x: x.value,
         )
         self.name = ValueProvider(
             distributor=StubM2ODistributor(),
@@ -219,7 +219,7 @@ class EmployeeProvider(AggregateProvider[dict, Employee]):
         super().__init__(
             repository=repository,
             output_factory=Employee,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
@@ -636,7 +636,7 @@ class CompanyProviderWithEmployees(AggregateProvider[dict, Company]):
             distributor=StubM2ODistributor(),
             input_generator=lambda: 0,
             output_factory=CompanyId,
-            result_exporter=lambda x: x.value,
+            output_exporter=lambda x: x.value,
         )
         self.name = ValueProvider(
             distributor=StubM2ODistributor(),
@@ -651,7 +651,7 @@ class CompanyProviderWithEmployees(AggregateProvider[dict, Company]):
         super().__init__(
             repository=repository,
             output_factory=Company,
-            result_exporter=self._export,
+            output_exporter=self._export,
         )
 
     @staticmethod
