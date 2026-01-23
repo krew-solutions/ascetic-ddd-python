@@ -129,13 +129,13 @@ class IValueProvider(
     """
     Immutable.
     Architecture:
-    IValueProvider = f(input_value | None) = result,
+    IValueProvider = f(input | None) = result,
     where
     result : T <- Distributor[T] <- (
         <- result : result ∈ Sᴛ ∧ P(specification) ~ 𝒟(S)  # select from a set with given probability distribution and Specification
         or
-        <- result <- result_factory(input_value)
-            <- input_value <- (
+        <- result <- result_factory(input)
+            <- input <- (
                 set(value)
                 or
                 ValueGenerator(position | None) <- position | None
@@ -193,13 +193,13 @@ class ICompositeValueProvider(
     """
     Immutable. Composite ValueObject.
     Architecture:
-    ICompositeValueProvider = f(Σ input_value | None) = result,
+    ICompositeValueProvider = f(Σ input | None) = result,
     where
     result : T <- Distributor[T] <- (
         <- result : result ∈ Sᴛ ∧ P(specification) ~ 𝒟(S)  # select from a set with given probability distribution and Specification
         or
         <- result <- result_factory(Σ leaf_result)
-            <- Σ IValueProvider(∈ Σ input_value) | ICompositeValueProvider(⊆ Σ input_value)
+            <- Σ IValueProvider(∈ Σ input) | ICompositeValueProvider(⊆ Σ input)
     ),
     where
         ":" means instance of type,

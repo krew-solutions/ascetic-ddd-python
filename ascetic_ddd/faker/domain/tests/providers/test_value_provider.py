@@ -94,7 +94,7 @@ class ValueProviderBasicTestCase(IsolatedAsyncioTestCase):
         await provider.populate(session)
 
         self.assertTrue(provider.is_complete())
-        self.assertEqual(provider._output_result, 'existing_value')
+        self.assertEqual(provider._output, 'existing_value')
         generator.assert_not_called()
 
     async def test_populate_creates_new_value_when_cursor_raised(self):
@@ -134,15 +134,15 @@ class ValueProviderBasicTestCase(IsolatedAsyncioTestCase):
         provider.provider_name = 'test_provider'
 
         await provider.populate(session)
-        first_result = provider._output_result
+        first_result = provider._output
 
         await provider.populate(session)
-        second_result = provider._output_result
+        second_result = provider._output
 
         self.assertEqual(first_result, second_result)
         self.assertEqual(distributor._index, 1)
 
-    async def test_create_returns_output_result(self):
+    async def test_create_returns_output(self):
         """create() should return the output result."""
         distributor = MockDistributor(values=['test_output'])
         generator = AsyncMock()
@@ -206,7 +206,7 @@ class ValueProviderBasicTestCase(IsolatedAsyncioTestCase):
 
         # Key assertion: is_complete() must be True even when ICursor was raised
         self.assertTrue(provider.is_complete())
-        self.assertEqual(provider._output_result, 'generated_value')
+        self.assertEqual(provider._output, 'generated_value')
 
     async def test_is_complete_true_after_populate_with_cursor_no_generator(self):
         """is_complete() should return True after populate() with ICursor and no value_generator."""
@@ -223,7 +223,7 @@ class ValueProviderBasicTestCase(IsolatedAsyncioTestCase):
         await provider.populate(session)
 
         self.assertTrue(provider.is_complete())
-        self.assertIsNone(provider._output_result)
+        self.assertIsNone(provider._output)
 
     async def test_reset_clears_state(self):
         """reset() should clear the provider state."""
@@ -243,8 +243,8 @@ class ValueProviderBasicTestCase(IsolatedAsyncioTestCase):
         provider.reset()
 
         self.assertFalse(provider.is_complete())
-        self.assertEqual(provider._input_value, empty)
-        self.assertEqual(provider._output_result, empty)
+        self.assertEqual(provider._input, empty)
+        self.assertEqual(provider._output, empty)
 
 
 class ValueProviderWithFactoriesTestCase(IsolatedAsyncioTestCase):
@@ -269,7 +269,7 @@ class ValueProviderWithFactoriesTestCase(IsolatedAsyncioTestCase):
 
         await provider.populate(session)
 
-        self.assertEqual(provider._output_result, 'transformed_42')
+        self.assertEqual(provider._output, 'transformed_42')
 
     async def test_result_exporter_extracts_input_from_output(self):
         """result_exporter should extract input value from distributor output."""
@@ -288,7 +288,7 @@ class ValueProviderWithFactoriesTestCase(IsolatedAsyncioTestCase):
         await provider.populate(session)
 
         self.assertEqual(provider.get(), 'test')
-        self.assertEqual(provider._output_result, {'id': 1, 'name': 'test'})
+        self.assertEqual(provider._output, {'id': 1, 'name': 'test'})
 
 
 class ValueProviderGeneratorTypesTestCase(IsolatedAsyncioTestCase):
@@ -381,7 +381,7 @@ class ValueProviderCursorPositionTestCase(IsolatedAsyncioTestCase):
 class ValueProviderSetGetTestCase(IsolatedAsyncioTestCase):
     """Tests for set() and get() methods."""
 
-    async def test_set_updates_input_value(self):
+    async def test_set_updates_input(self):
         """set() should update the input value."""
         distributor = MockDistributor(values=['output'])
         generator = AsyncMock()
@@ -395,7 +395,7 @@ class ValueProviderSetGetTestCase(IsolatedAsyncioTestCase):
 
         self.assertEqual(provider.get(), 'manual_value')
 
-    async def test_get_returns_input_value(self):
+    async def test_get_returns_input(self):
         """get() should return the input value set during populate()."""
         distributor = MockDistributor(values=['output_value'])
         generator = AsyncMock()

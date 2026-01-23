@@ -55,30 +55,30 @@ class ValueProvider(
         super().__init__(distributor=distributor)
 
     async def create(self, session: ISession) -> T_Output:
-        return self._output_result
+        return self._output
 
     async def populate(self, session: ISession) -> None:
         if self.is_complete():
             return
 
-        if self._input_value is not empty:
-            self._output_result = self._result_factory(self._input_value)
-            # await cursor.append(session, self._output_result)
+        if self._input is not empty:
+            self._output = self._result_factory(self._input)
+            # await cursor.append(session, self._output)
             return
 
         try:
             result = await self._distributor.next(session)
             value = self._result_exporter(result)
             self.set(value)
-            # self.set() could reset self._output_result
-            self._output_result = result
+            # self.set() could reset self._output
+            self._output = result
         except ICursor as cursor:
             if self._value_generator is None:
-                self._output_result = self._result_factory(None)
+                self._output = self._result_factory(None)
             else:
                 value = await self._value_generator(session, cursor.position)
                 result = self._result_factory(value)
                 await cursor.append(session, result)
                 self.set(value)
-                # self.set() could reset self._output_result
-                self._output_result = result
+                # self.set() could reset self._output
+                self._output = result

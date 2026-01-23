@@ -258,7 +258,7 @@ class DependentProviderBasicTestCase(IsolatedAsyncioTestCase):
         await provider.populate(session)
 
         self.assertTrue(provider.is_complete())
-        self.assertEqual(len(provider._output_results), 3)
+        self.assertEqual(len(provider._outputs), 3)
         self.assertEqual(len(repository._inserted), 3)
 
     async def test_create_returns_list_of_ids(self):
@@ -297,7 +297,7 @@ class DependentProviderBasicTestCase(IsolatedAsyncioTestCase):
         await provider.populate(session)
 
         self.assertTrue(provider.is_complete())
-        self.assertEqual(len(provider._output_results), 0)
+        self.assertEqual(len(provider._outputs), 0)
         self.assertEqual(len(repository._inserted), 0)
 
     async def test_is_complete_false_before_populate(self):
@@ -363,9 +363,9 @@ class DependentProviderSetGetTestCase(IsolatedAsyncioTestCase):
 
         await provider.populate(session)
 
-        self.assertEqual(len(provider._output_results), 2)
-        self.assertEqual(provider._output_results[0].name, 'John')
-        self.assertEqual(provider._output_results[1].name, 'Jane')
+        self.assertEqual(len(provider._outputs), 2)
+        self.assertEqual(provider._outputs[0].name, 'John')
+        self.assertEqual(provider._outputs[1].name, 'Jane')
 
     async def test_get_returns_values_from_providers(self):
         """get() should return list of values from child providers."""
@@ -418,8 +418,8 @@ class DependentProviderResetTestCase(IsolatedAsyncioTestCase):
         provider.reset()
 
         self.assertFalse(provider.is_complete())
-        self.assertEqual(provider._input_values, empty)
-        self.assertEqual(provider._output_results, empty)
+        self.assertEqual(provider._inputs, empty)
+        self.assertEqual(provider._outputs, empty)
         self.assertIsNone(provider._count)
 
     async def test_reset_allows_repopulate(self):
@@ -437,13 +437,13 @@ class DependentProviderResetTestCase(IsolatedAsyncioTestCase):
 
         # First populate
         await provider.populate(session)
-        self.assertEqual(len(provider._output_results), 2)
+        self.assertEqual(len(provider._outputs), 2)
 
         # Reset and repopulate
         provider.reset()
         await provider.populate(session)
 
-        self.assertEqual(len(provider._output_results), 3)
+        self.assertEqual(len(provider._outputs), 3)
 
 
 # =============================================================================
@@ -473,7 +473,7 @@ class DependentProviderLazyTestCase(IsolatedAsyncioTestCase):
         await provider.populate(session)
 
         self.assertTrue(provider.is_complete())
-        self.assertEqual(len(provider._output_results), 2)
+        self.assertEqual(len(provider._outputs), 2)
 
 
 # =============================================================================
@@ -546,8 +546,8 @@ class DependentProviderCloneTestCase(IsolatedAsyncioTestCase):
         clone = provider.empty()
 
         self.assertFalse(clone.is_complete())
-        self.assertEqual(clone._input_values, empty)
-        self.assertEqual(clone._output_results, empty)
+        self.assertEqual(clone._inputs, empty)
+        self.assertEqual(clone._outputs, empty)
 
 
 # =============================================================================
@@ -740,7 +740,7 @@ class DependentProviderWeightedTestCase(IsolatedAsyncioTestCase):
         await provider.populate(session)
 
         self.assertTrue(provider.is_complete())
-        self.assertEqual(len(provider._output_results), 100)
+        self.assertEqual(len(provider._outputs), 100)
         self.assertEqual(len(repository._inserted), 100)
 
     async def test_weighted_mode_distribution(self):
@@ -765,8 +765,8 @@ class DependentProviderWeightedTestCase(IsolatedAsyncioTestCase):
         await provider.populate(session)
 
         # Count distribution
-        it_count = sum(1 for e in provider._output_results if e.name == 'IT')
-        hr_count = sum(1 for e in provider._output_results if e.name == 'HR')
+        it_count = sum(1 for e in provider._outputs if e.name == 'IT')
+        hr_count = sum(1 for e in provider._outputs if e.name == 'HR')
 
         # With 1000 samples and 90/10 split, IT should be roughly 900 (±100)
         self.assertGreater(it_count, 700)
@@ -799,10 +799,10 @@ class DependentProviderWeightedTestCase(IsolatedAsyncioTestCase):
 
         await provider.populate(session)
 
-        self.assertEqual(len(provider._output_results), 500)
+        self.assertEqual(len(provider._outputs), 500)
 
         # Check that all departments are represented
-        names = {e.name for e in provider._output_results}
+        names = {e.name for e in provider._outputs}
         self.assertEqual(names, {'Engineering', 'Sales', 'Marketing', 'HR'})
 
     async def test_weighted_mode_reset_clears_selector(self):
@@ -829,7 +829,7 @@ class DependentProviderWeightedTestCase(IsolatedAsyncioTestCase):
 
         self.assertIsNone(provider._value_selector)
         self.assertIsNone(provider._weights)
-        self.assertEqual(provider._input_values, empty)
+        self.assertEqual(provider._inputs, empty)
 
     async def test_switch_from_weighted_to_direct_mode(self):
         """Calling set() without weights should switch to direct mode."""
@@ -858,7 +858,7 @@ class DependentProviderWeightedTestCase(IsolatedAsyncioTestCase):
 
         await provider.populate(session)
 
-        self.assertEqual(len(provider._output_results), 2)
+        self.assertEqual(len(provider._outputs), 2)
 
     async def test_empty_preserves_weighted_mode_reset(self):
         """empty() clone should not have weighted mode state."""
@@ -881,7 +881,7 @@ class DependentProviderWeightedTestCase(IsolatedAsyncioTestCase):
 
         self.assertIsNone(clone._value_selector)
         self.assertIsNone(clone._weights)
-        self.assertEqual(clone._input_values, empty)
+        self.assertEqual(clone._inputs, empty)
 
 
 if __name__ == '__main__':

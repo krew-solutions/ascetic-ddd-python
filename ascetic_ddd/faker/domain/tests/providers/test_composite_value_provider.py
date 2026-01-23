@@ -218,8 +218,8 @@ class CompositeValueProviderLevel2TestCase(IsolatedAsyncioTestCase):
         self.assertIsInstance(result.tenant_id, TenantId)
         self.assertIsInstance(result.internal_user_id, InternalUserId)
 
-    async def test_output_result_set_after_populate_with_cursor(self):
-        """_output_result should be set after populate() when ICursor is raised."""
+    async def test_output_set_after_populate_with_cursor(self):
+        """_output should be set after populate() when ICursor is raised."""
         distributor = StubDistributor(raise_cursor_at=0)
         provider = UserIdProvider(distributor)
         provider.provider_name = 'user_id'
@@ -228,8 +228,8 @@ class CompositeValueProviderLevel2TestCase(IsolatedAsyncioTestCase):
         await provider.populate(session)
 
         self.assertTrue(provider.is_complete())
-        self.assertIsNot(provider._output_result, empty)
-        self.assertIsInstance(provider._output_result, UserId)
+        self.assertIsNot(provider._output, empty)
+        self.assertIsInstance(provider._output, UserId)
 
     async def test_nested_providers_are_populated(self):
         """Nested ValueProviders should be populated during parent populate()."""
@@ -381,8 +381,8 @@ class CompositeValueProviderResetTestCase(IsolatedAsyncioTestCase):
         provider.reset()
 
         self.assertFalse(provider.is_complete())
-        self.assertEqual(provider._input_value, empty)
-        self.assertEqual(provider._output_result, empty)
+        self.assertEqual(provider._input, empty)
+        self.assertEqual(provider._output, empty)
 
 
 class CompositeValueProviderProviderNameTestCase(IsolatedAsyncioTestCase):

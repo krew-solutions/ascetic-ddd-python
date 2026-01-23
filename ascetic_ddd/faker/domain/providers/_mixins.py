@@ -128,32 +128,32 @@ class BaseProvider(
     typing.Generic[T_Input, T_Output],
     metaclass=abc.ABCMeta
 ):
-    _input_value: T_Input | Empty = empty
-    _output_result: T_Output | Empty = empty
+    _input: T_Input | Empty = empty
+    _output: T_Output | Empty = empty
 
     def reset(self) -> None:
-        self._input_value = empty
-        self._output_result = empty
-        self.notify('input_value', self._input_value)
+        self._input = empty
+        self._output = empty
+        self.notify('input', self._input)
 
     def set(self, value: T_Input) -> None:
-        if self._input_value != value:
-            self._input_value = value
-            self._output_result = empty
-            self.notify('input_value', self._input_value)
+        if self._input != value:
+            self._input = value
+            self._output = empty
+            self.notify('input', self._input)
 
     def get(self) -> T_Input:
-        return self._input_value
+        return self._input
 
     def do_empty(self, clone: typing.Self, shunt: ICloningShunt):
-        clone._input_value = empty
-        clone._output_result = empty
+        clone._input = empty
+        clone._output = empty
 
     def is_complete(self) -> bool:
-        return self._output_result is not empty
+        return self._output is not empty
 
     def is_transient(self) -> bool:
-        return self._input_value is empty
+        return self._input is empty
 
     async def append(self, session: ISession, value: T_Output):
         pass
@@ -202,13 +202,13 @@ class BaseCompositeProvider(
     metaclass=abc.ABCMeta
 ):
 
-    _input_value: T_Input | Empty = empty
-    _output_result: T_Output | Empty = empty
+    _input: T_Input | Empty = empty
+    _output: T_Output | Empty = empty
     _provider_name: str | None = None
 
     def is_complete(self) -> bool:
         return (
-            self._output_result is not empty or
+            self._output is not empty or
             all(provider.is_complete() for provider in self._providers.values())
         )
 
@@ -216,16 +216,16 @@ class BaseCompositeProvider(
         return any(provider.is_transient() for provider in self._providers.values())
 
     def do_empty(self, clone: typing.Self, shunt: ICloningShunt):
-        clone._input_value = empty
-        clone._output_result = empty
+        clone._input = empty
+        clone._output = empty
         for attr, provider in self._providers.items():
             setattr(clone, attr, provider.empty(shunt))
         clone.on_init()
 
     def reset(self) -> None:
-        self._input_value = empty
-        self._output_result = empty
-        self.notify('input_value', self._input_value)
+        self._input = empty
+        self._output = empty
+        self.notify('input', self._input)
         for provider in self._providers.values():
             provider.reset()
 
@@ -233,10 +233,10 @@ class BaseCompositeProvider(
         """
         https://docs.python.org/3/library/stdtypes.html#mapping-types-dict
         """
-        if self._input_value != value:
-            self._input_value = value
-            self._output_result = empty
-            self.notify('input_value', value)
+        if self._input != value:
+            self._input = value
+            self._output = empty
+            self.notify('input', value)
         if value is not empty:
             for attr, val in value.items():
                 """
@@ -325,8 +325,8 @@ class BaseCompositeDistributionProvider(
     metaclass=abc.ABCMeta
 ):
 
-    _input_value: T_Input | Empty = empty
-    _output_result: T_Output | Empty = empty
+    _input: T_Input | Empty = empty
+    _output: T_Output | Empty = empty
     _provider_name: str | None = None
     _distributor: IM2ODistributor[T_Input]
 

@@ -85,8 +85,8 @@ class AggregateProvider(
         pass
 
     async def create(self, session: ISession) -> T_Output:
-        if self._output_result is not empty:
-            return self._output_result
+        if self._output is not empty:
+            return self._output
         result = await self._default_factory(session)
         if self.id_provider.is_complete() and not self.id_provider.is_transient():
             # id_ здесь может быть еще неизвестен, т.к. агрегат не создан.
@@ -108,8 +108,8 @@ class AggregateProvider(
             self.id_provider.set(state.get(self._id_attr))
             await self.id_provider.populate(session)
             # await self.id_provider.append(session, getattr(result, self._id_attr))
-        # self.set() could reset self._output_result
-        self._output_result = result
+        # self.set() could reset self._output
+        self._output = result
 
         # Create dependent entities AFTER this aggregate is created (they need its ID for FK)
         if self._dependent_providers:

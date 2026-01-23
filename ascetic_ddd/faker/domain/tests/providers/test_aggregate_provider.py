@@ -279,7 +279,7 @@ class AggregateProviderAutoIncrementTestCase(IsolatedAsyncioTestCase):
         self.assertEqual(len(repository._inserted), 1)
 
     async def test_is_complete_true_after_create(self):
-        """is_complete() should return True after create() and _output_result should be set."""
+        """is_complete() should return True after create() and _output should be set."""
         repository = StubRepository(auto_increment_start=1)
         provider = UserProviderAutoIncrement(repository)
         provider.provider_name = 'user'
@@ -289,8 +289,8 @@ class AggregateProviderAutoIncrementTestCase(IsolatedAsyncioTestCase):
         result = await provider.create(session)
 
         self.assertTrue(provider.is_complete())
-        self.assertIs(provider._output_result, result)
-        self.assertIsNot(provider._output_result, empty)
+        self.assertIs(provider._output, result)
+        self.assertIsNot(provider._output, empty)
 
     async def test_auto_increment_assigns_id(self):
         """Repository should assign ID via auto-increment."""
@@ -380,8 +380,8 @@ class AggregateProviderPresetPKTestCase(IsolatedAsyncioTestCase):
         result = await provider.create(session)
 
         self.assertTrue(provider.is_complete())
-        self.assertIs(provider._output_result, result)
-        self.assertIsNot(provider._output_result, empty)
+        self.assertIs(provider._output, result)
+        self.assertIsNot(provider._output, empty)
 
     async def test_id_provider_complete_before_create(self):
         """id_provider should be complete before create() with pre-set PK."""
@@ -470,8 +470,8 @@ class AggregateProviderResetTestCase(IsolatedAsyncioTestCase):
         provider.reset()
 
         self.assertFalse(provider.is_complete())
-        self.assertEqual(provider._input_value, empty)
-        self.assertEqual(provider._output_result, empty)
+        self.assertEqual(provider._input, empty)
+        self.assertEqual(provider._output, empty)
 
     async def test_reset_clears_nested_providers(self):
         """reset() should clear all nested providers."""

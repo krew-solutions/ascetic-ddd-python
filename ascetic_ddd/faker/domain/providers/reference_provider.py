@@ -66,16 +66,16 @@ class ReferenceProvider(
             return
 
         # Создаём specification с aggregate_provider_accessor для lazy resolve_nested и subqueries
-        if self._input_value is not empty and isinstance(self._input_value, dict):
+        if self._input is not empty and isinstance(self._input, dict):
             specification = ObjectPatternSpecification(
-                self._input_value,
+                self._input,
                 self.aggregate_provider._result_exporter,
                 aggregate_provider_accessor=lambda: self.aggregate_provider,
             )
-        elif self._input_value is empty:
+        elif self._input is empty:
             specification = EmptySpecification()
         else:
-            specification = ObjectPatternSpecification(self._input_value, self.aggregate_provider._result_exporter)
+            specification = ObjectPatternSpecification(self._input, self.aggregate_provider._result_exporter)
 
         try:
             result = await self._distributor.next(session, specification)
@@ -86,18 +86,18 @@ class ReferenceProvider(
                 await self.aggregate_provider.populate(session)
             else:
                 self.set(None)
-            # self.set() could reset self._output_result
-            self._output_result = result
+            # self.set() could reset self._output
+            self._output = result
         except ICursor as cursor:
-            if self._input_value is not empty and isinstance(self._input_value, dict):
-                self.aggregate_provider.set(self._input_value)
+            if self._input is not empty and isinstance(self._input, dict):
+                self.aggregate_provider.set(self._input)
             await self.aggregate_provider.populate(session)
             result = await self.aggregate_provider.create(session)
             await cursor.append(session, result)
             value = self.aggregate_provider._result_exporter(result)
             self.set(value)
-            # self.set() could reset self._output_result
-            self._output_result = result
+            # self.set() could reset self._output
+            self._output = result
 
     async def setup(self, session: ISession):
         await super().setup(session)
@@ -108,7 +108,7 @@ class ReferenceProvider(
         await self._aggregate_provider_accessor.cleanup(session)
 
     async def create(self, session: ISession) -> T_Id_Output:
-        if self._output_result is None:
+        if self._output is None:
             return None
         return await self.aggregate_provider.id_provider.create(session)
 

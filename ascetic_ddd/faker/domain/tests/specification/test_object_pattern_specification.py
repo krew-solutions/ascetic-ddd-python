@@ -406,35 +406,35 @@ class ObjectPatternSpecificationResolveNestedTestCase(IsolatedAsyncioTestCase):
         # Create a mock reference provider that returns a known ID
         class MockReferenceProvider(IReferenceProvider):
             def __init__(self):
-                self._input_value = empty
-                self._output_result = empty
+                self._input = empty
+                self._output = empty
                 self._provider_name = None
 
             async def populate(self, session):
                 # Simulate populating with resolved ID
-                self._output_result = StatusId("resolved_active")
+                self._output = StatusId("resolved_active")
 
             def set(self, value):
-                self._input_value = value
+                self._input = value
 
             def get(self):
-                return self._output_result
+                return self._output
 
             async def create(self, session):
-                return self._output_result
+                return self._output
 
             async def append(self, session, value):
                 pass
 
             def reset(self):
-                self._input_value = empty
-                self._output_result = empty
+                self._input = empty
+                self._output = empty
 
             def is_complete(self):
-                return self._output_result is not empty
+                return self._output is not empty
 
             def is_transient(self):
-                return self._input_value is empty
+                return self._input is empty
 
             def empty(self, shunt=None):
                 return MockReferenceProvider()

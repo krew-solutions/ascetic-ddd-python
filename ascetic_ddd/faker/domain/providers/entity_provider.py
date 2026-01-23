@@ -53,9 +53,9 @@ class EntityProvider(
         pass
 
     async def create(self, session: ISession) -> T_Output:
-        if self._output_result is empty:
-            self._output_result = await self._default_factory(session)
-        return self._output_result
+        if self._output is empty:
+            self._output = await self._default_factory(session)
+        return self._output
 
     async def _default_factory(self, session: ISession, position: typing.Optional[int] = None):
         data = dict()

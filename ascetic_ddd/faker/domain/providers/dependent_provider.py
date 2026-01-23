@@ -79,8 +79,8 @@ class DependentProvider(
 
     _distributor: IO2MDistributor
     _aggregate_providers_accessor: IAggregateProvidersAccessor[T_Input, T_Output]
-    _input_values: list[T_Input] | Empty = empty
-    _output_results: list[T_Output] | Empty = empty
+    _inputs: list[T_Input] | Empty = empty
+    _outputs: list[T_Output] | Empty = empty
     _count: int | None = None
     _weights: list[float] | None = None
     _value_selector: WeightedRangeDistributor | None = None
@@ -110,8 +110,8 @@ class DependentProvider(
         self._dependency_id = dependency_id
 
     def do_empty(self, clone: typing.Self, shunt: ICloningShunt | None = None):
-        clone._input_values = empty
-        clone._output_results = empty
+        clone._inputs = empty
+        clone._outputs = empty
         clone._count = None
         clone._weights = None
         clone._value_selector = None
@@ -119,14 +119,14 @@ class DependentProvider(
         clone._aggregate_providers_accessor = self._aggregate_providers_accessor.empty(shunt)
 
     def reset(self) -> None:
-        self._input_values = empty
-        self._output_results = empty
+        self._inputs = empty
+        self._outputs = empty
         self._count = None
         self._weights = None
         self._value_selector = None
         self._dependency_id = None
         self._aggregate_providers_accessor.reset()
-        self.notify('input_value', self._input_values)
+        self.notify('input', self._inputs)
 
     async def populate(self, session: ISession) -> None:
         """
@@ -150,17 +150,17 @@ class DependentProvider(
         providers = self.aggregate_providers
 
         # Set values on providers
-        if self._input_values is not empty:
+        if self._inputs is not empty:
             if self._value_selector is not None:
                 # Weighted mode: select value for each child using WeightedRangeDistributor
                 for provider in providers:
                     index = self._value_selector.distribute()
-                    provider.set(self._input_values[index])
+                    provider.set(self._inputs[index])
             else:
                 # Direct mode: values[i] → child[i]
                 for i, provider in enumerate(providers):
-                    if i < len(self._input_values):
-                        provider.set(self._input_values[i])
+                    if i < len(self._inputs):
+                        provider.set(self._inputs[i])
 
         # Set dependency's ID on dependency_field for each child (FK)
         if self._dependency_field is not None and self._dependency_id is not None:
@@ -174,21 +174,21 @@ class DependentProvider(
             await provider.populate(session)
 
         # Collect results
-        self._output_results = []
+        self._outputs = []
         for provider in providers:
             result = await provider.create(session)
-            self._output_results.append(result)
+            self._outputs.append(result)
 
     async def create(self, session: ISession) -> list[T_Id_Output]:
         """
         Returns list of IDs of created children.
         """
-        if self._output_results is empty:
+        if self._outputs is empty:
             return []
 
         results = []
         for provider in self.aggregate_providers:
-            if provider._output_result is not empty:
+            if provider._output is not empty:
                 id_result = await provider.id_provider.create(session)
                 results.append(id_result)
         return results
@@ -214,10 +214,10 @@ class DependentProvider(
                 weights=[0.7, 0.3]
             )
         """
-        if self._input_values != values or self._weights != weights:
-            self._input_values = values
+        if self._inputs != values or self._weights != weights:
+            self._inputs = values
             self._weights = weights
-            self._output_results = empty
+            self._outputs = empty
 
             if weights is not None:
                 # Weighted mode: create selector, count from distributor
@@ -232,7 +232,7 @@ class DependentProvider(
                 self._value_selector = None
                 self._count = len(values) if values else None
 
-            self.notify('input_value', self._input_values)
+            self.notify('input', self._inputs)
 
     def get(self) -> list[T_Input]:
         """
@@ -243,10 +243,10 @@ class DependentProvider(
         return [provider.get() for provider in self.aggregate_providers]
 
     def is_complete(self) -> bool:
-        return self._output_results is not empty
+        return self._outputs is not empty
 
     def is_transient(self) -> bool:
-        return self._input_values is empty
+        return self._inputs is empty
 
     async def append(self, session: ISession, value: T_Output):
         """Not used for O2M - children are created, not appended to distributor."""

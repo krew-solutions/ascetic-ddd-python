@@ -56,18 +56,18 @@ class CompositeValueProvider(
         pass
 
     async def create(self, session: ISession) -> T_Output:
-        return self._output_result
+        return self._output
 
     async def populate(self, session: ISession) -> None:
         if self.is_complete():
-            if self._output_result is empty:
-                self._output_result = await self._default_factory(session)
+            if self._output is empty:
+                self._output = await self._default_factory(session)
             return
 
-        if self._input_value is empty:
+        if self._input is empty:
             specification = EmptySpecification()
         else:
-            specification = ObjectPatternSpecification(self._input_value, self._result_exporter)
+            specification = ObjectPatternSpecification(self._input, self._result_exporter)
 
         await self.do_populate(session)
         cursors = {}
@@ -84,16 +84,16 @@ class CompositeValueProvider(
                 self.set(value)
             else:
                 self.set(None)
-            # self.set() could reset self._output_result
-            self._output_result = result
+            # self.set() could reset self._output
+            self._output = result
         except ICursor as cursor:
             result = await self._default_factory(session, cursor.position)
             value = self._result_exporter(result)
             self.set(value)
-            # self.set() could reset self._output_result
-            self._output_result = result
+            # self.set() could reset self._output
+            self._output = result
             if not self.is_transient():
-                await cursor.append(session, self._output_result)
+                await cursor.append(session, self._output)
             # infinite recursion
             # await self.populate(session)
 
