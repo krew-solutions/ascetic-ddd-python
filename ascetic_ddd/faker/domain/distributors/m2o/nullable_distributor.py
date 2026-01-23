@@ -5,6 +5,7 @@ from typing import Hashable, Callable
 from ascetic_ddd.disposable import IDisposable
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
+from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 
 __all__ = ('NullableDistributor',)
@@ -16,6 +17,7 @@ T = typing.TypeVar("T", covariant=True)
 class NullableDistributor(IM2ODistributor[T], typing.Generic[T]):
     _delegate: IM2ODistributor[T]
     _null_weight: float
+    _default_spec: ISpecification
 
     def __init__(
             self,
@@ -24,13 +26,16 @@ class NullableDistributor(IM2ODistributor[T], typing.Generic[T]):
     ):
         self._delegate = delegate
         self._null_weight = null_weight
+        self._default_spec = EmptySpecification()
 
     async def next(
             self,
             session: ISession,
             specification: ISpecification[T] | None = None,
     ) -> T | None:
-        if self._null_weight > 0 and self._is_null():
+        if specification is None:
+            specification = self._default_spec
+        if isinstance(specification, EmptySpecification) and self._null_weight > 0 and self._is_null():
             return None
         return await self._delegate.next(session, specification)
 
