@@ -2,11 +2,19 @@ import dataclasses
 import typing
 from unittest import IsolatedAsyncioTestCase
 
+from ascetic_ddd.faker.domain.distributors.m2o.cursor import Cursor
+from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
+from ascetic_ddd.faker.domain.providers.aggregate_provider import AggregateProvider, IAggregateRepository
 from ascetic_ddd.faker.domain.providers.interfaces import IReferenceProvider
+from ascetic_ddd.faker.domain.providers.reference_provider import ReferenceProvider
+from ascetic_ddd.faker.domain.providers.value_provider import ValueProvider
+from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.domain.specification.nested_object_pattern_specification import (
     NestedObjectPatternSpecification
 )
 from ascetic_ddd.faker.domain.values.empty import empty
+from ascetic_ddd.faker.infrastructure.repositories.in_memory_repository import InMemoryRepository
 
 
 # =============================================================================
@@ -48,13 +56,81 @@ class Company:
     name: str
 
 
+class MockSession:
+    """Mock session for testing."""
+    pass
+
+
+class StubDistributor(IM2ODistributor):
+    """Stub distributor that returns predefined values."""
+
+    def __init__(self, values: list = None, raise_cursor: bool = False):
+        self._values = values or []
+        self._index = 0
+        self._raise_cursor = raise_cursor
+        self._appended = []
+        self._provider_name = None
+        self._observers = []
+
+    async def next(self, session: ISession, specification: ISpecification = None):
+        if self._raise_cursor or self._index >= len(self._values):
+            raise Cursor(position=self._index, callback=self._append)
+        value = self._values[self._index]
+        self._index += 1
+        return value
+
+    async def _append(self, session: ISession, value, position):
+        self._appended.append(value)
+
+    async def append(self, session: ISession, value):
+        self._appended.append(value)
+
+    @property
+    def provider_name(self):
+        return self._provider_name
+
+    @provider_name.setter
+    def provider_name(self, value):
+        self._provider_name = value
+
+    async def setup(self, session: ISession):
+        pass
+
+    async def cleanup(self, session: ISession):
+        pass
+
+    def bind_external_source(self, external_source: typing.Any) -> None:
+        pass
+
+    def attach(self, aspect, observer, id_=None):
+        self._observers.append((aspect, observer))
+        return lambda: self._observers.remove((aspect, observer))
+
+    def detach(self, aspect, observer, id_=None):
+        self._observers = [(a, o) for a, o in self._observers if o != observer]
+
+    def notify(self, aspect, *args, **kwargs):
+        pass
+
+    async def anotify(self, aspect, *args, **kwargs):
+        pass
+
+    def __copy__(self):
+        return self
+
+    def __deepcopy__(self, memodict={}):
+        return self
+
+
+
+
 class MockRepository:
     """Mock async repository for testing."""
 
     def __init__(self, storage: dict = None):
         self._storage = storage or {}
 
-    async def get(self, id_):
+    async def get(self, session, id_):
         key = self._extract_key(id_)
         return self._storage.get(key)
 
@@ -148,9 +224,92 @@ class MockReferenceProvider(IReferenceProvider):
 class MockAggregateProvider:
     """Mock aggregate provider for testing."""
 
-    def __init__(self, providers: dict = None, output_exporter: typing.Callable = None):
+    def __init__(
+            self,
+            providers: dict = None,
+            output_exporter: typing.Callable = None,
+            repository: typing.Any = None
+    ):
         self._providers = providers or {}
         self._output_exporter = output_exporter or (lambda x: x)
+        self._repository = repository
+
+
+# =============================================================================
+# Real Providers for Sociable Tests
+# =============================================================================
+
+class StatusFaker(AggregateProvider[dict, Status]):
+    """Real StatusFaker provider for sociable tests."""
+    _id_attr = 'id'
+
+    id: ValueProvider[str, StatusId]
+    name: ValueProvider[str, str]
+
+    def __init__(self, repository: IAggregateRepository, distributor: IM2ODistributor):
+        self.id = ValueProvider(
+            distributor=distributor,
+            input_generator=lambda session, pos=None: "status_%s" % (pos or 0),
+            output_factory=StatusId,
+        )
+        self.name = ValueProvider(
+            distributor=StubDistributor(values=["Active", "Inactive", "Pending"]),
+            input_generator=lambda session, pos=None: "Status %s" % (pos or 0),
+        )
+        super().__init__(
+            repository=repository,
+            output_factory=Status,
+            output_exporter=self._export,
+        )
+
+    @staticmethod
+    def _export(status: Status) -> dict:
+        return {
+            'id': status.id.value if hasattr(status.id, 'value') else status.id,
+            'name': status.name,
+        }
+
+
+class UserFaker(AggregateProvider[dict, User]):
+    """Real UserFaker provider for sociable tests."""
+    _id_attr = 'id'
+
+    id: ValueProvider[int, UserId]
+    status_id: ReferenceProvider
+    name: ValueProvider[str, str]
+
+    def __init__(
+            self,
+            repository: IAggregateRepository,
+            distributor: IM2ODistributor,
+            status_provider: StatusFaker
+    ):
+        self.id = ValueProvider(
+            distributor=StubDistributor(raise_cursor=True),
+            input_generator=lambda session, pos=None: pos or 1,
+            output_factory=UserId,
+        )
+        self.status_id = ReferenceProvider(
+            distributor=distributor,
+            aggregate_provider=status_provider,
+        )
+        self.name = ValueProvider(
+            distributor=StubDistributor(values=["Alice", "Bob", "Charlie"]),
+            input_generator=lambda session, pos=None: "User %s" % (pos or 0),
+        )
+        super().__init__(
+            repository=repository,
+            output_factory=User,
+            output_exporter=self._export,
+        )
+
+    @staticmethod
+    def _export(user: User) -> dict:
+        return {
+            'id': user.id.value if hasattr(user.id, 'value') else user.id,
+            'status_id': user.status_id.value if hasattr(user.status_id, 'value') else user.status_id,
+            'name': user.name,
+        }
 
 
 # =============================================================================
@@ -166,8 +325,8 @@ class NestedObjectPatternSpecificationBasicTestCase(IsolatedAsyncioTestCase):
             {'status': 'active'},
             lambda obj: obj
         )
-        self.assertTrue(await spec.is_satisfied_by({'status': 'active', 'name': 'test'}))
-        self.assertFalse(await spec.is_satisfied_by({'status': 'inactive', 'name': 'test'}))
+        self.assertTrue(await spec.is_satisfied_by(None, {'status': 'active', 'name': 'test'}))
+        self.assertFalse(await spec.is_satisfied_by(None, {'status': 'inactive', 'name': 'test'}))
 
     async def test_is_satisfied_by_nested_pattern_without_provider(self):
         """Nested pattern without provider should use simple subset check."""
@@ -175,8 +334,8 @@ class NestedObjectPatternSpecificationBasicTestCase(IsolatedAsyncioTestCase):
             {'address': {'city': 'Moscow'}},
             lambda obj: obj
         )
-        self.assertTrue(await spec.is_satisfied_by({'address': {'city': 'Moscow', 'street': 'Main'}}))
-        self.assertFalse(await spec.is_satisfied_by({'address': {'city': 'London'}}))
+        self.assertTrue(await spec.is_satisfied_by(None, {'address': {'city': 'Moscow', 'street': 'Main'}}))
+        self.assertFalse(await spec.is_satisfied_by(None, {'address': {'city': 'London'}}))
 
     def test_hash_uses_object_pattern(self):
         """hash() should use _object_pattern."""
@@ -249,7 +408,8 @@ class NestedObjectPatternSpecificationNestedLookupTestCase(IsolatedAsyncioTestCa
         self.status_repo.add(self.status_inactive)
 
         self.status_provider = MockAggregateProvider(
-            output_exporter=lambda s: {'id': s.id.value, 'name': s.name}
+            output_exporter=lambda s: {'id': s.id.value, 'name': s.name},
+            repository=self.status_repo
         )
 
         # Setup User aggregate with reference to Status
@@ -266,8 +426,10 @@ class NestedObjectPatternSpecificationNestedLookupTestCase(IsolatedAsyncioTestCa
 
         self.user_provider = MockAggregateProvider(
             providers={'status_id': self.status_ref_provider},
-            output_exporter=lambda u: {'id': u.id.value, 'status_id': u.status_id.value, 'name': u.name}
+            output_exporter=lambda u: {'id': u.id.value, 'status_id': u.status_id.value, 'name': u.name},
+            repository=self.user_repo
         )
+        self.session = MockSession()
 
     async def test_nested_lookup_matches(self):
         """Nested lookup should match when foreign object satisfies pattern."""
@@ -278,9 +440,9 @@ class NestedObjectPatternSpecificationNestedLookupTestCase(IsolatedAsyncioTestCa
         )
 
         # Alice has active status
-        self.assertTrue(await spec.is_satisfied_by(self.user_alice))
+        self.assertTrue(await spec.is_satisfied_by(self.session, self.user_alice))
         # Bob has inactive status
-        self.assertFalse(await spec.is_satisfied_by(self.user_bob))
+        self.assertFalse(await spec.is_satisfied_by(self.session, self.user_bob))
 
     async def test_nested_lookup_returns_false_when_fk_is_none(self):
         """Nested lookup should return False when fk_id is None."""
@@ -290,7 +452,7 @@ class NestedObjectPatternSpecificationNestedLookupTestCase(IsolatedAsyncioTestCa
             aggregate_provider_accessor=lambda: self.user_provider
         )
 
-        self.assertFalse(await spec.is_satisfied_by(self.user_alice))
+        self.assertFalse(await spec.is_satisfied_by(self.session, self.user_alice))
 
     async def test_nested_lookup_returns_false_when_foreign_obj_not_found(self):
         """Nested lookup should return False when foreign object not found."""
@@ -302,7 +464,7 @@ class NestedObjectPatternSpecificationNestedLookupTestCase(IsolatedAsyncioTestCa
             aggregate_provider_accessor=lambda: self.user_provider
         )
 
-        self.assertFalse(await spec.is_satisfied_by(user_with_unknown_status))
+        self.assertFalse(await spec.is_satisfied_by(self.session, user_with_unknown_status))
 
     async def test_nested_lookup_with_non_reference_provider(self):
         """Non-reference provider should return True if fk_id is not None."""
@@ -319,7 +481,7 @@ class NestedObjectPatternSpecificationNestedLookupTestCase(IsolatedAsyncioTestCa
         )
 
         # Should return True because fk_id ('Alice') is not None
-        self.assertTrue(await spec.is_satisfied_by(self.user_alice))
+        self.assertTrue(await spec.is_satisfied_by(self.session, self.user_alice))
 
     async def test_simple_value_comparison_with_provider(self):
         """Simple value comparison should work alongside nested lookup."""
@@ -330,9 +492,9 @@ class NestedObjectPatternSpecificationNestedLookupTestCase(IsolatedAsyncioTestCa
         )
 
         # Alice matches both name and status
-        self.assertTrue(await spec.is_satisfied_by(self.user_alice))
+        self.assertTrue(await spec.is_satisfied_by(self.session, self.user_alice))
         # Bob doesn't match name
-        self.assertFalse(await spec.is_satisfied_by(self.user_bob))
+        self.assertFalse(await spec.is_satisfied_by(self.session, self.user_bob))
 
     async def test_simple_value_mismatch_with_provider(self):
         """Simple value mismatch should return False early."""
@@ -342,7 +504,7 @@ class NestedObjectPatternSpecificationNestedLookupTestCase(IsolatedAsyncioTestCa
             aggregate_provider_accessor=lambda: self.user_provider
         )
 
-        self.assertFalse(await spec.is_satisfied_by(self.user_alice))
+        self.assertFalse(await spec.is_satisfied_by(self.session, self.user_alice))
 
 
 # =============================================================================
@@ -360,7 +522,8 @@ class NestedObjectPatternSpecificationDeepNestingTestCase(IsolatedAsyncioTestCas
 
         self.status_provider = MockAggregateProvider(
             providers={},
-            output_exporter=lambda s: {'id': s.id.value, 'name': s.name}
+            output_exporter=lambda s: {'id': s.id.value, 'name': s.name},
+            repository=self.status_repo
         )
 
         # Setup User aggregate with reference to Status
@@ -374,7 +537,8 @@ class NestedObjectPatternSpecificationDeepNestingTestCase(IsolatedAsyncioTestCas
 
         self.user_provider = MockAggregateProvider(
             providers={'status_id': self.status_ref_provider},
-            output_exporter=lambda u: {'id': u.id.value, 'status_id': u.status_id.value, 'name': u.name}
+            output_exporter=lambda u: {'id': u.id.value, 'status_id': u.status_id.value, 'name': u.name},
+            repository=self.user_repo
         )
 
         # Setup Company aggregate with reference to User (owner)
@@ -388,8 +552,10 @@ class NestedObjectPatternSpecificationDeepNestingTestCase(IsolatedAsyncioTestCas
 
         self.company_provider = MockAggregateProvider(
             providers={'owner_id': self.owner_ref_provider},
-            output_exporter=lambda c: {'id': c.id.value, 'owner_id': c.owner_id.value, 'name': c.name}
+            output_exporter=lambda c: {'id': c.id.value, 'owner_id': c.owner_id.value, 'name': c.name},
+            repository=self.company_repo
         )
+        self.session = MockSession()
 
     async def test_two_level_nested_lookup(self):
         """Two-level nested lookup should work."""
@@ -400,7 +566,7 @@ class NestedObjectPatternSpecificationDeepNestingTestCase(IsolatedAsyncioTestCas
             aggregate_provider_accessor=lambda: self.company_provider
         )
 
-        self.assertTrue(await spec.is_satisfied_by(self.company))
+        self.assertTrue(await spec.is_satisfied_by(self.session, self.company))
 
     async def test_two_level_nested_lookup_no_match(self):
         """Two-level nested lookup should return False when doesn't match."""
@@ -410,7 +576,7 @@ class NestedObjectPatternSpecificationDeepNestingTestCase(IsolatedAsyncioTestCas
             aggregate_provider_accessor=lambda: self.company_provider
         )
 
-        self.assertFalse(await spec.is_satisfied_by(self.company))
+        self.assertFalse(await spec.is_satisfied_by(self.session, self.company))
 
 
 # =============================================================================
@@ -426,7 +592,8 @@ class NestedObjectPatternSpecificationCacheTestCase(IsolatedAsyncioTestCase):
         self.status_repo.add(self.status_active)
 
         self.status_provider = MockAggregateProvider(
-            output_exporter=lambda s: {'id': s.id.value, 'name': s.name}
+            output_exporter=lambda s: {'id': s.id.value, 'name': s.name},
+            repository=self.status_repo
         )
 
         self.user_alice = User(UserId(1), StatusId("active"), "Alice")
@@ -439,6 +606,7 @@ class NestedObjectPatternSpecificationCacheTestCase(IsolatedAsyncioTestCase):
             providers={'status_id': self.status_ref_provider},
             output_exporter=lambda u: {'id': u.id.value, 'status_id': u.status_id.value, 'name': u.name}
         )
+        self.session = MockSession()
 
     async def test_cache_stores_result(self):
         """Cache should store lookup result."""
@@ -449,7 +617,7 @@ class NestedObjectPatternSpecificationCacheTestCase(IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(len(spec._nested_cache), 0)
-        await spec.is_satisfied_by(self.user_alice)
+        await spec.is_satisfied_by(self.session, self.user_alice)
         self.assertEqual(len(spec._nested_cache), 1)
 
     async def test_cache_key_includes_provider_type(self):
@@ -460,7 +628,7 @@ class NestedObjectPatternSpecificationCacheTestCase(IsolatedAsyncioTestCase):
             aggregate_provider_accessor=lambda: self.user_provider
         )
 
-        await spec.is_satisfied_by(self.user_alice)
+        await spec.is_satisfied_by(self.session, self.user_alice)
 
         cache_key = list(spec._nested_cache.keys())[0]
         self.assertEqual(cache_key[0], MockAggregateProvider)
@@ -472,9 +640,9 @@ class NestedObjectPatternSpecificationCacheTestCase(IsolatedAsyncioTestCase):
         call_count = [0]
         original_get = self.status_repo.get
 
-        async def counting_get(id_):
+        async def counting_get(session, id_):
             call_count[0] += 1
-            return await original_get(id_)
+            return await original_get(session, id_)
 
         self.status_repo.get = counting_get
 
@@ -485,11 +653,11 @@ class NestedObjectPatternSpecificationCacheTestCase(IsolatedAsyncioTestCase):
         )
 
         # First call - should hit repository
-        await spec.is_satisfied_by(self.user_alice)
+        await spec.is_satisfied_by(self.session, self.user_alice)
         self.assertEqual(call_count[0], 1)
 
         # Second call - should use cache
-        await spec.is_satisfied_by(self.user_alice)
+        await spec.is_satisfied_by(self.session, self.user_alice)
         self.assertEqual(call_count[0], 1)
 
     async def test_clear_cache(self):
@@ -500,7 +668,7 @@ class NestedObjectPatternSpecificationCacheTestCase(IsolatedAsyncioTestCase):
             aggregate_provider_accessor=lambda: self.user_provider
         )
 
-        await spec.is_satisfied_by(self.user_alice)
+        await spec.is_satisfied_by(self.session, self.user_alice)
         self.assertEqual(len(spec._nested_cache), 1)
 
         spec.clear_cache()
@@ -514,7 +682,8 @@ class NestedObjectPatternSpecificationCacheTestCase(IsolatedAsyncioTestCase):
 
         another_provider = AnotherMockAggregateProvider(
             providers={'status_id': self.status_ref_provider},
-            output_exporter=lambda u: {'id': u.id.value, 'status_id': u.status_id.value, 'name': u.name}
+            output_exporter=lambda u: {'id': u.id.value, 'status_id': u.status_id.value, 'name': u.name},
+            repository=self.status_repo
         )
 
         provider_index = [0]
@@ -530,12 +699,12 @@ class NestedObjectPatternSpecificationCacheTestCase(IsolatedAsyncioTestCase):
         )
 
         # First provider
-        await spec.is_satisfied_by(self.user_alice)
+        await spec.is_satisfied_by(self.session, self.user_alice)
         self.assertEqual(len(spec._nested_cache), 1)
 
         # Second provider (different type)
         provider_index[0] = 1
-        await spec.is_satisfied_by(self.user_alice)
+        await spec.is_satisfied_by(self.session, self.user_alice)
         self.assertEqual(len(spec._nested_cache), 2)
 
 
@@ -604,3 +773,136 @@ class NestedObjectPatternSpecificationAcceptTestCase(IsolatedAsyncioTestCase):
         spec.accept(visitor)
 
         self.assertIsNone(received_accessor[0])
+
+
+# =============================================================================
+# Sociable Tests - Using Real Providers
+# =============================================================================
+
+class NestedObjectPatternSpecificationSociableTestCase(IsolatedAsyncioTestCase):
+    """
+    Sociable tests using real AggregateProvider and ReferenceProvider.
+
+    These tests verify that NestedObjectPatternSpecification works correctly
+    with the real provider infrastructure, not just mocks.
+    """
+
+    def setUp(self):
+        # Create repositories using real InMemoryRepository
+        self.status_repo = InMemoryRepository(
+            agg_exporter=StatusFaker._export,
+            id_attr='id'
+        )
+        self.user_repo = InMemoryRepository(
+            agg_exporter=UserFaker._export,
+            id_attr='id'
+        )
+        self.session = MockSession()
+
+        # Create real StatusFaker provider
+        self.status_distributor = StubDistributor(
+            values=[
+                Status(StatusId("active"), "Active"),
+                Status(StatusId("inactive"), "Inactive"),
+            ]
+        )
+        self.status_provider = StatusFaker(self.status_repo, self.status_distributor)
+        self.status_provider.provider_name = "status"
+
+        # Create real UserFaker provider with ReferenceProvider to Status
+        self.user_distributor = StubDistributor()
+        self.user_provider = UserFaker(
+            self.user_repo,
+            self.user_distributor,
+            self.status_provider
+        )
+        self.user_provider.provider_name = "user"
+
+        # Pre-populate repositories with test data
+        self.status_active = Status(StatusId("active"), "Active")
+        self.status_inactive = Status(StatusId("inactive"), "Inactive")
+
+        self.user_alice = User(UserId(1), StatusId("active"), "Alice")
+        self.user_bob = User(UserId(2), StatusId("inactive"), "Bob")
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        session = MockSession()
+
+        # Insert statuses into real InMemoryRepository
+        await self.status_repo.insert(session, self.status_active)
+        await self.status_repo.insert(session, self.status_inactive)
+
+        # Insert users
+        await self.user_repo.insert(session, self.user_alice)
+        await self.user_repo.insert(session, self.user_bob)
+
+    async def test_nested_lookup_with_real_providers(self):
+        """Nested lookup should work with real AggregateProvider and ReferenceProvider."""
+        spec = NestedObjectPatternSpecification(
+            {'status_id': {'name': 'Active'}},
+            UserFaker._export,
+            aggregate_provider_accessor=lambda: self.user_provider
+        )
+
+        # Alice has active status - should match
+        self.assertTrue(await spec.is_satisfied_by(self.session, self.user_alice))
+
+        # Bob has inactive status - should not match
+        self.assertFalse(await spec.is_satisfied_by(self.session, self.user_bob))
+
+    async def test_nested_lookup_with_real_providers_inactive_status(self):
+        """Nested lookup should correctly match inactive status."""
+        spec = NestedObjectPatternSpecification(
+            {'status_id': {'name': 'Inactive'}},
+            UserFaker._export,
+            aggregate_provider_accessor=lambda: self.user_provider
+        )
+
+        # Alice has active status - should not match
+        self.assertFalse(await spec.is_satisfied_by(self.session, self.user_alice))
+
+        # Bob has inactive status - should match
+        self.assertTrue(await spec.is_satisfied_by(self.session, self.user_bob))
+
+    async def test_combined_pattern_with_real_providers(self):
+        """Combined simple and nested pattern should work with real providers."""
+        spec = NestedObjectPatternSpecification(
+            {'name': 'Alice', 'status_id': {'name': 'Active'}},
+            UserFaker._export,
+            aggregate_provider_accessor=lambda: self.user_provider
+        )
+
+        # Alice matches both name and status
+        self.assertTrue(await spec.is_satisfied_by(self.session, self.user_alice))
+
+        # Bob doesn't match name
+        self.assertFalse(await spec.is_satisfied_by(self.session, self.user_bob))
+
+    async def test_cache_with_real_providers(self):
+        """Cache should work correctly with real providers."""
+        spec = NestedObjectPatternSpecification(
+            {'status_id': {'name': 'Active'}},
+            UserFaker._export,
+            aggregate_provider_accessor=lambda: self.user_provider
+        )
+
+        # First call populates cache
+        await spec.is_satisfied_by(self.session, self.user_alice)
+        self.assertEqual(len(spec._nested_cache), 1)
+
+        # Verify cache key uses real provider type
+        cache_key = list(spec._nested_cache.keys())[0]
+        self.assertEqual(cache_key[0], UserFaker)
+
+    async def test_foreign_object_not_found_with_real_providers(self):
+        """Should return False when foreign object not in repository."""
+        user_with_unknown_status = User(UserId(3), StatusId("unknown"), "Charlie")
+
+        spec = NestedObjectPatternSpecification(
+            {'status_id': {'name': 'Active'}},
+            UserFaker._export,
+            aggregate_provider_accessor=lambda: self.user_provider
+        )
+
+        self.assertFalse(await spec.is_satisfied_by(self.session, user_with_unknown_status))

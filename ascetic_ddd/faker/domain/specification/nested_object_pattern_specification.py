@@ -81,7 +81,7 @@ class NestedObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
             return False
         return self._object_pattern == other._object_pattern
 
-    async def is_satisfied_by(self, obj: T) -> bool:
+    async def is_satisfied_by(self, session: typing.Any, obj: T) -> bool:
         if self._aggregate_provider_accessor is None:
             # Без провайдеров - только простое сравнение
             state = self._object_exporter(obj)
@@ -90,11 +90,12 @@ class NestedObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
         state = self._object_exporter(obj)
         aggregate_provider = self._aggregate_provider_accessor()
         return await self._matches_pattern_with_provider(
-            self._object_pattern, state, aggregate_provider
+            session, self._object_pattern, state, aggregate_provider
         )
 
     async def _matches_pattern_with_provider(
             self,
+            session: typing.Any,
             pattern: dict,
             state: dict,
             aggregate_provider: typing.Any
@@ -103,7 +104,7 @@ class NestedObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
         for key, value in pattern.items():
             if isinstance(value, dict):
                 # Nested constraint - нужен lookup
-                if not await self._matches_nested(key, state.get(key), value, aggregate_provider):
+                if not await self._matches_nested(session, key, state.get(key), value, aggregate_provider):
                     return False
             else:
                 # Simple value comparison
@@ -113,6 +114,7 @@ class NestedObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
 
     async def _matches_nested(
             self,
+            session: typing.Any,
             field_key: str,
             fk_id: typing.Any,
             nested_pattern: dict,
@@ -124,6 +126,7 @@ class NestedObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
         Использует кеш для избежания повторных lookup'ов.
 
         Args:
+            session: сессия для запросов к repository
             field_key: имя поля (ключ для провайдера)
             fk_id: значение foreign key
             nested_pattern: паттерн для проверки связанного объекта
@@ -143,12 +146,13 @@ class NestedObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
             return self._nested_cache[cache_key]
 
         # Делаем lookup
-        result = await self._do_nested_lookup(field_key, fk_id, nested_pattern, aggregate_provider)
+        result = await self._do_nested_lookup(session, field_key, fk_id, nested_pattern, aggregate_provider)
         self._nested_cache[cache_key] = result
         return result
 
     async def _do_nested_lookup(
             self,
+            session: typing.Any,
             field_key: str,
             fk_id: typing.Any,
             nested_pattern: dict,
@@ -158,6 +162,7 @@ class NestedObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
         Выполняет lookup связанного объекта и проверяет паттерн.
 
         Args:
+            session: сессия для запросов к repository
             field_key: имя поля (ключ для провайдера)
             fk_id: значение foreign key
             nested_pattern: паттерн для проверки
@@ -175,20 +180,20 @@ class NestedObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
             # Не reference provider - не можем делать lookup
             return fk_id is not None
 
-        # Получаем связанный объект через repository провайдера
-        repository = nested_provider._repository
-        foreign_obj = await repository.get(fk_id)
+        # Получаем связанный объект через repository вложенного агрегата
+        referenced_aggregate_provider = nested_provider.aggregate_provider
+        repository = referenced_aggregate_provider._repository
+        foreign_obj = await repository.get(session, fk_id)
 
         if foreign_obj is None:
             return False
 
         # Экспортируем состояние через exporter вложенного агрегата
-        referenced_aggregate_provider = nested_provider.aggregate_provider
         foreign_state = referenced_aggregate_provider._output_exporter(foreign_obj)
 
         # Рекурсивно проверяем nested pattern с провайдером вложенного уровня
         return await self._matches_pattern_with_provider(
-            nested_pattern, foreign_state, referenced_aggregate_provider
+            session, nested_pattern, foreign_state, referenced_aggregate_provider
         )
 
     def accept(self, visitor: ISpecificationVisitor):
