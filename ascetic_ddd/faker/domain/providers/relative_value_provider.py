@@ -16,9 +16,6 @@ class RelativeValueProvider(
     IRelativeValueProvider[T_Input, T_Output],
     typing.Generic[T_Input, T_Output]
 ):
-    """
-    Он нужен? Технически его можно заменить композитным провайдером.
-    """
     _scope: typing.Hashable = frozenset()
 
     def set_scope(self, scope: typing.Hashable) -> None:
