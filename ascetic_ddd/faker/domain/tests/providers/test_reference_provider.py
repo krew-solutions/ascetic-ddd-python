@@ -358,19 +358,19 @@ class UserIdProvider(CompositeValueProvider[dict, UserId]):
     def __init__(self, tenant_id_distributor: IM2ODistributor, internal_user_id_distributor: IM2ODistributor):
         self.tenant_id = ValueProvider(
             distributor=tenant_id_distributor,
-            value_generator=tenant_id_generator,
-            result_factory=TenantId,
+            input_generator=tenant_id_generator,
+            output_factory=TenantId,
             result_exporter=lambda x: x.value,
         )
         self.internal_user_id = ValueProvider(
             distributor=internal_user_id_distributor,
-            value_generator=internal_user_id_generator,
-            result_factory=InternalUserId,
+            input_generator=internal_user_id_generator,
+            output_factory=InternalUserId,
             result_exporter=lambda x: x.value,
         )
         super().__init__(
             distributor=StubDistributor(raise_cursor_at=0),
-            result_factory=UserId,
+            output_factory=UserId,
             result_exporter=self._export,
         )
 
@@ -396,13 +396,13 @@ class ResumeIdProvider(CompositeValueProvider[dict, ResumeId]):
         self.user_id = UserIdProvider(tenant_id_distributor, internal_user_id_distributor)
         self.internal_resume_id = ValueProvider(
             distributor=internal_resume_id_distributor,
-            value_generator=internal_resume_id_generator,
-            result_factory=InternalResumeId,
+            input_generator=internal_resume_id_generator,
+            output_factory=InternalResumeId,
             result_exporter=lambda x: x.value,
         )
         super().__init__(
             distributor=StubDistributor(raise_cursor_at=0),
-            result_factory=ResumeId,
+            output_factory=ResumeId,
             result_exporter=self._export,
         )
 
@@ -428,17 +428,17 @@ class TenantProviderAutoIncrement(AggregateProvider[dict, Tenant]):
     def __init__(self, repository: IAggregateRepository[Tenant]):
         self.id = ValueProvider(
             distributor=StubDistributor(raise_cursor_at=0),
-            value_generator=lambda: 0,
-            result_factory=TenantId,
+            input_generator=lambda: 0,
+            output_factory=TenantId,
             result_exporter=lambda x: x.value,
         )
         self.name = ValueProvider(
             distributor=StubDistributor(raise_cursor_at=0),
-            value_generator=tenant_name_generator,
+            input_generator=tenant_name_generator,
         )
         super().__init__(
             repository=repository,
-            result_factory=Tenant,
+            output_factory=Tenant,
             result_exporter=self._export,
         )
 
@@ -472,11 +472,11 @@ class UserProviderAutoIncrement(AggregateProvider[dict, User]):
         )
         self.username = ValueProvider(
             distributor=StubDistributor(raise_cursor_at=0),
-            value_generator=username_generator,
+            input_generator=username_generator,
         )
         super().__init__(
             repository=repository,
-            result_factory=User,
+            output_factory=User,
             result_exporter=self._export,
         )
 
@@ -513,11 +513,11 @@ class ResumeProviderAutoIncrement(AggregateProvider[dict, Resume]):
         )
         self.title = ValueProvider(
             distributor=StubDistributor(raise_cursor_at=0),
-            value_generator=resume_title_generator,
+            input_generator=resume_title_generator,
         )
         super().__init__(
             repository=repository,
-            result_factory=Resume,
+            output_factory=Resume,
             result_exporter=self._export,
         )
 
@@ -544,17 +544,17 @@ class TenantProviderPresetPK(AggregateProvider[dict, Tenant]):
     def __init__(self, repository: IAggregateRepository[Tenant]):
         self.id = ValueProvider(
             distributor=StubDistributor(raise_cursor_at=0),
-            value_generator=tenant_id_generator,
-            result_factory=TenantId,
+            input_generator=tenant_id_generator,
+            output_factory=TenantId,
             result_exporter=lambda x: x.value,
         )
         self.name = ValueProvider(
             distributor=StubDistributor(raise_cursor_at=0),
-            value_generator=tenant_name_generator,
+            input_generator=tenant_name_generator,
         )
         super().__init__(
             repository=repository,
-            result_factory=Tenant,
+            output_factory=Tenant,
             result_exporter=self._export,
         )
 
@@ -586,11 +586,11 @@ class UserProviderPresetPK(AggregateProvider[dict, User]):
         )
         self.username = ValueProvider(
             distributor=StubDistributor(raise_cursor_at=0),
-            value_generator=username_generator,
+            input_generator=username_generator,
         )
         super().__init__(
             repository=repository,
-            result_factory=User,
+            output_factory=User,
             result_exporter=self._export,
         )
 
@@ -627,11 +627,11 @@ class ResumeProviderPresetPK(AggregateProvider[dict, Resume]):
         )
         self.title = ValueProvider(
             distributor=StubDistributor(raise_cursor_at=0),
-            value_generator=resume_title_generator,
+            input_generator=resume_title_generator,
         )
         super().__init__(
             repository=repository,
-            result_factory=Resume,
+            output_factory=Resume,
             result_exporter=self._export,
         )
 

@@ -174,16 +174,16 @@ class StatusFaker(AggregateProvider[dict, Status]):
     def __init__(self, repository: IAggregateRepository, distributor: IM2ODistributor):
         self.id = ValueProvider(
             distributor=distributor,
-            value_generator=lambda session, pos=None: "status_%s" % (pos or 0),
-            result_factory=StatusId,
+            input_generator=lambda session, pos=None: "status_%s" % (pos or 0),
+            output_factory=StatusId,
         )
         self.name = ValueProvider(
             distributor=StubDistributor(values=["Active", "Inactive", "Pending"]),
-            value_generator=lambda session, pos=None: "Status %s" % (pos or 0),
+            input_generator=lambda session, pos=None: "Status %s" % (pos or 0),
         )
         super().__init__(
             repository=repository,
-            result_factory=Status,
+            output_factory=Status,
             result_exporter=self._export,
         )
 
@@ -210,8 +210,8 @@ class UserFaker(AggregateProvider[dict, User]):
     ):
         self.id = ValueProvider(
             distributor=StubDistributor(raise_cursor=True),
-            value_generator=lambda session, pos=None: pos or 1,
-            result_factory=UserId,
+            input_generator=lambda session, pos=None: pos or 1,
+            output_factory=UserId,
         )
         self.status_id = ReferenceProvider(
             distributor=distributor,
@@ -219,11 +219,11 @@ class UserFaker(AggregateProvider[dict, User]):
         )
         self.name = ValueProvider(
             distributor=StubDistributor(values=["Alice", "Bob", "Charlie"]),
-            value_generator=lambda session, pos=None: "User %s" % (pos or 0),
+            input_generator=lambda session, pos=None: "User %s" % (pos or 0),
         )
         super().__init__(
             repository=repository,
-            result_factory=User,
+            output_factory=User,
             result_exporter=self._export,
         )
 

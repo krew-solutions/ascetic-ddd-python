@@ -21,22 +21,22 @@ class EntityProvider(
     metaclass=ABCMeta
 ):
     _id_attr: str
-    _result_factory: typing.Callable[[...], T_Output] = None
+    _output_factory: typing.Callable[[...], T_Output] = None
     _result_exporter: typing.Callable[[T_Output], T_Input] = None
 
     def __init__(
             self,
-            result_factory: typing.Callable[[...], T_Output] | None = None,  # T_Output of each nested Provider.
+            output_factory: typing.Callable[[...], T_Output] | None = None,  # T_Output of each nested Provider.
             result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
     ):
 
-        if self._result_factory is None:
-            if result_factory is None:
+        if self._output_factory is None:
+            if output_factory is None:
 
-                def result_factory(**kwargs):
+                def output_factory(**kwargs):
                     return kwargs
 
-            self._result_factory = result_factory
+            self._output_factory = output_factory
 
         if self._result_exporter is None:
             if result_exporter is None:
@@ -61,7 +61,7 @@ class EntityProvider(
         data = dict()
         for attr, provider in self._providers.items():
             data[attr] = await provider.create(session)
-        return self._result_factory(**data)
+        return self._output_factory(**data)
 
     @property
     def id_provider(self):

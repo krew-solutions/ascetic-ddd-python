@@ -87,7 +87,7 @@ class ValueProviderBasicTestCase(IsolatedAsyncioTestCase):
 
         provider = ValueProvider(
             distributor=distributor,
-            value_generator=generator,
+            input_generator=generator,
         )
         provider.provider_name = 'test_provider'
 
@@ -111,7 +111,7 @@ class ValueProviderBasicTestCase(IsolatedAsyncioTestCase):
 
         provider = ValueProvider(
             distributor=distributor,
-            value_generator=generator,
+            input_generator=generator,
         )
         provider.provider_name = 'test_provider'
 
@@ -129,7 +129,7 @@ class ValueProviderBasicTestCase(IsolatedAsyncioTestCase):
 
         provider = ValueProvider(
             distributor=distributor,
-            value_generator=generator,
+            input_generator=generator,
         )
         provider.provider_name = 'test_provider'
 
@@ -150,7 +150,7 @@ class ValueProviderBasicTestCase(IsolatedAsyncioTestCase):
 
         provider = ValueProvider(
             distributor=distributor,
-            value_generator=generator,
+            input_generator=generator,
         )
         provider.provider_name = 'test_provider'
 
@@ -166,7 +166,7 @@ class ValueProviderBasicTestCase(IsolatedAsyncioTestCase):
 
         provider = ValueProvider(
             distributor=distributor,
-            value_generator=generator,
+            input_generator=generator,
         )
 
         self.assertFalse(provider.is_complete())
@@ -179,7 +179,7 @@ class ValueProviderBasicTestCase(IsolatedAsyncioTestCase):
 
         provider = ValueProvider(
             distributor=distributor,
-            value_generator=generator,
+            input_generator=generator,
         )
         provider.provider_name = 'test_provider'
 
@@ -198,7 +198,7 @@ class ValueProviderBasicTestCase(IsolatedAsyncioTestCase):
 
         provider = ValueProvider(
             distributor=distributor,
-            value_generator=generator,
+            input_generator=generator,
         )
         provider.provider_name = 'test_provider'
 
@@ -209,14 +209,14 @@ class ValueProviderBasicTestCase(IsolatedAsyncioTestCase):
         self.assertEqual(provider._output, 'generated_value')
 
     async def test_is_complete_true_after_populate_with_cursor_no_generator(self):
-        """is_complete() should return True after populate() with ICursor and no value_generator."""
+        """is_complete() should return True after populate() with ICursor and no input_generator."""
         # This tests auto-increment PK scenario
         distributor = MockDistributor(raise_cursor_at=0)
         session = MockSession()
 
         provider = ValueProvider(
             distributor=distributor,
-            value_generator=None,  # No generator - simulates auto-increment PK
+            input_generator=None,  # No generator - simulates auto-increment PK
         )
         provider.provider_name = 'test_provider'
 
@@ -233,7 +233,7 @@ class ValueProviderBasicTestCase(IsolatedAsyncioTestCase):
 
         provider = ValueProvider(
             distributor=distributor,
-            value_generator=generator,
+            input_generator=generator,
         )
         provider.provider_name = 'test_provider'
 
@@ -248,22 +248,22 @@ class ValueProviderBasicTestCase(IsolatedAsyncioTestCase):
 
 
 class ValueProviderWithFactoriesTestCase(IsolatedAsyncioTestCase):
-    """Tests for ValueProvider with result_factory and result_exporter."""
+    """Tests for ValueProvider with output_factory and result_exporter."""
 
-    async def test_result_factory_transforms_generated_value(self):
-        """result_factory should transform the generated value to output."""
+    async def test_output_factory_transforms_generated_value(self):
+        """output_factory should transform the generated value to output."""
         distributor = MockDistributor(values=[], raise_cursor_at=0)
 
         async def generator(session, position=None):
             return 42
 
-        result_factory = lambda x: f"transformed_{x}"
+        output_factory = lambda x: f"transformed_{x}"
         session = MockSession()
 
         provider = ValueProvider(
             distributor=distributor,
-            value_generator=generator,
-            result_factory=result_factory,
+            input_generator=generator,
+            output_factory=output_factory,
         )
         provider.provider_name = 'test_provider'
 
@@ -280,7 +280,7 @@ class ValueProviderWithFactoriesTestCase(IsolatedAsyncioTestCase):
 
         provider = ValueProvider(
             distributor=distributor,
-            value_generator=generator,
+            input_generator=generator,
             result_exporter=result_exporter,
         )
         provider.provider_name = 'test_provider'
@@ -308,7 +308,7 @@ class ValueProviderGeneratorTypesTestCase(IsolatedAsyncioTestCase):
 
         provider = ValueProvider(
             distributor=distributor,
-            value_generator=generator,
+            input_generator=generator,
         )
         provider.provider_name = 'test_provider'
 
@@ -324,7 +324,7 @@ class ValueProviderGeneratorTypesTestCase(IsolatedAsyncioTestCase):
 
         provider = ValueProvider(
             distributor=distributor,
-            value_generator=values,
+            input_generator=values,
         )
         provider.provider_name = 'test_provider'
 
@@ -343,7 +343,7 @@ class ValueProviderGeneratorTypesTestCase(IsolatedAsyncioTestCase):
 
         provider = ValueProvider(
             distributor=distributor,
-            value_generator=async_generator,
+            input_generator=async_generator,
         )
         provider.provider_name = 'test_provider'
 
@@ -368,7 +368,7 @@ class ValueProviderCursorPositionTestCase(IsolatedAsyncioTestCase):
 
         provider = ValueProvider(
             distributor=distributor,
-            value_generator=generator,
+            input_generator=generator,
         )
         provider.provider_name = 'test_provider'
 
@@ -388,7 +388,7 @@ class ValueProviderSetGetTestCase(IsolatedAsyncioTestCase):
 
         provider = ValueProvider(
             distributor=distributor,
-            value_generator=generator,
+            input_generator=generator,
         )
 
         provider.set('manual_value')
@@ -403,7 +403,7 @@ class ValueProviderSetGetTestCase(IsolatedAsyncioTestCase):
 
         provider = ValueProvider(
             distributor=distributor,
-            value_generator=generator,
+            input_generator=generator,
         )
         provider.provider_name = 'test_provider'
 
@@ -422,7 +422,7 @@ class ValueProviderProviderNameTestCase(IsolatedAsyncioTestCase):
 
         provider = ValueProvider(
             distributor=distributor,
-            value_generator=generator,
+            input_generator=generator,
         )
 
         provider.provider_name = 'my_provider'

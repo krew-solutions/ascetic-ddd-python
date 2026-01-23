@@ -18,23 +18,23 @@ __all__ = (
     "SequenceGenerator",
     "RangeGenerator",
     "TemplateGenerator",
-    "prepare_value_generator",
+    "prepare_input_generator",
 )
 
 T = typing.TypeVar("T", covariant=True)
 
 
-def prepare_value_generator(value_generator):
-    if value_generator is not None:
-        if isinstance(value_generator, strategies.SearchStrategy):
-            value_generator = HypothesisStrategyGenerator(value_generator)
-        elif isinstance(value_generator, typing.Iterable) and not isinstance(value_generator, (str, bytes)):
-            value_generator = IterableGenerator(value_generator)
-        elif callable(value_generator):
+def prepare_input_generator(input_generator):
+    if input_generator is not None:
+        if isinstance(input_generator, strategies.SearchStrategy):
+            input_generator = HypothesisStrategyGenerator(input_generator)
+        elif isinstance(input_generator, typing.Iterable) and not isinstance(input_generator, (str, bytes)):
+            input_generator = IterableGenerator(input_generator)
+        elif callable(input_generator):
             # Check if already wrapped
-            if not isinstance(value_generator, CallableGenerator):
-                value_generator = CallableGenerator(value_generator)
-    return value_generator
+            if not isinstance(input_generator, CallableGenerator):
+                input_generator = CallableGenerator(input_generator)
+    return input_generator
 
 
 class IterableGenerator(typing.Generic[T]):

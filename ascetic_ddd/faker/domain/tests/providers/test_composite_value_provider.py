@@ -145,19 +145,19 @@ class UserIdProvider(CompositeValueProvider[dict, UserId]):
     def __init__(self, distributor: IM2ODistributor):
         self.tenant_id = ValueProvider(
             distributor=StubDistributor(raise_cursor_at=0),
-            value_generator=tenant_id_generator,
-            result_factory=TenantId,
+            input_generator=tenant_id_generator,
+            output_factory=TenantId,
             result_exporter=lambda x: x.value,
         )
         self.internal_user_id = ValueProvider(
             distributor=StubDistributor(raise_cursor_at=0),
-            value_generator=internal_user_id_generator,
-            result_factory=InternalUserId,
+            input_generator=internal_user_id_generator,
+            output_factory=InternalUserId,
             result_exporter=lambda x: x.value,
         )
         super().__init__(
             distributor=distributor,
-            result_factory=UserId,
+            output_factory=UserId,
             result_exporter=self._export,
         )
 
@@ -178,13 +178,13 @@ class ResumeIdProvider(CompositeValueProvider[dict, ResumeId]):
         self.user_id = UserIdProvider(StubDistributor(raise_cursor_at=0))
         self.internal_resume_id = ValueProvider(
             distributor=StubDistributor(raise_cursor_at=0),
-            value_generator=internal_resume_id_generator,
-            result_factory=InternalResumeId,
+            input_generator=internal_resume_id_generator,
+            output_factory=InternalResumeId,
             result_exporter=lambda x: x.value,
         )
         super().__init__(
             distributor=distributor,
-            result_factory=ResumeId,
+            output_factory=ResumeId,
             result_exporter=self._export,
         )
 

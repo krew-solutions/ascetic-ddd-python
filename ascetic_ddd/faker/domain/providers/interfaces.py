@@ -130,7 +130,7 @@ class IValueProvider(
     result : T <- Distributor[T] <- (
         <- result : result ∈ Sᴛ ∧ P(specification) ~ 𝒟(S)  # select from a set with given probability distribution and Specification
         or
-        <- result <- result_factory(input)
+        <- result <- output_factory(input)
             <- input <- (
                 set(value)
                 or
@@ -194,7 +194,7 @@ class ICompositeValueProvider(
     result : T <- Distributor[T] <- (
         <- result : result ∈ Sᴛ ∧ P(specification) ~ 𝒟(S)  # select from a set with given probability distribution and Specification
         or
-        <- result <- result_factory(Σ leaf_result)
+        <- result <- output_factory(Σ leaf_result)
             <- Σ IValueProvider(∈ Σ input) | ICompositeValueProvider(⊆ Σ input)
     ),
     where

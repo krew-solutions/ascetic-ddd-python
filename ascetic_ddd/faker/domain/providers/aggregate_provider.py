@@ -45,7 +45,7 @@ class AggregateProvider(
 ):
     _id_attr: str
     _repository: IAggregateRepository[T_Output]
-    _result_factory: typing.Callable[[...], T_Output] = None  # T_Output of each nested Provider.
+    _output_factory: typing.Callable[[...], T_Output] = None  # T_Output of each nested Provider.
     _result_exporter: typing.Callable[[T_Output], T_Input] = None
 
     _aspect_mapping = {
@@ -57,18 +57,18 @@ class AggregateProvider(
             self,
             repository: IAggregateRepository,
             # distributor_factory: IM2ODistributorFactory,
-            result_factory: typing.Callable[[...], T_Output] | None = None,  # T_Output of each nested Provider.
+            output_factory: typing.Callable[[...], T_Output] | None = None,  # T_Output of each nested Provider.
             result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
     ):
         self._repository = repository
 
-        if self._result_factory is None:
-            if result_factory is None:
+        if self._output_factory is None:
+            if output_factory is None:
 
-                def result_factory(**result):
+                def output_factory(**result):
                     return result
 
-            self._result_factory = result_factory
+            self._output_factory = output_factory
 
         if self._result_exporter is None:
             if result_exporter is None:
@@ -137,7 +137,7 @@ class AggregateProvider(
         data = dict()
         for attr, provider in self._providers.items():
             data[attr] = await provider.create(session)
-        return self._result_factory(**data)
+        return self._output_factory(**data)
 
     @property
     def id_provider(self):

@@ -183,16 +183,16 @@ class StatusFaker(AggregateProvider[dict, Status]):
     def __init__(self, repository: IAggregateRepository, distributor: IM2ODistributor):
         self.id = ValueProvider(
             distributor=distributor,
-            value_generator=lambda session, pos=None: "status_%s" % (pos or 0),
-            result_factory=StatusId,
+            input_generator=lambda session, pos=None: "status_%s" % (pos or 0),
+            output_factory=StatusId,
         )
         self.name = ValueProvider(
             distributor=StubDistributor(values=["Active"]),
-            value_generator=lambda session, pos=None: "Status",
+            input_generator=lambda session, pos=None: "Status",
         )
         super().__init__(
             repository=repository,
-            result_factory=Status,
+            output_factory=Status,
             result_exporter=self._export,
         )
 
@@ -219,12 +219,12 @@ class DepartmentFaker(AggregateProvider[dict, Department]):
     ):
         self.id = ValueProvider(
             distributor=StubDistributor(raise_cursor=True),
-            value_generator=lambda session, pos=None: pos or 1,
-            result_factory=DepartmentId,
+            input_generator=lambda session, pos=None: pos or 1,
+            output_factory=DepartmentId,
         )
         self.name = ValueProvider(
             distributor=StubDistributor(values=["Engineering"]),
-            value_generator=lambda session, pos=None: "Dept",
+            input_generator=lambda session, pos=None: "Dept",
         )
         self.status_id = ReferenceProvider(
             distributor=distributor,
@@ -232,7 +232,7 @@ class DepartmentFaker(AggregateProvider[dict, Department]):
         )
         super().__init__(
             repository=repository,
-            result_factory=Department,
+            output_factory=Department,
             result_exporter=self._export,
         )
 
@@ -260,8 +260,8 @@ class UserFaker(AggregateProvider[dict, User]):
     ):
         self.id = ValueProvider(
             distributor=StubDistributor(raise_cursor=True),
-            value_generator=lambda session, pos=None: pos or 1,
-            result_factory=UserId,
+            input_generator=lambda session, pos=None: pos or 1,
+            output_factory=UserId,
         )
         self.department_id = ReferenceProvider(
             distributor=distributor,
@@ -269,11 +269,11 @@ class UserFaker(AggregateProvider[dict, User]):
         )
         self.name = ValueProvider(
             distributor=StubDistributor(values=["Alice"]),
-            value_generator=lambda session, pos=None: "User",
+            input_generator=lambda session, pos=None: "User",
         )
         super().__init__(
             repository=repository,
-            result_factory=User,
+            output_factory=User,
             result_exporter=self._export,
         )
 
@@ -294,13 +294,13 @@ class AddressFaker(CompositeValueProvider[dict, Address]):
     def __init__(self):
         self.city = ValueProvider(
             distributor=StubDistributor(values=["Moscow"]),
-            value_generator=lambda session, pos=None: "City",
+            input_generator=lambda session, pos=None: "City",
         )
         self.street = ValueProvider(
             distributor=StubDistributor(values=["Main St"]),
-            value_generator=lambda session, pos=None: "Street",
+            input_generator=lambda session, pos=None: "Street",
         )
-        super().__init__(result_factory=Address)
+        super().__init__(output_factory=Address)
 
 
 class CompanyFaker(AggregateProvider[dict, Company]):
@@ -313,16 +313,16 @@ class CompanyFaker(AggregateProvider[dict, Company]):
     def __init__(self, repository: IAggregateRepository):
         self.id = ValueProvider(
             distributor=StubDistributor(raise_cursor=True),
-            value_generator=lambda session, pos=None: pos or 1,
+            input_generator=lambda session, pos=None: pos or 1,
         )
         self.name = ValueProvider(
             distributor=StubDistributor(values=["Acme Corp"]),
-            value_generator=lambda session, pos=None: "Company",
+            input_generator=lambda session, pos=None: "Company",
         )
         self.address = AddressFaker()
         super().__init__(
             repository=repository,
-            result_factory=Company,
+            output_factory=Company,
             result_exporter=self._export,
         )
 

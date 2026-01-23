@@ -5,7 +5,7 @@ from ascetic_ddd.faker.domain.distributors.m2o.interfaces import ICursor, IM2ODi
 from ascetic_ddd.faker.domain.providers._mixins import BaseDistributionProvider
 from ascetic_ddd.faker.domain.providers.interfaces import IValueProvider
 from ascetic_ddd.faker.domain.generators.interfaces import IInputGenerator
-from ascetic_ddd.faker.domain.generators.generators import prepare_value_generator
+from ascetic_ddd.faker.domain.generators.generators import prepare_input_generator
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.values.empty import empty
 
@@ -20,30 +20,30 @@ class ValueProvider(
     IValueProvider[T_Input, T_Output],
     typing.Generic[T_Input, T_Output]
 ):
-    _value_generator: IInputGenerator[T_Input] | None = None
-    _result_factory: typing.Callable[[T_Input], T_Output] = None  # T_Output of each nested Provider.
+    _input_generator: IInputGenerator[T_Input] | None = None
+    _output_factory: typing.Callable[[T_Input], T_Output] = None  # T_Output of each nested Provider.
     _result_exporter: typing.Callable[[T_Output], T_Input] = None
 
     def __init__(
             self,
             distributor: IM2ODistributor | None,
-            value_generator: IInputGenerator[T_Input] | None = None,
-            result_factory: typing.Callable[[T_Input], T_Output] | None = None,
+            input_generator: IInputGenerator[T_Input] | None = None,
+            output_factory: typing.Callable[[T_Input], T_Output] | None = None,
             result_exporter: typing.Callable[[T_Output], T_Input] | None = None,
     ):
         if distributor is None:
             distributor = DummyDistributor()
 
-        if self._value_generator is None and value_generator is not None:
-            self._value_generator = prepare_value_generator(value_generator)
+        if self._input_generator is None and input_generator is not None:
+            self._input_generator = prepare_input_generator(input_generator)
 
-        if self._result_factory is None:
-            if result_factory is None:
+        if self._output_factory is None:
+            if output_factory is None:
 
-                def result_factory(result):
+                def output_factory(result):
                     return result
 
-            self._result_factory = result_factory
+            self._output_factory = output_factory
 
         if self._result_exporter is None:
             if result_exporter is None:
@@ -63,7 +63,7 @@ class ValueProvider(
             return
 
         if self._input is not empty:
-            self._output = self._result_factory(self._input)
+            self._output = self._output_factory(self._input)
             # await cursor.append(session, self._output)
             return
 
@@ -74,11 +74,11 @@ class ValueProvider(
             # self.set() could reset self._output
             self._output = result
         except ICursor as cursor:
-            if self._value_generator is None:
-                self._output = self._result_factory(None)
+            if self._input_generator is None:
+                self._output = self._output_factory(None)
             else:
-                value = await self._value_generator(session, cursor.position)
-                result = self._result_factory(value)
+                value = await self._input_generator(session, cursor.position)
+                result = self._output_factory(value)
                 await cursor.append(session, result)
                 self.set(value)
                 # self.set() could reset self._output

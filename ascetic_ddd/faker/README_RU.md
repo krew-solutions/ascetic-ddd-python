@@ -296,17 +296,17 @@ class TenantProvider(AggregateProvider[dict, Tenant]):
     def __init__(self, repository):
         self.id = ValueProvider[int, TenantId](
             distributor=distributor_factory(),  # Receive from DB
-            result_factory=TenantId,
+            output_factory=TenantId,
             result_exporter=lambda x: x.value,
         )
         self.name = ValueProvider[str, TenantName](
             distributor=distributor_factory(sequence=True),
-            result_factory=TenantName,
-            value_generator=lambda session, position: "Tenant %s" % position,
+            output_factory=TenantName,
+            input_generator=lambda session, position: "Tenant %s" % position,
         )
         super().__init__(
             repository=repository,
-            result_factory=Tenant,
+            output_factory=Tenant,
             result_exporter=self._export,
         )
 
@@ -324,7 +324,7 @@ class AuthorIdProvider(CompositeValueProvider[dict, TenantId]):
     def __init__(self, tenant_provider: TenantProvider):
         self.author_id = ValueProvider[int, AuthorId](
             distributor=distributor_factory(),  # Receive from DB
-            result_factory=InternalAuthorId,
+            output_factory=InternalAuthorId,
             result_exporter=lambda x: x.value,
         )
         # Ссылка на Tenant с распределением skew=2.0 (перекос к началу)
@@ -335,7 +335,7 @@ class AuthorIdProvider(CompositeValueProvider[dict, TenantId]):
         )
 
         super().__init__(
-            result_factory=AuthorId,
+            output_factory=AuthorId,
             result_exporter=lambda result: result.value
         )
 
@@ -348,11 +348,11 @@ class AuthorProvider(AggregateProvider[dict, Author]):
     def __init__(self, repository, tenant_provider: TenantProvider):
         self.id = AuthorIdProvider(tenant_provider=tenant_provider)
         self.name = ValueProvider[str, AuthorName](
-            value_generator=lambda session, position: "%s %s" % (fake.first_name(), fake.last_name()),
+            input_generator=lambda session, position: "%s %s" % (fake.first_name(), fake.last_name()),
         )
         super().__init__(
             repository=repository,
-            result_factory=Author,
+            output_factory=Author,
             result_exporter=self._export,
         )
 
@@ -370,7 +370,7 @@ class BookIdProvider(CompositeValueProvider[dict, TenantId]):
     def __init__(self, tenant_provider: TenantProvider):
         self.book_id = ValueProvider[int, BookId](
             distributor=distributor_factory(),  # Receive from DB
-            result_factory=InternalBookId,
+            output_factory=InternalBookId,
             result_exporter=lambda x: x.value,
         )
         self.tenant_id = ReferenceProvider[dict, Tenant, TenantId](
@@ -379,7 +379,7 @@ class BookIdProvider(CompositeValueProvider[dict, TenantId]):
         )
 
         super().__init__(
-            result_factory=AuthorId,
+            output_factory=AuthorId,
             result_exporter=lambda result: result.value
         )
 
@@ -400,11 +400,11 @@ class BookProvider(AggregateProvider[dict, Book]):
         )
         self.title = ValueProvider[str, BookTitle](
             distributor=distributor_factory(),
-            value_generator=lambda session, position: fake.sentence(nb_words=3).replace('.', ''),
+            input_generator=lambda session, position: fake.sentence(nb_words=3).replace('.', ''),
         )
         super().__init__(
             repository=repository,
-            result_factory=Book,
+            output_factory=Book,
             result_exporter=self._export,
         )
 

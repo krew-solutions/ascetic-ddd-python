@@ -204,21 +204,21 @@ class EmployeeProvider(AggregateProvider[dict, Employee]):
     def __init__(self, repository: IAggregateRepository[Employee]):
         self.id = ValueProvider(
             distributor=StubM2ODistributor(),
-            value_generator=lambda: 0,
-            result_factory=EmployeeId,
+            input_generator=lambda: 0,
+            output_factory=EmployeeId,
             result_exporter=lambda x: x.value,
         )
         self.name = ValueProvider(
             distributor=StubM2ODistributor(),
-            value_generator=name_generator,
+            input_generator=name_generator,
         )
         self.company_id = ValueProvider(
             distributor=StubM2ODistributor(),
-            value_generator=company_id_generator,
+            input_generator=company_id_generator,
         )
         super().__init__(
             repository=repository,
-            result_factory=Employee,
+            output_factory=Employee,
             result_exporter=self._export,
         )
 
@@ -634,13 +634,13 @@ class CompanyProviderWithEmployees(AggregateProvider[dict, Company]):
     ):
         self.id = ValueProvider(
             distributor=StubM2ODistributor(),
-            value_generator=lambda: 0,
-            result_factory=CompanyId,
+            input_generator=lambda: 0,
+            output_factory=CompanyId,
             result_exporter=lambda x: x.value,
         )
         self.name = ValueProvider(
             distributor=StubM2ODistributor(),
-            value_generator=company_name_generator,
+            input_generator=company_name_generator,
         )
         # DependentProvider for 1:M relationship
         self.employees = DependentProvider(
@@ -650,7 +650,7 @@ class CompanyProviderWithEmployees(AggregateProvider[dict, Company]):
         )
         super().__init__(
             repository=repository,
-            result_factory=Company,
+            output_factory=Company,
             result_exporter=self._export,
         )
 
