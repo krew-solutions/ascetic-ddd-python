@@ -139,7 +139,7 @@ class BaseDistributor(IM2ODistributor[T], typing.Generic[T]):
     """
     _mean: float = 50
     _indexes: dict[ISpecification, BaseIndex[T]]
-    _default_spec: ISpecification = None
+    _default_spec: ISpecification
     _provider_name: str | None = None
     _external_source: IExternalSource[T] | None = None
     _delegate: IM2ODistributor[T]

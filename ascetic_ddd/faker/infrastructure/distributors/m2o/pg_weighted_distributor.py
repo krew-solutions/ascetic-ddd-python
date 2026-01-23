@@ -43,7 +43,7 @@ class BasePgDistributor(IM2ODistributor[T], typing.Generic[T]):
     _initialized: bool = False
     _mean: float = 50
     _values_table: str | None = None
-    _default_key: str = str(frozenset())
+    _default_spec: ISpecification
     _provider_name: str | None = None
     _external_source: IPgExternalSource | None = None
     _delegate: IM2ODistributor[T]
@@ -59,6 +59,7 @@ class BasePgDistributor(IM2ODistributor[T], typing.Generic[T]):
             self._mean = mean
         self._initialized = initialized
         self._external_source = None
+        self._default_spec = EmptySpecification()
         super().__init__()
 
     def bind_external_source(self, external_source: typing.Any) -> None:
@@ -74,7 +75,7 @@ class BasePgDistributor(IM2ODistributor[T], typing.Generic[T]):
             specification: ISpecification[T] | None = None,
     ) -> T:
         if specification is None:
-            specification = EmptySpecification()
+            specification = self._default_spec
 
         if not self._initialized:
             await self.setup(session)

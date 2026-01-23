@@ -16,9 +16,11 @@ T = typing.TypeVar("T", covariant=True)
 class SequenceDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     _sequences: dict[ISpecification, int]
     _provider_name: str | None = None
+    _default_spec: ISpecification
 
     def __init__(self):
         self._sequences = defaultdict(int)
+        self._default_spec = EmptySpecification()
         super().__init__()
 
     async def next(
@@ -27,7 +29,7 @@ class SequenceDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
             specification: ISpecification[T] | None = None,
     ) -> T:
         if specification is None:
-            specification = EmptySpecification()
+            specification = self._default_spec
         position = self._sequences[specification]
         self._sequences[specification] += 1
         raise Cursor(
