@@ -14,13 +14,13 @@ __all__ = (
     'IProvidable',
     'IInputOutput',
     'IValueProvider',
+    'IRelativeValueProvider',
     'ICompositeInputOutput',
     'ICompositeValueProvider',
     'IEntityProvider',
     'IReferenceProvider',
     'IDependentInputOutput',
     'IDependentProvider',
-    'IRelativeProvider',
 )
 
 T_Input = typing.TypeVar("T_Input")
@@ -148,6 +148,13 @@ class IValueProvider(
         "⊆" means subset of a composition.
     """
     pass
+
+
+class IRelativeValueProvider(IValueProvider[T_Input, T_Output], typing.Generic[T_Input, T_Output], metaclass=ABCMeta):
+
+    @abstractmethod
+    def set_scope(self, scope: Hashable) -> None:
+        raise NotImplementedError
 
 
 class ICompositeInputOutput(typing.Generic[T_Input, T_Output], metaclass=ABCMeta):
@@ -291,11 +298,4 @@ class IDependentProvider(
 
     @abstractmethod
     def set_dependency_id(self, dependency_id: typing.Any) -> None:
-        raise NotImplementedError
-
-
-class IRelativeProvider(metaclass=ABCMeta):
-
-    @abstractmethod
-    def set_scope(self, scope: Hashable) -> None:
         raise NotImplementedError

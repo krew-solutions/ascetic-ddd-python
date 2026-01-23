@@ -7,6 +7,7 @@ from ascetic_ddd.faker.domain.providers.interfaces import IValueProvider
 from ascetic_ddd.faker.domain.generators.interfaces import IInputGenerator
 from ascetic_ddd.faker.domain.generators.generators import prepare_input_generator
 from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.domain.values.empty import empty
 
 __all__ = ('ValueProvider',)
@@ -68,7 +69,7 @@ class ValueProvider(
             return
 
         try:
-            result = await self._distributor.next(session)
+            result = await self._distributor.next(session, self._make_specification())
             value = self._output_exporter(result)
             self.set(value)
             # self.set() could reset self._output
@@ -83,3 +84,6 @@ class ValueProvider(
                 self.set(value)
                 # self.set() could reset self._output
                 self._output = result
+
+    def _make_specification(self) -> ISpecification | None:
+        return None
