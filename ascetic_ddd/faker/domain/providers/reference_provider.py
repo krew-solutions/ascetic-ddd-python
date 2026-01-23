@@ -8,13 +8,11 @@ from ascetic_ddd.faker.domain.providers.interfaces import (
     IReferenceProvider, IEntityProvider, ICloningShunt, ISetupable
 )
 from ascetic_ddd.faker.domain.session.interfaces import ISession
-
-__all__ = ('ReferenceProvider',)
-
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
 from ascetic_ddd.faker.domain.specification.object_pattern_specification import ObjectPatternSpecification
-
 from ascetic_ddd.faker.domain.values.empty import empty
+
+__all__ = ('ReferenceProvider',)
 
 T_Id_Output = typing.TypeVar("T_Id_Output")
 T_Input = typing.TypeVar("T_Input")
