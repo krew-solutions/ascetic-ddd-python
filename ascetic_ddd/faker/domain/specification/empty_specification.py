@@ -6,15 +6,15 @@ __all__ = ("EmptySpecification",)
 
 
 class EmptySpecification(ISpecification):
+    _hash = hash(frozenset())
+    _str = str(frozenset())
 
-    __slots__ = ('_hash',)
+    __slots__ = tuple()
 
-    def __init__(self):
-        self._hash: int | None = None
+    def __str__(self) -> str:
+        return self._str
 
     def __hash__(self) -> int:
-        if self._hash is None:
-            self._hash = hash(frozenset())
         return self._hash
 
     def __eq__(self, other: object) -> bool:

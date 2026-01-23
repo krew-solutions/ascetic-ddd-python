@@ -14,6 +14,7 @@ T = typing.TypeVar("T", covariant=True)
 class ObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
     _object_pattern: dict
     _hash: int | None
+    _str: str | None
     _object_exporter: typing.Callable[[T], dict]
     _aggregate_provider_accessor: typing.Callable[[], typing.Any] | None
     _resolved_pattern: dict | None
@@ -31,6 +32,17 @@ class ObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
         self._aggregate_provider_accessor = aggregate_provider_accessor
         self._resolved_pattern = None
         self._hash = None
+        self._str = None
+
+    def __str__(self) -> str:
+        if self._resolved_pattern is None:
+            raise TypeError(
+                "Cannot cast to string unresolved ObjectPatternSpecification. "
+                "Call resolve_nested() first."
+            )
+        if self._str is None:
+            self._str = str(hashable(self._resolved_pattern))
+        return self._str
 
     def __hash__(self) -> int:
         if self._resolved_pattern is None:

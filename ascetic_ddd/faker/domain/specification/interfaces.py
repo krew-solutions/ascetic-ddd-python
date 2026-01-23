@@ -29,6 +29,9 @@ class ISpecificationVisitable(typing.Protocol[T]):
 
 class ISpecification(ISpecificationVisitable[T], typing.Protocol[T]):
 
+    def __str__(self) -> str:
+        ...
+
     def __hash__(self) -> int:
         ...
 
