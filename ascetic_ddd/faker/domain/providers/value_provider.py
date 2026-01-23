@@ -3,8 +3,9 @@ import typing
 from ascetic_ddd.faker.domain.distributors.m2o import DummyDistributor
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import ICursor, IM2ODistributor
 from ascetic_ddd.faker.domain.providers._mixins import BaseDistributionProvider
-from ascetic_ddd.faker.domain.providers.interfaces import IValueProvider, IInputGenerator
-from ascetic_ddd.faker.domain.providers.value_generators import prepare_value_generator
+from ascetic_ddd.faker.domain.providers.interfaces import IValueProvider
+from ascetic_ddd.faker.domain.generators.interfaces import IInputGenerator
+from ascetic_ddd.faker.domain.generators.generators import prepare_value_generator
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.values.empty import empty
 

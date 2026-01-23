@@ -2,8 +2,6 @@ import typing
 from abc import ABCMeta, abstractmethod
 from collections.abc import Callable, Hashable
 
-from hypothesis import strategies
-
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.observable.interfaces import IObservable
 
@@ -23,8 +21,6 @@ __all__ = (
     'IDependentInputOutput',
     'IDependentProvider',
     'IRelativeProvider',
-    'IInputGenerator',
-    'IAnyInputGenerator',
 )
 
 T_Input = typing.TypeVar("T_Input")
@@ -303,18 +299,3 @@ class IRelativeProvider(metaclass=ABCMeta):
     @abstractmethod
     def set_scope(self, scope: Hashable) -> None:
         raise NotImplementedError
-
-
-class IInputGenerator(typing.Protocol[T_Input]):
-    """
-    Генератор значений.
-    Принимает session и опциональный position (номер в последовательности).
-    """
-
-    async def __call__(self, session: ISession, position: int | None = None) -> T_Input:
-        ...
-
-
-IAnyInputGenerator: typing.TypeAlias = (
-        IInputGenerator[T_Input] | typing.Iterable[T_Input] | strategies.SearchStrategy[T_Input] | Callable
-)

@@ -6,7 +6,8 @@ import typing
 import operator
 from hypothesis import strategies
 
-from ascetic_ddd.faker.domain.providers.interfaces import IInputGenerator
+from ascetic_ddd.faker.domain.generators.interfaces import IInputGenerator
+from ascetic_ddd.faker.domain.session.interfaces import ISession
 
 
 __all__ = (
@@ -19,8 +20,6 @@ __all__ = (
     "TemplateGenerator",
     "prepare_value_generator",
 )
-
-from ..session.interfaces import ISession
 
 T = typing.TypeVar("T", covariant=True)
 
