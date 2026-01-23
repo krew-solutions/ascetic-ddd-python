@@ -930,5 +930,100 @@ class TestNestedWildcardsSupport(unittest.TestCase):
         self.assertIn("JOIN orders", sql)
 
 
+class TestNestedWildcardExists(unittest.TestCase):
+    """Test nested wildcard patterns compiled to EXISTS subqueries."""
+
+    def setUp(self):
+        """Set up test schema with relationships."""
+        self.metadata = MetaData()
+
+        self.categories_table = Table(
+            "categories",
+            self.metadata,
+            Column("id", Integer, primary_key=True),
+            Column("name", String(100)),
+        )
+
+        self.items_table = Table(
+            "items",
+            self.metadata,
+            Column("id", Integer, primary_key=True),
+            Column("category_id", Integer, ForeignKey("categories.id")),
+            Column("name", String(100)),
+            Column("price", Numeric(10, 2)),
+            Column("quantity", Integer),
+        )
+
+        relationships = {
+            "categories": {
+                "items": RelationshipMetadata(
+                    target_table="items",
+                    foreign_key="category_id",
+                    target_primary_key="id",
+                    relationship_type="one-to-many",
+                ),
+            },
+        }
+
+        schema = SchemaMetadata(
+            tables={
+                "categories": self.categories_table,
+                "items": self.items_table,
+            },
+            relationships=relationships,
+            root_table="categories",
+        )
+
+        self.compiler = JSONPathToSQLCompiler(schema)
+
+    def test_nested_wildcard_simple_filter(self):
+        """Test nested wildcard with simple filter generates EXISTS."""
+        query = self.compiler.compile("$[*][?(@.items[*][?(@.price > 100)])]")
+        sql = str(query.compile(compile_kwargs={"literal_binds": True}))
+        self.assertIn("SELECT categories.id, categories.name", sql)
+        self.assertIn("FROM categories", sql)
+        self.assertIn("EXISTS", sql)
+        self.assertIn("SELECT 1", sql)
+        self.assertIn("FROM items", sql)
+        self.assertIn("items.category_id = categories.id", sql)
+        self.assertIn("items.price > 100", sql)
+
+    def test_nested_wildcard_with_and_filter(self):
+        """Test nested wildcard with AND in inner filter."""
+        query = self.compiler.compile(
+            "$[*][?(@.items[*][?(@.price > 50 and @.price < 200)])]"
+        )
+        sql = str(query.compile(compile_kwargs={"literal_binds": True}))
+        self.assertIn("EXISTS", sql)
+        self.assertIn("items.price > 50", sql)
+        self.assertIn("AND", sql)
+        self.assertIn("items.price < 200", sql)
+
+    def test_nested_wildcard_string_comparison(self):
+        """Test nested wildcard with string comparison."""
+        query = self.compiler.compile('$[*][?(@.items[*][?(@.name = "Laptop")])]')
+        sql = str(query.compile(compile_kwargs={"literal_binds": True}))
+        self.assertIn("EXISTS", sql)
+        self.assertIn("items.name = 'Laptop'", sql)
+
+    def test_nested_wildcard_combined_with_parent_filter(self):
+        """Test nested wildcard combined with filter on parent."""
+        query = self.compiler.compile(
+            '$[?(@.name = "Electronics")][?(@.items[*][?(@.price > 500)])]'
+        )
+        sql = str(query.compile(compile_kwargs={"literal_binds": True}))
+        self.assertIn("categories.name = 'Electronics'", sql)
+        self.assertIn("EXISTS", sql)
+        self.assertIn("items.price > 500", sql)
+
+    def test_nested_wildcard_no_join_in_main_query(self):
+        """Test that nested wildcard uses EXISTS, not JOIN."""
+        query = self.compiler.compile("$[*][?(@.items[*][?(@.price > 100)])]")
+        sql = str(query.compile(compile_kwargs={"literal_binds": True}))
+        # Should NOT have JOIN items in main query (only in EXISTS subquery)
+        main_query_parts = sql.split("EXISTS")[0]
+        self.assertNotIn("JOIN items", main_query_parts)
+
+
 if __name__ == "__main__":
     unittest.main()

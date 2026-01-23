@@ -8,13 +8,14 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
-from sqlalchemy import Column, Table, and_, or_
+from sqlalchemy import Column, Table, and_, or_, exists
 from sqlalchemy.sql import Select, select
 from sqlalchemy.sql.elements import BinaryExpression
 
 from jsonpath2.nodes.root import RootNode
 from jsonpath2.nodes.subscript import SubscriptNode
 from jsonpath2.nodes.terminal import TerminalNode
+from jsonpath2.nodes.current import CurrentNode
 from jsonpath2.subscripts.objectindex import ObjectIndexSubscript
 from jsonpath2.subscripts.filter import FilterSubscript
 from jsonpath2.subscripts.wildcard import WildcardSubscript
@@ -24,6 +25,7 @@ from jsonpath2.expressions.operator import (
     AndVariadicOperatorExpression,
     OrVariadicOperatorExpression,
 )
+from jsonpath2.expressions.some import SomeExpression
 from jsonpath2.path import Path
 
 
@@ -227,7 +229,9 @@ class FilterSubscriptVisitor(SubscriptVisitor):
 
     def _compile_expression(self, expression, context: CompilationContext):
         """Compile any expression type to SQLAlchemy condition."""
-        if isinstance(expression, AndVariadicOperatorExpression):
+        if isinstance(expression, SomeExpression):
+            return self._compile_some_expression(expression, context)
+        elif isinstance(expression, AndVariadicOperatorExpression):
             return self._compile_variadic_operator(expression, context, and_)
         elif isinstance(expression, OrVariadicOperatorExpression):
             return self._compile_variadic_operator(expression, context, or_)
@@ -359,6 +363,127 @@ class FilterSubscriptVisitor(SubscriptVisitor):
 
         # Return column reference
         return target_table.c[final_field]
+
+    def _compile_some_expression(
+        self, expr: SomeExpression, context: CompilationContext
+    ):
+        """
+        Compile SomeExpression (nested wildcard) to EXISTS subquery.
+
+        Pattern: @.items[*][?(@.price > 100)]
+        Compiles to:
+          EXISTS (
+            SELECT 1 FROM items
+            WHERE items.parent_id = parent.id
+              AND items.price > 100
+          )
+
+        Args:
+            expr: SomeExpression containing nested wildcard pattern
+            context: Compilation context
+
+        Returns:
+            SQLAlchemy EXISTS clause
+        """
+        # SomeExpression has next_node_or_value which is CurrentNode (@)
+        current_node = expr.next_node_or_value
+        if not isinstance(current_node, CurrentNode):
+            raise NotImplementedError(
+                f"SomeExpression with non-CurrentNode not supported: {type(current_node)}"
+            )
+
+        # Navigate through the path to find field name, wildcard, and inner filter
+        # Structure: CurrentNode -> SubscriptNode[ObjectIndex] -> SubscriptNode[Wildcard] -> SubscriptNode[Filter]
+        node = current_node.next_node
+        if not isinstance(node, SubscriptNode):
+            raise NotImplementedError("Expected SubscriptNode after CurrentNode")
+
+        # Get field name from ObjectIndexSubscript
+        field_name = None
+        for subscript in node.subscripts:
+            if isinstance(subscript, ObjectIndexSubscript):
+                field_name = subscript.index
+                break
+
+        if not field_name:
+            raise NotImplementedError("Could not find field name in SomeExpression")
+
+        # Get relationship for the field
+        relationship = context.get_relationship(field_name)
+        if not relationship:
+            raise ValueError(
+                f"Field '{field_name}' is not a relationship in table '{context.current_table}'"
+            )
+
+        target_table_name = relationship.target_table
+        source_table = context.get_current_table()
+        target_table = context.get_table(target_table_name)
+
+        # Navigate to find the inner filter
+        # Next should be SubscriptNode with WildcardSubscript
+        node = node.next_node
+        if not isinstance(node, SubscriptNode):
+            raise NotImplementedError("Expected SubscriptNode with Wildcard")
+
+        has_wildcard = any(isinstance(s, WildcardSubscript) for s in node.subscripts)
+        if not has_wildcard:
+            raise NotImplementedError("Expected WildcardSubscript in nested path")
+
+        # Next should be SubscriptNode with FilterSubscript
+        node = node.next_node
+        if not isinstance(node, SubscriptNode):
+            raise NotImplementedError("Expected SubscriptNode with Filter")
+
+        inner_filter = None
+        for subscript in node.subscripts:
+            if isinstance(subscript, FilterSubscript):
+                inner_filter = subscript
+                break
+
+        if not inner_filter:
+            raise NotImplementedError("Could not find inner filter in SomeExpression")
+
+        # Save current table and switch to target table context
+        saved_table = context.current_table
+        context.current_table = target_table_name
+
+        # Compile inner filter expression in target table context
+        filter_condition = self._compile_expression(inner_filter.expression, context)
+
+        # Restore context
+        context.current_table = saved_table
+
+        # Build JOIN condition based on relationship type
+        fk_columns = relationship.get_foreign_key_columns()
+        pk_columns = relationship.get_target_primary_key_columns()
+
+        if relationship.relationship_type == "one-to-many":
+            # FK is in target table, PK is in source table
+            join_conditions = [
+                target_table.c[fk] == source_table.c[pk]
+                for fk, pk in zip(fk_columns, pk_columns)
+            ]
+        else:  # many-to-one
+            # FK is in source table, PK is in target table
+            join_conditions = [
+                source_table.c[fk] == target_table.c[pk]
+                for fk, pk in zip(fk_columns, pk_columns)
+            ]
+
+        # Combine join conditions
+        if len(join_conditions) == 1:
+            join_condition = join_conditions[0]
+        else:
+            join_condition = and_(*join_conditions)
+
+        # Build EXISTS subquery
+        exists_subquery = exists(
+            select(1).select_from(target_table).where(
+                and_(join_condition, filter_condition)
+            )
+        )
+
+        return exists_subquery
 
 
 class WildcardSubscriptVisitor(SubscriptVisitor):

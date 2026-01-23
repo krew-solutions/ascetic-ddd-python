@@ -22,6 +22,8 @@ from jsonpath2.expressions.operator import (
     AndVariadicOperatorExpression,
     OrVariadicOperatorExpression,
 )
+from jsonpath2.expressions.some import SomeExpression
+from jsonpath2.nodes.current import CurrentNode
 from jsonpath2.path import Path
 
 
@@ -347,7 +349,9 @@ class FilterSubscriptVisitor(SubscriptVisitor):
 
     def _compile_expression(self, expression, context: CompilationContext) -> str:
         """Compile any expression type to SQL condition."""
-        if isinstance(expression, AndVariadicOperatorExpression):
+        if isinstance(expression, SomeExpression):
+            return self._compile_some_expression(expression, context)
+        elif isinstance(expression, AndVariadicOperatorExpression):
             return self._compile_variadic_operator(expression, context, "AND")
         elif isinstance(expression, OrVariadicOperatorExpression):
             return self._compile_variadic_operator(expression, context, "OR")
@@ -488,6 +492,121 @@ class FilterSubscriptVisitor(SubscriptVisitor):
             return f"'{escaped}'"
         else:
             raise ValueError(f"Unsupported value type: {type(value)}")
+
+    def _compile_some_expression(
+        self, expr: SomeExpression, context: CompilationContext
+    ) -> str:
+        """
+        Compile SomeExpression (nested wildcard) to EXISTS subquery.
+
+        Pattern: @.items[*][?(@.price > 100)]
+        Compiles to:
+          EXISTS (
+            SELECT 1 FROM items
+            WHERE items.parent_id = parent.id
+              AND items.price > 100
+          )
+
+        Args:
+            expr: SomeExpression containing nested wildcard pattern
+            context: Compilation context
+
+        Returns:
+            SQL EXISTS clause
+        """
+        # SomeExpression has next_node_or_value which is CurrentNode (@)
+        current_node = expr.next_node_or_value
+        if not isinstance(current_node, CurrentNode):
+            raise NotImplementedError(
+                f"SomeExpression with non-CurrentNode not supported: {type(current_node)}"
+            )
+
+        # Navigate through the path to find field name, wildcard, and inner filter
+        # Structure: CurrentNode -> SubscriptNode[ObjectIndex] -> SubscriptNode[Wildcard] -> SubscriptNode[Filter]
+        node = current_node.next_node
+        if not isinstance(node, SubscriptNode):
+            raise NotImplementedError("Expected SubscriptNode after CurrentNode")
+
+        # Get field name from ObjectIndexSubscript
+        field_name = None
+        for subscript in node.subscripts:
+            if isinstance(subscript, ObjectIndexSubscript):
+                field_name = subscript.index
+                break
+
+        if not field_name:
+            raise NotImplementedError("Could not find field name in SomeExpression")
+
+        # Get relationship for the field
+        relationship = context.get_relationship(field_name)
+        if not relationship:
+            raise ValueError(
+                f"Field '{field_name}' is not a relationship in table '{context.current_table}'"
+            )
+
+        target_table = relationship.target_table
+        source_table = context.current_table
+
+        # Navigate to find the inner filter
+        # Next should be SubscriptNode with WildcardSubscript
+        node = node.next_node
+        if not isinstance(node, SubscriptNode):
+            raise NotImplementedError("Expected SubscriptNode with Wildcard")
+
+        has_wildcard = any(isinstance(s, WildcardSubscript) for s in node.subscripts)
+        if not has_wildcard:
+            raise NotImplementedError("Expected WildcardSubscript in nested path")
+
+        # Next should be SubscriptNode with FilterSubscript
+        node = node.next_node
+        if not isinstance(node, SubscriptNode):
+            raise NotImplementedError("Expected SubscriptNode with Filter")
+
+        inner_filter = None
+        for subscript in node.subscripts:
+            if isinstance(subscript, FilterSubscript):
+                inner_filter = subscript
+                break
+
+        if not inner_filter:
+            raise NotImplementedError("Could not find inner filter in SomeExpression")
+
+        # Save current table and switch to target table context
+        saved_table = context.current_table
+        context.current_table = target_table
+
+        # Compile inner filter expression in target table context
+        filter_condition = self._compile_expression(inner_filter.expression, context)
+
+        # Restore context
+        context.current_table = saved_table
+
+        # Build JOIN condition based on relationship type
+        fk_columns = relationship.get_foreign_key_columns()
+        pk_columns = relationship.get_target_primary_key_columns()
+
+        if relationship.relationship_type == RelationType.ONE_TO_MANY:
+            # FK is in target table, PK is in source table
+            join_conditions = [
+                f"{target_table}.{fk} = {source_table}.{pk}"
+                for fk, pk in zip(fk_columns, pk_columns)
+            ]
+        else:  # MANY_TO_ONE
+            # FK is in source table, PK is in target table
+            join_conditions = [
+                f"{source_table}.{fk} = {target_table}.{pk}"
+                for fk, pk in zip(fk_columns, pk_columns)
+            ]
+
+        join_condition = " AND ".join(join_conditions)
+
+        # Build EXISTS subquery
+        exists_query = (
+            f"EXISTS (SELECT 1 FROM {target_table} "
+            f"WHERE {join_condition} AND {filter_condition})"
+        )
+
+        return exists_query
 
 
 class WildcardSubscriptVisitor(SubscriptVisitor):
