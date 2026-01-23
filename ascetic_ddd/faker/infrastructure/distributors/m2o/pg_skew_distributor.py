@@ -1,5 +1,6 @@
 import typing
 
+from ascetic_ddd.faker.domain.distributors.m2o import IM2ODistributor
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.infrastructure.distributors.m2o.pg_weighted_distributor import BasePgDistributor
@@ -33,12 +34,13 @@ class PgSkewDistributor(BasePgDistributor[T], typing.Generic[T]):
 
     def __init__(
             self,
+            delegate: IM2ODistributor[T],
             skew: float = 2.0,
             mean: float | None = None,
             initialized: bool = False
     ):
         self._skew = skew
-        super().__init__(mean=mean, initialized=initialized)
+        super().__init__(delegate=delegate, mean=mean, initialized=initialized)
 
     async def _get_next_value(self, session: ISession, specification: ISpecification[T]) -> tuple[T | None, bool]:
         """

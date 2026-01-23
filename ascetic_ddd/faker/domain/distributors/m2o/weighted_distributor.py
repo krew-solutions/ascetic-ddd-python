@@ -2,13 +2,14 @@ import math
 import random
 import typing
 from abc import abstractmethod
+from typing import Hashable, Callable
 
+from ascetic_ddd.disposable import IDisposable
 from ascetic_ddd.faker.domain.distributors.m2o.cursor import Cursor
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor, IExternalSource
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
-from ascetic_ddd.observable.observable import Observable
 
 __all__ = ('BaseIndex', 'BaseDistributor', 'Index', 'WeightedDistributor',)
 
@@ -132,7 +133,7 @@ class BaseIndex(typing.Generic[T]):
 # BaseDistributor
 # =============================================================================
 
-class BaseDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
+class BaseDistributor(IM2ODistributor[T], typing.Generic[T]):
     """
     Базовый класс для in-memory дистрибьюторов.
     """
@@ -141,14 +142,16 @@ class BaseDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     _default_spec: ISpecification = None
     _provider_name: str | None = None
     _external_source: IExternalSource[T] | None = None
+    _delegate: IM2ODistributor[T]
 
-    def __init__(self, mean: float | None = None):
-        self._external_source = None
+    def __init__(self, delegate: IM2ODistributor[T], mean: float | None = None):
+        self._delegate = delegate
         if mean is not None:
             self._mean = mean
         self._default_spec = EmptySpecification()
         self._indexes = dict()
         self._indexes[self._default_spec] = self._create_index(self._default_spec)
+        self._external_source = None
         super().__init__()
 
     def bind_external_source(self, external_source: typing.Any) -> None:
@@ -184,19 +187,17 @@ class BaseDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
 
         target_index = self._indexes[specification]
 
-        if self._mean == 1:
-            raise Cursor(
-                position=None,
-                callback=self._append,
-            )
-
         try:
             value = target_index.next(self._mean)
         except StopIteration:
-            raise Cursor(
-                position=None,
-                callback=self._append,
-            )
+            try:
+                value = await self._delegate.next(session, specification)
+            except Cursor as cursor:
+                raise Cursor(
+                    position=None,
+                    callback=self._append,
+                    delegate=cursor
+                )
 
         # Проверяем, не "протух" ли объект, если он был изменён?
         if not specification.is_satisfied_by(value):
@@ -247,6 +248,18 @@ class BaseDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     def provider_name(self, value):
         if self._provider_name is None:
             self._provider_name = value
+
+    def attach(self, aspect: Hashable, observer: Callable, id_: Hashable | None = None) -> IDisposable:
+        return self._delegate.attach(aspect, observer, id_)
+
+    def detach(self, aspect, observer, id_: Hashable | None = None):
+        return self._delegate.detach(aspect, observer, id_)
+
+    def notify(self, aspect, *args, **kwargs):
+        return self._delegate.notify(aspect, *args, **kwargs)
+
+    async def anotify(self, aspect: Hashable, *args, **kwargs):
+        return await self._delegate.anotify(aspect, *args, **kwargs)
 
     async def setup(self, session: ISession):
         pass
@@ -352,11 +365,12 @@ class WeightedDistributor(BaseDistributor[T], typing.Generic[T]):
 
     def __init__(
             self,
+            delegate: IM2ODistributor[T],
             weights: typing.Iterable[float] = tuple(),
             mean: float | None = None,
     ):
         self._weights = list(weights)
-        super().__init__(mean=mean)
+        super().__init__(delegate=delegate, mean=mean)
 
     def _create_index(self, specification: ISpecification[T]) -> Index[T]:
         return Index(self._weights, specification)

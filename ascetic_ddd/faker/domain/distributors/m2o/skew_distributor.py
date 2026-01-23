@@ -2,6 +2,7 @@ import math
 import random
 import typing
 
+from ascetic_ddd.faker.domain.distributors.m2o import IM2ODistributor
 from ascetic_ddd.faker.domain.distributors.m2o.weighted_distributor import BaseIndex, BaseDistributor
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 
@@ -163,11 +164,12 @@ class SkewDistributor(BaseDistributor[T], typing.Generic[T]):
 
     def __init__(
             self,
+            delegate: IM2ODistributor[T],
             skew: float = 2.0,
             mean: float | None = None,
     ):
         self._skew = skew
-        super().__init__(mean=mean)
+        super().__init__(delegate=delegate, mean=mean)
 
     def _create_index(self, specification: ISpecification[T]) -> SkewIndex[T]:
         return SkewIndex(self._skew, specification)

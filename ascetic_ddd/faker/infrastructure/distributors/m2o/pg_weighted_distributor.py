@@ -8,9 +8,11 @@ import threading
 import typing
 import dataclasses
 from abc import abstractmethod
+from typing import Hashable, Callable
 
 from psycopg.types.json import Jsonb
 
+from ascetic_ddd.disposable import IDisposable
 from ascetic_ddd.faker.domain.distributors.m2o.cursor import Cursor
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
 from ascetic_ddd.faker.domain.session.interfaces import ISession
@@ -20,7 +22,6 @@ from ascetic_ddd.faker.infrastructure.distributors.m2o.interfaces import IPgExte
 from ascetic_ddd.faker.infrastructure.session.pg_session import extract_internal_connection
 from ascetic_ddd.faker.infrastructure.specification.pg_specification_visitor import PgSpecificationVisitor
 from ascetic_ddd.faker.infrastructure.utils.json import JSONEncoder
-from ascetic_ddd.observable.observable import Observable
 from ascetic_ddd.seedwork.infrastructure.utils import serializer
 from ascetic_ddd.seedwork.infrastructure.utils.pg import escape
 
@@ -31,7 +32,7 @@ __all__ = ('BasePgDistributor', 'PgWeightedDistributor')
 T = typing.TypeVar("T", covariant=True)
 
 
-class BasePgDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
+class BasePgDistributor(IM2ODistributor[T], typing.Generic[T]):
     """
     Базовый класс для PostgreSQL дистрибьюторов.
 
@@ -45,16 +46,19 @@ class BasePgDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     _default_key: str = str(frozenset())
     _provider_name: str | None = None
     _external_source: IPgExternalSource | None = None
+    _delegate: IM2ODistributor[T]
 
     def __init__(
             self,
+            delegate: IM2ODistributor[T],
             mean: float | None = None,
             initialized: bool = False
     ):
-        self._external_source = None
+        self._delegate = delegate
         if mean is not None:
             self._mean = mean
         self._initialized = initialized
+        self._external_source = None
         super().__init__()
 
     def bind_external_source(self, external_source: typing.Any) -> None:
@@ -75,22 +79,20 @@ class BasePgDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
         if not self._initialized:
             await self.setup(session)
 
-        if self._mean == 1:
-            raise Cursor(
-                position=None,
-                callback=self._append,
-            )
-
         # Резолвим вложенные constraints (если есть)
         if hasattr(specification, 'resolve_nested'):
             await specification.resolve_nested(session)
 
         value, should_create_new = await self._get_next_value(session, specification)
         if should_create_new:
-            raise Cursor(
-                position=None,
-                callback=self._append,
-            )
+            try:
+                value = await self._delegate.next(session, specification)
+            except Cursor as cursor:
+                raise Cursor(
+                    position=None,
+                    callback=self._append,
+                    delegate=cursor
+                )
         return value
 
     @abstractmethod
@@ -125,6 +127,18 @@ class BasePgDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
             self._provider_name = value
             if self._values_table is None:
                 self._values_table = escape("values_for_%s" % value[-(63 - 11):])
+
+    def attach(self, aspect: Hashable, observer: Callable, id_: Hashable | None = None) -> IDisposable:
+        return self._delegate.attach(aspect, observer, id_)
+
+    def detach(self, aspect, observer, id_: Hashable | None = None):
+        return self._delegate.detach(aspect, observer, id_)
+
+    def notify(self, aspect, *args, **kwargs):
+        return self._delegate.notify(aspect, *args, **kwargs)
+
+    async def anotify(self, aspect: Hashable, *args, **kwargs):
+        return await self._delegate.anotify(aspect, *args, **kwargs)
 
     async def setup(self, session: ISession):
         if not self._initialized:  # Fixes diamond problem
@@ -206,12 +220,13 @@ class PgWeightedDistributor(BasePgDistributor[T], typing.Generic[T]):
 
     def __init__(
             self,
+            delegate: IM2ODistributor[T],
             weights: typing.Iterable[float] = tuple(),
             mean: float | None = None,
             initialized: bool = False
     ):
         self._weights = list(weights)
-        super().__init__(mean=mean, initialized=initialized)
+        super().__init__(delegate=delegate, mean=mean, initialized=initialized)
 
     def _compute_partition(self) -> tuple[int, float, int]:
         """

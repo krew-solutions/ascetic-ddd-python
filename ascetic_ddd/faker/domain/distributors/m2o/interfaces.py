@@ -80,7 +80,10 @@ class ICursor(typing.Generic[T], StopAsyncIteration, metaclass=ABCMeta):
     Заинтересованные декораторы должны перехватывать Cursor и создавать свой, если им нужно добавить объект к себе.
     Например, если WeightedDistributor станет декоратором для SequenceDistributor.
     """
-    position: int
+    @property
+    @abstractmethod
+    def position(self):
+        raise NotImplementedError
 
     @abstractmethod
     async def append(self, session: ISession, value: T):
@@ -103,7 +106,7 @@ class IM2ODistributorFactory(typing.Protocol[T]):
         Args:
             weights: If a weights sequence is specified, selections are made according to the relative weights.
             skew: Параметр перекоса (1.0 = равномерно, 2.0+ = перекос к началу). Default = 2.0
-            mean: Среднее количество использований каждого значения. Use mean = 1 for unique.
+            mean: Среднее количество использований каждого значения.
             null_weight: Вероятность вернуть None (0-1)
             sequence: Pass sequence number to value generator.
         """

@@ -16,7 +16,7 @@ T = typing.TypeVar("T", covariant=True)
 
 class NullableDistributor(IM2ODistributor[T], typing.Generic[T]):
     _delegate: IM2ODistributor[T]
-    _null_weight: float = 0
+    _null_weight: float
 
     def __init__(
             self,
