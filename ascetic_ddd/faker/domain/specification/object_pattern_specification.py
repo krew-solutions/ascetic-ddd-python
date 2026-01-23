@@ -41,7 +41,7 @@ class ObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
                 "Call resolve_nested() first."
             )
         if self._str is None:
-            self._str = str(hashable(self._resolved_pattern))
+            self._str = str(hashable(self._object_pattern))
         return self._str
 
     def __hash__(self) -> int:
@@ -51,7 +51,7 @@ class ObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
                 "Call resolve_nested() first."
             )
         if self._hash is None:
-            self._hash = hash(hashable(self._resolved_pattern))
+            self._hash = hash(hashable(self._object_pattern))
         return self._hash
 
     def __eq__(self, other: object) -> bool:
@@ -63,7 +63,7 @@ class ObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
                 "Cannot compare unresolved ObjectPatternSpecification. "
                 "Call resolve_nested() first."
             )
-        return self._resolved_pattern == other._resolved_pattern
+        return self._object_pattern == other._object_pattern
 
     def is_satisfied_by(self, obj: T) -> bool:
         if self._resolved_pattern is None:
