@@ -10,8 +10,8 @@ from ascetic_ddd.faker.domain.providers.reference_provider import ReferenceProvi
 from ascetic_ddd.faker.domain.providers.value_provider import ValueProvider
 from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
-from ascetic_ddd.faker.domain.specification.nested_object_pattern_specification import (
-    NestedObjectPatternSpecification
+from ascetic_ddd.faker.domain.specification.object_pattern_lookup_specification import (
+    ObjectPatternLookupSpecification
 )
 from ascetic_ddd.faker.domain.values.empty import empty
 from ascetic_ddd.faker.infrastructure.repositories.in_memory_repository import InMemoryRepository
@@ -313,15 +313,15 @@ class UserFaker(AggregateProvider[dict, User]):
 
 
 # =============================================================================
-# Tests for NestedObjectPatternSpecification - Basic
+# Tests for ObjectPatternLookupSpecification - Basic
 # =============================================================================
 
-class NestedObjectPatternSpecificationBasicTestCase(IsolatedAsyncioTestCase):
-    """Basic tests for NestedObjectPatternSpecification."""
+class ObjectPatternLookupSpecificationBasicTestCase(IsolatedAsyncioTestCase):
+    """Basic tests for ObjectPatternLookupSpecification."""
 
     async def test_is_satisfied_by_simple_pattern_without_provider(self):
         """Simple pattern matching without provider should work."""
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'status': 'active'},
             lambda obj: obj
         )
@@ -330,7 +330,7 @@ class NestedObjectPatternSpecificationBasicTestCase(IsolatedAsyncioTestCase):
 
     async def test_is_satisfied_by_nested_pattern_without_provider(self):
         """Nested pattern without provider should use simple subset check."""
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'address': {'city': 'Moscow'}},
             lambda obj: obj
         )
@@ -339,7 +339,7 @@ class NestedObjectPatternSpecificationBasicTestCase(IsolatedAsyncioTestCase):
 
     def test_hash_uses_object_pattern(self):
         """hash() should use _object_pattern."""
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'status': 'active'},
             lambda obj: obj
         )
@@ -350,31 +350,31 @@ class NestedObjectPatternSpecificationBasicTestCase(IsolatedAsyncioTestCase):
 
     def test_hash_equality(self):
         """Specifications with same _object_pattern should have equal hash."""
-        spec1 = NestedObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
-        spec2 = NestedObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
+        spec1 = ObjectPatternLookupSpecification({'status': 'active'}, lambda obj: obj)
+        spec2 = ObjectPatternLookupSpecification({'status': 'active'}, lambda obj: obj)
         self.assertEqual(hash(spec1), hash(spec2))
 
     def test_hash_inequality(self):
         """Specifications with different _object_pattern should have different hash."""
-        spec1 = NestedObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
-        spec2 = NestedObjectPatternSpecification({'status': 'inactive'}, lambda obj: obj)
+        spec1 = ObjectPatternLookupSpecification({'status': 'active'}, lambda obj: obj)
+        spec2 = ObjectPatternLookupSpecification({'status': 'inactive'}, lambda obj: obj)
         self.assertNotEqual(hash(spec1), hash(spec2))
 
     def test_eq_uses_object_pattern(self):
         """__eq__ should compare _object_pattern."""
-        spec1 = NestedObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
-        spec2 = NestedObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
+        spec1 = ObjectPatternLookupSpecification({'status': 'active'}, lambda obj: obj)
+        spec2 = ObjectPatternLookupSpecification({'status': 'active'}, lambda obj: obj)
         self.assertEqual(spec1, spec2)
 
     def test_eq_different_patterns(self):
         """Specifications with different _object_pattern should not be equal."""
-        spec1 = NestedObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
-        spec2 = NestedObjectPatternSpecification({'status': 'inactive'}, lambda obj: obj)
+        spec1 = ObjectPatternLookupSpecification({'status': 'active'}, lambda obj: obj)
+        spec2 = ObjectPatternLookupSpecification({'status': 'inactive'}, lambda obj: obj)
         self.assertNotEqual(spec1, spec2)
 
     def test_str_uses_object_pattern(self):
         """__str__ should use _object_pattern."""
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'status': 'active'},
             lambda obj: obj
         )
@@ -384,18 +384,18 @@ class NestedObjectPatternSpecificationBasicTestCase(IsolatedAsyncioTestCase):
         self.assertEqual(str(spec), expected_str)
 
     def test_eq_with_non_specification(self):
-        """__eq__ with non-NestedObjectPatternSpecification should return False."""
-        spec = NestedObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
+        """__eq__ with non-ObjectPatternLookupSpecification should return False."""
+        spec = ObjectPatternLookupSpecification({'status': 'active'}, lambda obj: obj)
         self.assertNotEqual(spec, {'status': 'active'})
         self.assertNotEqual(spec, "string")
         self.assertNotEqual(spec, 123)
 
 
 # =============================================================================
-# Tests for NestedObjectPatternSpecification - Nested Lookup
+# Tests for ObjectPatternLookupSpecification - Nested Lookup
 # =============================================================================
 
-class NestedObjectPatternSpecificationNestedLookupTestCase(IsolatedAsyncioTestCase):
+class ObjectPatternLookupSpecificationNestedLookupTestCase(IsolatedAsyncioTestCase):
     """Tests for nested lookup in is_satisfied_by()."""
 
     def setUp(self):
@@ -433,7 +433,7 @@ class NestedObjectPatternSpecificationNestedLookupTestCase(IsolatedAsyncioTestCa
 
     async def test_nested_lookup_matches(self):
         """Nested lookup should match when foreign object satisfies pattern."""
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'status_id': {'name': 'Active'}},
             lambda u: {'id': u.id.value, 'status_id': u.status_id.value, 'name': u.name},
             aggregate_provider_accessor=lambda: self.user_provider
@@ -446,7 +446,7 @@ class NestedObjectPatternSpecificationNestedLookupTestCase(IsolatedAsyncioTestCa
 
     async def test_nested_lookup_returns_false_when_fk_is_none(self):
         """Nested lookup should return False when fk_id is None."""
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'status_id': {'name': 'Active'}},
             lambda u: {'id': u.id.value, 'status_id': None, 'name': u.name},
             aggregate_provider_accessor=lambda: self.user_provider
@@ -458,7 +458,7 @@ class NestedObjectPatternSpecificationNestedLookupTestCase(IsolatedAsyncioTestCa
         """Nested lookup should return False when foreign object not found."""
         user_with_unknown_status = User(UserId(3), StatusId("unknown"), "Charlie")
 
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'status_id': {'name': 'Active'}},
             lambda u: {'id': u.id.value, 'status_id': u.status_id.value, 'name': u.name},
             aggregate_provider_accessor=lambda: self.user_provider
@@ -474,7 +474,7 @@ class NestedObjectPatternSpecificationNestedLookupTestCase(IsolatedAsyncioTestCa
             output_exporter=lambda u: {'id': u.id.value, 'name': u.name}
         )
 
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'name': {'nested': 'value'}},  # name is not ReferenceProvider
             lambda u: {'id': u.id.value, 'name': u.name},
             aggregate_provider_accessor=lambda: user_provider
@@ -485,7 +485,7 @@ class NestedObjectPatternSpecificationNestedLookupTestCase(IsolatedAsyncioTestCa
 
     async def test_simple_value_comparison_with_provider(self):
         """Simple value comparison should work alongside nested lookup."""
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'name': 'Alice', 'status_id': {'name': 'Active'}},
             lambda u: {'id': u.id.value, 'status_id': u.status_id.value, 'name': u.name},
             aggregate_provider_accessor=lambda: self.user_provider
@@ -498,7 +498,7 @@ class NestedObjectPatternSpecificationNestedLookupTestCase(IsolatedAsyncioTestCa
 
     async def test_simple_value_mismatch_with_provider(self):
         """Simple value mismatch should return False early."""
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'name': 'NonExistent', 'status_id': {'name': 'Active'}},
             lambda u: {'id': u.id.value, 'status_id': u.status_id.value, 'name': u.name},
             aggregate_provider_accessor=lambda: self.user_provider
@@ -508,10 +508,10 @@ class NestedObjectPatternSpecificationNestedLookupTestCase(IsolatedAsyncioTestCa
 
 
 # =============================================================================
-# Tests for NestedObjectPatternSpecification - Deep Nesting
+# Tests for ObjectPatternLookupSpecification - Deep Nesting
 # =============================================================================
 
-class NestedObjectPatternSpecificationDeepNestingTestCase(IsolatedAsyncioTestCase):
+class ObjectPatternLookupSpecificationDeepNestingTestCase(IsolatedAsyncioTestCase):
     """Tests for deeply nested lookup."""
 
     def setUp(self):
@@ -560,7 +560,7 @@ class NestedObjectPatternSpecificationDeepNestingTestCase(IsolatedAsyncioTestCas
     async def test_two_level_nested_lookup(self):
         """Two-level nested lookup should work."""
         # Company -> User (owner) -> Status
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'owner_id': {'status_id': {'name': 'Active'}}},
             lambda c: {'id': c.id.value, 'owner_id': c.owner_id.value, 'name': c.name},
             aggregate_provider_accessor=lambda: self.company_provider
@@ -570,7 +570,7 @@ class NestedObjectPatternSpecificationDeepNestingTestCase(IsolatedAsyncioTestCas
 
     async def test_two_level_nested_lookup_no_match(self):
         """Two-level nested lookup should return False when doesn't match."""
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'owner_id': {'status_id': {'name': 'Inactive'}}},
             lambda c: {'id': c.id.value, 'owner_id': c.owner_id.value, 'name': c.name},
             aggregate_provider_accessor=lambda: self.company_provider
@@ -580,10 +580,10 @@ class NestedObjectPatternSpecificationDeepNestingTestCase(IsolatedAsyncioTestCas
 
 
 # =============================================================================
-# Tests for NestedObjectPatternSpecification - Cache
+# Tests for ObjectPatternLookupSpecification - Cache
 # =============================================================================
 
-class NestedObjectPatternSpecificationCacheTestCase(IsolatedAsyncioTestCase):
+class ObjectPatternLookupSpecificationCacheTestCase(IsolatedAsyncioTestCase):
     """Tests for cache behavior."""
 
     def setUp(self):
@@ -610,7 +610,7 @@ class NestedObjectPatternSpecificationCacheTestCase(IsolatedAsyncioTestCase):
 
     async def test_cache_stores_result(self):
         """Cache should store lookup result."""
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'status_id': {'name': 'Active'}},
             lambda u: {'id': u.id.value, 'status_id': u.status_id.value, 'name': u.name},
             aggregate_provider_accessor=lambda: self.user_provider
@@ -622,7 +622,7 @@ class NestedObjectPatternSpecificationCacheTestCase(IsolatedAsyncioTestCase):
 
     async def test_cache_key_includes_provider_type(self):
         """Cache key should include type(aggregate_provider)."""
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'status_id': {'name': 'Active'}},
             lambda u: {'id': u.id.value, 'status_id': u.status_id.value, 'name': u.name},
             aggregate_provider_accessor=lambda: self.user_provider
@@ -646,7 +646,7 @@ class NestedObjectPatternSpecificationCacheTestCase(IsolatedAsyncioTestCase):
 
         self.status_repo.get = counting_get
 
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'status_id': {'name': 'Active'}},
             lambda u: {'id': u.id.value, 'status_id': u.status_id.value, 'name': u.name},
             aggregate_provider_accessor=lambda: self.user_provider
@@ -662,7 +662,7 @@ class NestedObjectPatternSpecificationCacheTestCase(IsolatedAsyncioTestCase):
 
     async def test_clear_cache(self):
         """clear_cache() should clear the cache."""
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'status_id': {'name': 'Active'}},
             lambda u: {'id': u.id.value, 'status_id': u.status_id.value, 'name': u.name},
             aggregate_provider_accessor=lambda: self.user_provider
@@ -692,7 +692,7 @@ class NestedObjectPatternSpecificationCacheTestCase(IsolatedAsyncioTestCase):
         def get_provider():
             return providers[provider_index[0]]
 
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'status_id': {'name': 'Active'}},
             lambda u: {'id': u.id.value, 'status_id': u.status_id.value, 'name': u.name},
             aggregate_provider_accessor=get_provider
@@ -709,10 +709,10 @@ class NestedObjectPatternSpecificationCacheTestCase(IsolatedAsyncioTestCase):
 
 
 # =============================================================================
-# Tests for NestedObjectPatternSpecification - Accept
+# Tests for ObjectPatternLookupSpecification - Accept
 # =============================================================================
 
-class NestedObjectPatternSpecificationAcceptTestCase(IsolatedAsyncioTestCase):
+class ObjectPatternLookupSpecificationAcceptTestCase(IsolatedAsyncioTestCase):
     """Tests for accept() method."""
 
     def test_accept_passes_object_pattern(self):
@@ -724,7 +724,7 @@ class NestedObjectPatternSpecificationAcceptTestCase(IsolatedAsyncioTestCase):
                 received_pattern[0] = pattern
 
         original_pattern = {'status_id': {'name': 'Active'}}
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             original_pattern,
             lambda obj: obj
         )
@@ -744,7 +744,7 @@ class NestedObjectPatternSpecificationAcceptTestCase(IsolatedAsyncioTestCase):
                 received_accessor[0] = accessor
 
         accessor = lambda: "test_provider"
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'status': 'active'},
             lambda obj: obj,
             aggregate_provider_accessor=accessor
@@ -763,7 +763,7 @@ class NestedObjectPatternSpecificationAcceptTestCase(IsolatedAsyncioTestCase):
             def visit_object_pattern_specification(self, pattern, accessor=None):
                 received_accessor[0] = accessor
 
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'status': 'active'},
             lambda obj: obj,
             aggregate_provider_accessor=None
@@ -779,11 +779,11 @@ class NestedObjectPatternSpecificationAcceptTestCase(IsolatedAsyncioTestCase):
 # Sociable Tests - Using Real Providers
 # =============================================================================
 
-class NestedObjectPatternSpecificationSociableTestCase(IsolatedAsyncioTestCase):
+class ObjectPatternLookupSpecificationSociableTestCase(IsolatedAsyncioTestCase):
     """
     Sociable tests using real AggregateProvider and ReferenceProvider.
 
-    These tests verify that NestedObjectPatternSpecification works correctly
+    These tests verify that ObjectPatternLookupSpecification works correctly
     with the real provider infrastructure, not just mocks.
     """
 
@@ -839,7 +839,7 @@ class NestedObjectPatternSpecificationSociableTestCase(IsolatedAsyncioTestCase):
 
     async def test_nested_lookup_with_real_providers(self):
         """Nested lookup should work with real AggregateProvider and ReferenceProvider."""
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'status_id': {'name': 'Active'}},
             UserFaker._export,
             aggregate_provider_accessor=lambda: self.user_provider
@@ -853,7 +853,7 @@ class NestedObjectPatternSpecificationSociableTestCase(IsolatedAsyncioTestCase):
 
     async def test_nested_lookup_with_real_providers_inactive_status(self):
         """Nested lookup should correctly match inactive status."""
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'status_id': {'name': 'Inactive'}},
             UserFaker._export,
             aggregate_provider_accessor=lambda: self.user_provider
@@ -867,7 +867,7 @@ class NestedObjectPatternSpecificationSociableTestCase(IsolatedAsyncioTestCase):
 
     async def test_combined_pattern_with_real_providers(self):
         """Combined simple and nested pattern should work with real providers."""
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'name': 'Alice', 'status_id': {'name': 'Active'}},
             UserFaker._export,
             aggregate_provider_accessor=lambda: self.user_provider
@@ -881,7 +881,7 @@ class NestedObjectPatternSpecificationSociableTestCase(IsolatedAsyncioTestCase):
 
     async def test_cache_with_real_providers(self):
         """Cache should work correctly with real providers."""
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'status_id': {'name': 'Active'}},
             UserFaker._export,
             aggregate_provider_accessor=lambda: self.user_provider
@@ -899,7 +899,7 @@ class NestedObjectPatternSpecificationSociableTestCase(IsolatedAsyncioTestCase):
         """Should return False when foreign object not in repository."""
         user_with_unknown_status = User(UserId(3), StatusId("unknown"), "Charlie")
 
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'status_id': {'name': 'Active'}},
             UserFaker._export,
             aggregate_provider_accessor=lambda: self.user_provider

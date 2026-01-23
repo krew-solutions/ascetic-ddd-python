@@ -6,13 +6,13 @@ import typing
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecificationVisitor, ISpecification
 from ascetic_ddd.seedwork.domain.utils.data import is_subset, hashable
 
-__all__ = ('NestedObjectPatternSpecification',)
+__all__ = ('ObjectPatternLookupSpecification',)
 
 
 T = typing.TypeVar("T", covariant=True)
 
 
-class NestedObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
+class ObjectPatternLookupSpecification(ISpecification[T], typing.Generic[T]):
     """
     Specification с nested lookup в is_satisfied_by().
 
@@ -28,7 +28,7 @@ class NestedObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
     - Требует доступ к providers при is_satisfied_by()
 
     Пример:
-        spec = NestedObjectPatternSpecification(
+        spec = ObjectPatternLookupSpecification(
             {'fk_id': {'status': 'active'}},
             lambda obj: {'fk_id': obj.fk_id},
             providers_accessor=lambda: aggregate_provider
@@ -77,7 +77,7 @@ class NestedObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
         return self._hash
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, NestedObjectPatternSpecification):
+        if not isinstance(other, ObjectPatternLookupSpecification):
             return False
         return self._object_pattern == other._object_pattern
 
