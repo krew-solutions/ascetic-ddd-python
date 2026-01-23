@@ -23,12 +23,14 @@ class PgSequenceDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
     _initialized: bool = False
     _provider_name: str | None = None
     _table: str | None = None
+    _default_spec: ISpecification
 
     def __init__(
             self,
             initialized: bool = False
     ):
         self._initialized = initialized
+        self._default_spec = EmptySpecification()
         super().__init__()
 
     async def next(
@@ -37,12 +39,12 @@ class PgSequenceDistributor(Observable, IM2ODistributor[T], typing.Generic[T]):
             specification: ISpecification[T] | None = None,
     ) -> T:
         if specification is None:
-            specification = EmptySpecification()
+            specification = self._default_spec
 
         if not self._initialized:
             await self.setup(session)
 
-        key = str(hash(specification))
+        key = str(specification)
 
         while True:
             async with self._extract_connection(session).cursor() as acursor:
