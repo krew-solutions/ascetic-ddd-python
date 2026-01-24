@@ -11,6 +11,7 @@ from ascetic_ddd.faker.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.domain.specification.object_pattern_specification import ObjectPatternSpecification
 from ascetic_ddd.faker.domain.values.empty import empty
+from ascetic_ddd.faker.infrastructure.repositories.in_memory_repository import InMemoryRepository
 
 
 # =============================================================================
@@ -633,3 +634,165 @@ class ObjectPatternSpecificationAcceptTestCase(IsolatedAsyncioTestCase):
         # Should pass resolved pattern
         self.assertEqual(received_pattern[0], spec._resolved_pattern)
         self.assertIs(received_pattern[0], spec._resolved_pattern)
+
+
+# =============================================================================
+# Sociable Tests — тесты с реальными коллабораторами
+# =============================================================================
+
+class ObjectPatternSpecificationSociableTestCase(IsolatedAsyncioTestCase):
+    """Sociable tests with real collaborators (InMemoryRepository, real providers)."""
+
+    async def asyncSetUp(self):
+        """Set up real repositories and providers."""
+        self.session = MockSession()
+
+        # Real repositories
+        self.status_repo = InMemoryRepository(
+            agg_exporter=StatusFaker._export,
+            id_attr='id',
+        )
+        self.user_repo = InMemoryRepository(
+            agg_exporter=UserFaker._export,
+            id_attr='id',
+        )
+
+        await self.status_repo.setup(self.session)
+        await self.user_repo.setup(self.session)
+
+        # Real providers with StubDistributor (external dependency)
+        self.status_dist = StubDistributor(raise_cursor=True)
+        self.status_provider = StatusFaker(self.status_repo, self.status_dist)
+        self.status_provider.provider_name = "status"
+
+        self.user_dist = StubDistributor(raise_cursor=True)
+        self.user_provider = UserFaker(self.user_repo, self.user_dist, self.status_provider)
+        self.user_provider.provider_name = "user"
+
+    async def asyncTearDown(self):
+        """Cleanup repositories."""
+        await self.status_repo.cleanup(self.session)
+        await self.user_repo.cleanup(self.session)
+
+    async def test_resolve_nested_returns_exported_dict(self):
+        """resolve_nested() with real ReferenceProvider returns exported dict, not ID.
+
+        This documents the actual behavior: ReferenceProvider.get() returns
+        the full exported dict, not just the ID value.
+        """
+        # Pre-populate user_dist (used by UserFaker.status_id ReferenceProvider)
+        # with Status aggregate
+        active_status = Status(StatusId("active"), "Active")
+        await self.status_repo.insert(self.session, active_status)
+        # user_dist is used by ReferenceProvider, returns Status objects
+        self.user_dist._values = [active_status]
+        self.user_dist._raise_cursor = False
+        self.user_dist._index = 0
+
+        spec = ObjectPatternSpecification(
+            {'status_id': {'name': 'Active'}},
+            UserFaker._export,
+            aggregate_provider_accessor=lambda: self.user_provider
+        )
+
+        await spec.resolve_nested(self.session)
+
+        # ReferenceProvider.get() returns exported dict, not StatusId
+        resolved_status = spec._resolved_pattern['status_id']
+        self.assertIsInstance(resolved_status, dict)
+        self.assertEqual(resolved_status['id'], 'active')
+        self.assertEqual(resolved_status['name'], 'Active')
+
+    async def test_resolve_nested_creates_new_aggregate_on_cursor(self):
+        """When distributor raises Cursor, a new aggregate is created."""
+        # Distributor with raise_cursor=True - will create new Status
+        self.status_dist._raise_cursor = True
+
+        spec = ObjectPatternSpecification(
+            {'status_id': {'name': 'Active'}},
+            UserFaker._export,
+            aggregate_provider_accessor=lambda: self.user_provider
+        )
+
+        await spec.resolve_nested(self.session)
+
+        # New Status was created with generated ID
+        resolved_status = spec._resolved_pattern['status_id']
+        self.assertIsInstance(resolved_status, dict)
+        self.assertEqual(resolved_status['name'], 'Active')
+        # ID is auto-generated (status_0, status_1, etc.)
+        self.assertTrue(resolved_status['id'].startswith('status_'))
+
+    async def test_simple_pattern_with_real_providers(self):
+        """Simple patterns work with real providers."""
+        user = User(UserId(1), StatusId("active"), "Alice")
+        await self.user_repo.insert(self.session, user)
+
+        spec = ObjectPatternSpecification(
+            {'name': 'Alice'},
+            UserFaker._export,
+            aggregate_provider_accessor=lambda: self.user_provider
+        )
+
+        await spec.resolve_nested(self.session)
+
+        self.assertTrue(spec.is_satisfied_by(user))
+
+        user2 = User(UserId(2), StatusId("active"), "Bob")
+        self.assertFalse(spec.is_satisfied_by(user2))
+
+    async def test_hash_equality_with_real_providers(self):
+        """Hash and equality work with real providers after resolve_nested()."""
+        # Pre-populate user_dist (used by ReferenceProvider)
+        active_status = Status(StatusId("active"), "Active")
+        await self.status_repo.insert(self.session, active_status)
+        self.user_dist._values = [active_status, active_status]  # для обоих spec
+        self.user_dist._raise_cursor = False
+
+        spec1 = ObjectPatternSpecification(
+            {'status_id': {'name': 'Active'}},
+            UserFaker._export,
+            aggregate_provider_accessor=lambda: self.user_provider
+        )
+        spec2 = ObjectPatternSpecification(
+            {'status_id': {'name': 'Active'}},
+            UserFaker._export,
+            aggregate_provider_accessor=lambda: self.user_provider
+        )
+
+        self.user_dist._index = 0
+        await spec1.resolve_nested(self.session)
+
+        # Reset provider state for second spec
+        self.user_provider.status_id.reset()
+        self.user_dist._index = 0
+        await spec2.resolve_nested(self.session)
+
+        # Same resolved pattern → equal hash
+        self.assertEqual(spec1._resolved_pattern, spec2._resolved_pattern)
+        self.assertEqual(hash(spec1), hash(spec2))
+        self.assertEqual(spec1, spec2)
+
+    async def test_repository_find_with_specification(self):
+        """InMemoryRepository.find() works with specification."""
+        user1 = User(UserId(1), StatusId("active"), "Alice")
+        user2 = User(UserId(2), StatusId("inactive"), "Bob")
+        user3 = User(UserId(3), StatusId("active"), "Alice")
+        await self.user_repo.insert(self.session, user1)
+        await self.user_repo.insert(self.session, user2)
+        await self.user_repo.insert(self.session, user3)
+
+        spec = ObjectPatternSpecification(
+            {'name': 'Alice'},
+            UserFaker._export,
+            aggregate_provider_accessor=lambda: self.user_provider
+        )
+
+        await spec.resolve_nested(self.session)
+
+        found = [u async for u in self.user_repo.find(self.session, spec)]
+
+        self.assertEqual(len(found), 2)
+        names = [u.name for u in found]
+        self.assertIn('Alice', names)
+        self.assertNotIn('Bob', names)
