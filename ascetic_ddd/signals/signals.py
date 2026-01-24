@@ -3,14 +3,14 @@ from weakref import WeakKeyDictionary, WeakValueDictionary
 __all__ = ('Signal',)
 
 
-class UndefinedSender(object):
+class UndefinedSender:
     pass
 
 
 undefined_sender = UndefinedSender()
 
 
-class Signal(object):
+class Signal:
 
     def __init__(self):
         self._flush()

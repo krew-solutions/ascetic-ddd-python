@@ -1,7 +1,7 @@
 __all__ = ('Escape', 'escape',)
 
 
-class Escape(object):
+class Escape:
 
     _translation_mapping = (
         ("\\", "\\\\"),

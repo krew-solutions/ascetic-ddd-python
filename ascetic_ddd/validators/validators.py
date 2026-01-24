@@ -8,7 +8,7 @@ from .exceptions import ValidationError, ChainValidationError, MappingValidation
 dummy_gettext = lambda v: v
 
 
-class Validator(object):
+class Validator:
     msg = 'Improper value "%s"'
 
     def __init__(self, msg=None):
@@ -105,7 +105,7 @@ class Number(Validator):
             ))
 
 
-class ChainValidator(object):
+class ChainValidator:
     def __init__(self, *validators):
         self.validators = validators
 
@@ -122,7 +122,7 @@ class ChainValidator(object):
             raise ChainValidationError(errors)
 
 
-class MultivalueValidator(object):
+class MultivalueValidator:
     def __init__(self, validator):
         self.validator = validator
 
@@ -137,7 +137,7 @@ class MultivalueValidator(object):
             raise MappingValidationError(errors)
 
 
-class MappingValidator(object):
+class MappingValidator:
     """
     The problem: how to express non_field_errors?
     The solution is simple:
