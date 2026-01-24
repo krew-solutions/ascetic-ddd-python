@@ -1,6 +1,6 @@
 [project]
 name = "ascetic-ddd"
-version = "0.1.4"
+version = "0.1.5"
 description = "Toolkit and seedwork for a python DDD project."
 authors = [
     {name = "Ivan Zakrevsky",email = "emacsway@gmail.com"}
