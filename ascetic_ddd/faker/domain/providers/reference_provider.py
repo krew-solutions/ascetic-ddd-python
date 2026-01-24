@@ -9,6 +9,7 @@ from ascetic_ddd.faker.domain.providers.interfaces import (
 )
 from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
+from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.domain.specification.object_pattern_resolvable_specification import ObjectPatternResolvableSpecification
 from ascetic_ddd.faker.domain.values.empty import empty
 
@@ -42,13 +43,16 @@ class ReferenceProvider(
     typing.Generic[T_Input, T_Output, T_Id_Output]
 ):
     _aggregate_provider_accessor: IAggregateProviderAccessor[T_Input, T_Output]
+    _specification_factory: Callable[..., ISpecification]
 
     def __init__(
             self,
             distributor: IM2ODistributor,
-            aggregate_provider: IEntityProvider[T_Input, T_Output] | Callable[[], IEntityProvider[T_Input, T_Output]]
+            aggregate_provider: IEntityProvider[T_Input, T_Output] | Callable[[], IEntityProvider[T_Input, T_Output]],
+            specification_factory: Callable[..., ISpecification] = ObjectPatternResolvableSpecification,
     ):
         self.aggregate_provider = aggregate_provider
+        self._specification_factory = specification_factory
         super().__init__(distributor=distributor)
 
     def do_empty(self, clone: typing.Self, shunt: ICloningShunt | None = None):
@@ -65,7 +69,7 @@ class ReferenceProvider(
 
         # Создаём specification с aggregate_provider_accessor для lazy resolve_nested и subqueries
         if self._input is not empty and isinstance(self._input, dict):
-            specification = ObjectPatternResolvableSpecification(
+            specification = self._specification_factory(
                 self._input,
                 self.aggregate_provider._output_exporter,
                 aggregate_provider_accessor=lambda: self.aggregate_provider,
@@ -73,7 +77,7 @@ class ReferenceProvider(
         elif self._input is empty:
             specification = EmptySpecification()
         else:
-            specification = ObjectPatternResolvableSpecification(self._input, self.aggregate_provider._output_exporter)
+            specification = self._specification_factory(self._input, self.aggregate_provider._output_exporter)
 
         try:
             result = await self._distributor.next(session, specification)

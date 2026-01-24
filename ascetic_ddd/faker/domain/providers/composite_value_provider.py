@@ -4,8 +4,9 @@ from ascetic_ddd.faker.domain.distributors.m2o import DummyDistributor
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import ICursor, IM2ODistributor
 from ascetic_ddd.faker.domain.providers._mixins import BaseCompositeDistributionProvider
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
-from ascetic_ddd.faker.domain.values.empty import empty
+from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.domain.specification.object_pattern_resolvable_specification import ObjectPatternResolvableSpecification
+from ascetic_ddd.faker.domain.values.empty import empty
 from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 
 __all__ = (
@@ -23,12 +24,14 @@ class CompositeValueProvider(
 ):
     _output_factory: typing.Callable[[...], T_Output] = None  # T_Output of each nested Provider.
     _output_exporter: typing.Callable[[T_Output], T_Input] = None
+    _specification_factory: typing.Callable[..., ISpecification]
 
     def __init__(
             self,
             distributor: IM2ODistributor[T_Input] | None = None,
             output_factory: typing.Callable[[...], T_Output] | None = None,  # T_Output of each nested Provider.
             output_exporter: typing.Callable[[T_Output], T_Input] | None = None,
+            specification_factory: typing.Callable[..., ISpecification] = ObjectPatternResolvableSpecification,
     ):
         if distributor is None:
             distributor = DummyDistributor()
@@ -49,6 +52,7 @@ class CompositeValueProvider(
 
             self._output_exporter = output_exporter
 
+        self._specification_factory = specification_factory
         super().__init__(distributor=distributor)
         self.on_init()
 
@@ -67,7 +71,7 @@ class CompositeValueProvider(
         if self._input is empty:
             specification = EmptySpecification()
         else:
-            specification = ObjectPatternResolvableSpecification(self._input, self._output_exporter)
+            specification = self._specification_factory(self._input, self._output_exporter)
 
         await self.do_populate(session)
         cursors = {}
