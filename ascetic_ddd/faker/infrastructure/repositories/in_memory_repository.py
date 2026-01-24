@@ -39,10 +39,10 @@ class InMemoryRepository(Observable, typing.Generic[T]):
         key = id_.value if hasattr(id_, 'value') else id_
         return self._aggregates.get(hashable(key))
 
-    async def find(self, session: ISession, specification: ISpecification) -> typing.Iterable[T]:
+    async def find(self, session: ISession, specification: ISpecification) -> typing.AsyncIterable[T]:
         """Add index support by extending the class"""
         for id_, agg in self._aggregates.items():
-            if specification.is_satisfied_by(agg):
+            if await specification.is_satisfied_by(session, agg):
                 yield agg
 
     async def setup(self, session: ISession):

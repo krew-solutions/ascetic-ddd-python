@@ -36,7 +36,7 @@ class ISpecificationVisitable(typing.Protocol[T]):
         ...
 
 
-class IBaseSpecification(ISpecificationVisitable[T], typing.Protocol[T]):
+class ISpecification(ISpecificationVisitable[T], typing.Protocol[T]):
 
     def __str__(self) -> str:
         ...
@@ -47,14 +47,9 @@ class IBaseSpecification(ISpecificationVisitable[T], typing.Protocol[T]):
     def __eq__(self, other: object) -> bool:
         ...
 
-
-class ISpecification(IBaseSpecification[T], typing.Protocol[T]):
-
-    def is_satisfied_by(self, obj: T) -> bool:
-        ...
-
-
-class ILookupSpecification(IBaseSpecification[T], typing.Protocol[T]):
-
     async def is_satisfied_by(self, session: ISession, obj: T) -> bool:
         ...
+
+
+class ILookupSpecification(ISpecification[T], typing.Protocol[T]):
+    pass

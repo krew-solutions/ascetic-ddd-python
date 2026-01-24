@@ -78,7 +78,7 @@ class RangeDistributorAdapter(Observable, IM2ODistributor[T], typing.Generic[T])
         value = self._values[num]
 
         # Проверяем спецификацию если указана
-        if specification is not None and not specification.is_satisfied_by(value):
+        if specification is not None and not await specification.is_satisfied_by(session, value):
             # Значение не подходит под спецификацию — пробуем ещё раз
             return await self.next(session, specification)
 

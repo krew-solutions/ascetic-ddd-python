@@ -65,7 +65,7 @@ class ObjectPatternSpecification(ISpecification[T], typing.Generic[T]):
             )
         return self._resolved_pattern == other._resolved_pattern
 
-    def is_satisfied_by(self, obj: T) -> bool:
+    async def is_satisfied_by(self, session: ISession, obj: T) -> bool:
         if self._resolved_pattern is None:
             raise TypeError(
                 "Cannot use unresolved ObjectPatternSpecification. "

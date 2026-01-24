@@ -252,8 +252,8 @@ class ObjectPatternSpecificationBasicTestCase(IsolatedAsyncioTestCase):
         )
         session = MockSession()
         await spec.resolve_nested(session)
-        self.assertTrue(spec.is_satisfied_by({'status': 'active', 'name': 'test'}))
-        self.assertFalse(spec.is_satisfied_by({'status': 'inactive', 'name': 'test'}))
+        self.assertTrue(await spec.is_satisfied_by(session, {'status': 'active', 'name': 'test'}))
+        self.assertFalse(await spec.is_satisfied_by(session, {'status': 'inactive', 'name': 'test'}))
 
     async def test_is_satisfied_by_nested_pattern(self):
         """Nested pattern matching should work."""
@@ -263,14 +263,15 @@ class ObjectPatternSpecificationBasicTestCase(IsolatedAsyncioTestCase):
         )
         session = MockSession()
         await spec.resolve_nested(session)
-        self.assertTrue(spec.is_satisfied_by({'address': {'city': 'Moscow', 'street': 'Main'}}))
-        self.assertFalse(spec.is_satisfied_by({'address': {'city': 'London'}}))
+        self.assertTrue(await spec.is_satisfied_by(session, {'address': {'city': 'Moscow', 'street': 'Main'}}))
+        self.assertFalse(await spec.is_satisfied_by(session, {'address': {'city': 'London'}}))
 
-    def test_is_satisfied_by_unresolved_raises_exception(self):
+    async def test_is_satisfied_by_unresolved_raises_exception(self):
         """is_satisfied_by() on unresolved specification should raise TypeError."""
         spec = ObjectPatternSpecification({'status': 'active'}, lambda obj: obj)
+        session = MockSession()
         with self.assertRaises(TypeError) as ctx:
-            spec.is_satisfied_by({'status': 'active'})
+            await spec.is_satisfied_by(session, {'status': 'active'})
         self.assertIn("unresolved", str(ctx.exception))
 
     async def test_hash_equality(self):
@@ -354,8 +355,8 @@ class ObjectPatternSpecificationBasicTestCase(IsolatedAsyncioTestCase):
         spec._resolved_pattern = {'status': 'resolved'}
 
         # Should match against _resolved_pattern, not _object_pattern
-        self.assertTrue(spec.is_satisfied_by({'status': 'resolved', 'extra': 'field'}))
-        self.assertFalse(spec.is_satisfied_by({'status': 'original'}))
+        self.assertTrue(await spec.is_satisfied_by(session, {'status': 'resolved', 'extra': 'field'}))
+        self.assertFalse(await spec.is_satisfied_by(session, {'status': 'original'}))
 
 
 class ObjectPatternSpecificationResolveNestedTestCase(IsolatedAsyncioTestCase):
@@ -736,10 +737,10 @@ class ObjectPatternSpecificationSociableTestCase(IsolatedAsyncioTestCase):
 
         await spec.resolve_nested(self.session)
 
-        self.assertTrue(spec.is_satisfied_by(user))
+        self.assertTrue(await spec.is_satisfied_by(self.session, user))
 
         user2 = User(UserId(2), StatusId("active"), "Bob")
-        self.assertFalse(spec.is_satisfied_by(user2))
+        self.assertFalse(await spec.is_satisfied_by(self.session, user2))
 
     async def test_hash_equality_with_real_providers(self):
         """Hash and equality work with real providers after resolve_nested()."""

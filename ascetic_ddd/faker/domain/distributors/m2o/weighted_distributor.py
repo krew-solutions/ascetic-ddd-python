@@ -88,13 +88,13 @@ class BaseIndex(typing.Generic[T]):
         self._values.insert(idx, value)
         self._value_set.add(value)
 
-    def populate_from(self, source: 'BaseIndex') -> None:
+    async def populate_from(self, session: ISession, source: 'BaseIndex') -> None:
         values_length = len(source)
         if self._read_offset < values_length:
             current_offset = self._read_offset
             self._read_offset = values_length
             for value in source.values(current_offset):
-                if self._specification.is_satisfied_by(value):
+                if await self._specification.is_satisfied_by(session, value):
                     self.append(value, values_length)
 
     @abstractmethod
@@ -183,7 +183,7 @@ class BaseDistributor(IM2ODistributor[T], typing.Generic[T]):
                 self._indexes[specification] = self._create_index(specification)
             target_index = self._indexes[specification]
             source_index = self._indexes[self._default_spec]
-            target_index.populate_from(source_index)
+            await target_index.populate_from(session, source_index)
 
         target_index = self._indexes[specification]
 
@@ -200,14 +200,14 @@ class BaseDistributor(IM2ODistributor[T], typing.Generic[T]):
                 )
 
         # Проверяем, не "протух" ли объект, если он был изменён?
-        if not specification.is_satisfied_by(value):
-            self._relocate_stale_value(value, specification)
+        if not await specification.is_satisfied_by(session, value):
+            await self._relocate_stale_value(session, value, specification)
             # Retry
             return await self.next(session, specification)
 
         return value
 
-    def _relocate_stale_value(self, value: T, current_spec: ISpecification[T]) -> None:
+    async def _relocate_stale_value(self, session: ISession, value: T, current_spec: ISpecification[T]) -> None:
         """
         Перемещает протухший объект из текущего индекса в подходящие.
         """
@@ -227,7 +227,7 @@ class BaseDistributor(IM2ODistributor[T], typing.Generic[T]):
         for spec, index in self._indexes.items():
             if spec == self._default_spec or spec == current_spec:
                 continue
-            if spec.is_satisfied_by(value):
+            if await spec.is_satisfied_by(session, value):
                 index.insert_at_relative_position(value, relative_position)
 
     async def _append(self, session: ISession, value: T, position: int | None):

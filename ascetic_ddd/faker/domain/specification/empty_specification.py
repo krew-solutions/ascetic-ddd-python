@@ -1,5 +1,6 @@
 import typing
 
+from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecificationVisitor, ISpecification
 
 __all__ = ("EmptySpecification",)
@@ -20,7 +21,7 @@ class EmptySpecification(ISpecification):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, EmptySpecification)
 
-    def is_satisfied_by(self, obj: typing.Any) -> bool:
+    async def is_satisfied_by(self, session: ISession, obj: typing.Any) -> bool:
         return True
 
     def accept(self, visitor: ISpecificationVisitor):

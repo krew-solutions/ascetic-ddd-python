@@ -1,6 +1,7 @@
 import typing
 from typing import Hashable
 
+from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 from ascetic_ddd.seedwork.domain.utils.data import hashable
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification, ISpecificationVisitor
 
@@ -37,7 +38,7 @@ class ScopeSpecification(ISpecification[T], typing.Generic[T]):
             return False
         return self._scope == other._scope
 
-    def is_satisfied_by(self, obj: T) -> bool:
+    async def is_satisfied_by(self, session: ISession, obj: T) -> bool:
         return True
 
     def accept(self, visitor: ISpecificationVisitor):
