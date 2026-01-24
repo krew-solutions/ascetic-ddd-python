@@ -8,7 +8,7 @@ from ascetic_ddd.faker.domain.providers.aggregate_provider import AggregateProvi
 from ascetic_ddd.faker.domain.providers.composite_value_provider import CompositeValueProvider
 from ascetic_ddd.faker.domain.providers.reference_provider import ReferenceProvider
 from ascetic_ddd.faker.domain.providers.value_provider import ValueProvider
-from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.domain.values.empty import empty
 

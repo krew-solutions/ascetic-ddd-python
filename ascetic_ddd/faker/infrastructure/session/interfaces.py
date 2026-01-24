@@ -1,7 +1,7 @@
 import typing
 from aiohttp import ClientSession
 
-from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 from ascetic_ddd.seedwork.infrastructure.session.interfaces import IAsyncConnection
 
 

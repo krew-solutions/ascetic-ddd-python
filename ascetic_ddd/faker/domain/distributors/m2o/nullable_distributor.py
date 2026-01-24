@@ -3,7 +3,7 @@ import typing
 from typing import Hashable, Callable
 
 from ascetic_ddd.disposable import IDisposable
-from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import IM2ODistributor
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification

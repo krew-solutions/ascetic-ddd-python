@@ -2,7 +2,7 @@ import typing
 from typing import Callable
 
 from hypothesis import strategies
-from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 
 __all__ = (
     'IInputGenerator',

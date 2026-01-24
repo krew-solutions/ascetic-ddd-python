@@ -2,7 +2,7 @@ import typing
 # from pydash import predicates
 
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecificationVisitor, ISpecification
-from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 from ascetic_ddd.seedwork.domain.utils.data import is_subset, hashable
 
 __all__ = ('ObjectPatternSpecification',)

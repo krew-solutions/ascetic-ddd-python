@@ -23,3 +23,9 @@ class ISessionPool(IObservable, typing.Protocol, metaclass=ABCMeta):
     @abstractmethod
     def session(self) -> typing.AsyncContextManager[ISession]:
         raise NotImplementedError
+
+
+class IAuthenticator(typing.Protocol):
+
+    async def authenticate(self, session: ISession):
+        ...

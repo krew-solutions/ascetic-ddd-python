@@ -4,7 +4,7 @@ from abc import ABCMeta
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import ICursor
 from ascetic_ddd.faker.domain.providers._mixins import BaseCompositeProvider
 from ascetic_ddd.faker.domain.providers.interfaces import IEntityProvider
-from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.values.empty import empty
 
 T_Input = typing.TypeVar("T_Input")

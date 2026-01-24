@@ -2,7 +2,7 @@ import typing
 from collections.abc import Callable, Hashable
 
 from ascetic_ddd.faker.domain.providers.aggregate_provider import IAggregateRepository
-from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.infrastructure.distributors.m2o.interfaces import IPgExternalSource
 from ascetic_ddd.seedwork.domain.identity.interfaces import IAccessible

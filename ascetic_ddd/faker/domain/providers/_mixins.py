@@ -10,7 +10,7 @@ from ascetic_ddd.faker.domain.providers.interfaces import (
     IValueProvider, INameable, ICloningShunt, ICloneable,
     ICompositeValueProvider, IDependentProvider
 )
-from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.values.empty import empty, Empty
 from ascetic_ddd.observable.interfaces import IObservable
 from ascetic_ddd.observable.observable import Observable

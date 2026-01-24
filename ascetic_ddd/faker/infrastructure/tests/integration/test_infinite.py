@@ -23,7 +23,7 @@ from ascetic_ddd.faker.domain.providers.composite_value_provider import Composit
 from ascetic_ddd.faker.domain.providers.interfaces import IValueProvider, IReferenceProvider, IEntityProvider
 from ascetic_ddd.faker.domain.providers.reference_provider import ReferenceProvider
 from ascetic_ddd.faker.domain.providers.value_provider import ValueProvider
-from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.values.empty import empty
 from ascetic_ddd.faker.infrastructure.distributors.m2o import pg_distributor_factory
 from ascetic_ddd.faker.infrastructure.session.rest_session import RestSessionPool

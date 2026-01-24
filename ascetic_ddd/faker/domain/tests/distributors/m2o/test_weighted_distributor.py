@@ -13,7 +13,7 @@ from ascetic_ddd.faker.domain.distributors.m2o.factory import distributor_factor
 from ascetic_ddd.faker.domain.distributors.m2o.cursor import Cursor
 from ascetic_ddd.faker.domain.specification.object_pattern_specification import ObjectPatternSpecification
 from ascetic_ddd.faker.domain.values.empty import Empty, empty
-from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 
 # logging.basicConfig(level="DEBUG")
 

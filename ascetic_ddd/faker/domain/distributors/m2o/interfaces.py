@@ -2,7 +2,7 @@ import typing
 from abc import ABCMeta, abstractmethod
 
 from ascetic_ddd.observable.interfaces import IObservable
-from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 
 __all__ = (

@@ -7,7 +7,7 @@ import typing
 from ascetic_ddd.faker.domain.values.json import Json
 from ascetic_ddd.faker.infrastructure.session.rest_session import extract_request
 from ascetic_ddd.seedwork.domain.identity.interfaces import IAccessible
-from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
 from ascetic_ddd.faker.domain.values.empty import empty
 from ascetic_ddd.faker.infrastructure.utils.json import JSONEncoder

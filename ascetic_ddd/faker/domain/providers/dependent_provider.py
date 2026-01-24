@@ -10,7 +10,7 @@ from ascetic_ddd.faker.domain.providers._mixins import (
 from ascetic_ddd.faker.domain.providers.interfaces import (
     IDependentProvider, IEntityProvider, ICloningShunt, ISetupable
 )
-from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.values.empty import empty, Empty
 
 __all__ = ('DependentProvider',)

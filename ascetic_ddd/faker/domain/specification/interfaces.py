@@ -1,6 +1,6 @@
 import typing
 
-from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 
 
 __all__ = (

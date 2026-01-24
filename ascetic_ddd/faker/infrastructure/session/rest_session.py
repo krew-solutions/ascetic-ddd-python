@@ -8,7 +8,7 @@ from time import perf_counter
 from aiohttp.client import ClientSession
 
 from ascetic_ddd.observable.observable import Observable
-from ascetic_ddd.faker.domain.session.interfaces import ISessionPool, ISession
+from ascetic_ddd.seedwork.domain.session.interfaces import ISessionPool, ISession
 from ascetic_ddd.faker.infrastructure.session.interfaces import IRestSession
 
 __all__ = (

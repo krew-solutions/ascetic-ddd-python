@@ -6,7 +6,7 @@ from ascetic_ddd.faker.domain.specification.scope_specification import ScopeSpec
 from ascetic_ddd.faker.infrastructure.tests.db import make_internal_pg_session_pool
 from ascetic_ddd.faker.domain.distributors.m2o.factory import distributor_factory
 from ascetic_ddd.faker.domain.distributors.m2o.cursor import Cursor
-from ascetic_ddd.faker.domain.session.interfaces import ISession
+from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 
 # logging.basicConfig(level="DEBUG")
 
