@@ -6,9 +6,8 @@ from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 __all__ = (
     'ISpecificationVisitor',
     'ISpecificationVisitable',
-    'IBaseSpecification',
     'ISpecification',
-    'ILookupSpecification',
+    'IEagerSpecification',
 )
 
 T = typing.TypeVar("T", covariant=True)
@@ -51,5 +50,5 @@ class ISpecification(ISpecificationVisitable[T], typing.Protocol[T]):
         ...
 
 
-class ILookupSpecification(ISpecification[T], typing.Protocol[T]):
+class IEagerSpecification(ISpecification[T], typing.Protocol[T]):
     pass
