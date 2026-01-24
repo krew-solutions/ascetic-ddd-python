@@ -9,7 +9,7 @@ from ascetic_ddd.faker.domain.providers.interfaces import (
 )
 from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
-from ascetic_ddd.faker.domain.specification.object_pattern_specification import ObjectPatternSpecification
+from ascetic_ddd.faker.domain.specification.object_pattern_resolvable_specification import ObjectPatternResolvableSpecification
 from ascetic_ddd.faker.domain.values.empty import empty
 
 __all__ = ('ReferenceProvider',)
@@ -65,7 +65,7 @@ class ReferenceProvider(
 
         # Создаём specification с aggregate_provider_accessor для lazy resolve_nested и subqueries
         if self._input is not empty and isinstance(self._input, dict):
-            specification = ObjectPatternSpecification(
+            specification = ObjectPatternResolvableSpecification(
                 self._input,
                 self.aggregate_provider._output_exporter,
                 aggregate_provider_accessor=lambda: self.aggregate_provider,
@@ -73,7 +73,7 @@ class ReferenceProvider(
         elif self._input is empty:
             specification = EmptySpecification()
         else:
-            specification = ObjectPatternSpecification(self._input, self.aggregate_provider._output_exporter)
+            specification = ObjectPatternResolvableSpecification(self._input, self.aggregate_provider._output_exporter)
 
         try:
             result = await self._distributor.next(session, specification)

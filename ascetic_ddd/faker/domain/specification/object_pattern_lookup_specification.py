@@ -3,7 +3,7 @@
 """
 import typing
 
-from ascetic_ddd.faker.domain.specification.interfaces import ISpecificationVisitor, ILookupSpecification
+from ascetic_ddd.faker.domain.specification.interfaces import ISpecificationVisitor, ISpecification
 from ascetic_ddd.seedwork.domain.session import ISession
 from ascetic_ddd.seedwork.domain.utils.data import is_subset, hashable
 
@@ -13,11 +13,11 @@ __all__ = ('ObjectPatternLookupSpecification',)
 T = typing.TypeVar("T", covariant=True)
 
 
-class ObjectPatternLookupSpecification(ILookupSpecification[T], typing.Generic[T]):
+class ObjectPatternLookupSpecification(ISpecification[T], typing.Generic[T]):
     """
     Specification с nested lookup в is_satisfied_by().
 
-    В отличие от ObjectPatternSpecification, не резолвит вложенные constraints
+    В отличие от ObjectPatternResolvableSpecification, не резолвит вложенные constraints
     заранее, а делает lookup при каждой проверке (с кешированием).
 
     Преимущества:

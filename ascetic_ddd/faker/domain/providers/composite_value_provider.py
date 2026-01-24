@@ -5,7 +5,7 @@ from ascetic_ddd.faker.domain.distributors.m2o.interfaces import ICursor, IM2ODi
 from ascetic_ddd.faker.domain.providers._mixins import BaseCompositeDistributionProvider
 from ascetic_ddd.faker.domain.specification.empty_specification import EmptySpecification
 from ascetic_ddd.faker.domain.values.empty import empty
-from ascetic_ddd.faker.domain.specification.object_pattern_specification import ObjectPatternSpecification
+from ascetic_ddd.faker.domain.specification.object_pattern_resolvable_specification import ObjectPatternResolvableSpecification
 from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 
 __all__ = (
@@ -67,7 +67,7 @@ class CompositeValueProvider(
         if self._input is empty:
             specification = EmptySpecification()
         else:
-            specification = ObjectPatternSpecification(self._input, self._output_exporter)
+            specification = ObjectPatternResolvableSpecification(self._input, self._output_exporter)
 
         await self.do_populate(session)
         cursors = {}

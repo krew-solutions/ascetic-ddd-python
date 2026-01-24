@@ -11,7 +11,7 @@ from unittest import IsolatedAsyncioTestCase
 from ascetic_ddd.faker.infrastructure.tests.db import make_internal_pg_session_pool
 from ascetic_ddd.faker.domain.distributors.m2o.factory import distributor_factory
 from ascetic_ddd.faker.domain.distributors.m2o.cursor import Cursor
-from ascetic_ddd.faker.domain.specification.object_pattern_specification import ObjectPatternSpecification
+from ascetic_ddd.faker.domain.specification.object_pattern_resolvable_specification import ObjectPatternResolvableSpecification
 from ascetic_ddd.faker.domain.values.empty import Empty, empty
 from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 
@@ -187,7 +187,7 @@ class SpecificKeyDistributorTestCase(_BaseDistributorTestCase):
             for i in range(self.count):
                 if i % 200 == 0:
                     factory.another_model_id = uuid.uuid4()
-                spec = ObjectPatternSpecification(
+                spec = ObjectPatternResolvableSpecification(
                     dict(another_model_id=factory.another_model_id),
                     lambda obj: dataclasses.asdict(obj)
                 )

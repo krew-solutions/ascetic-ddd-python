@@ -5,13 +5,13 @@ from ascetic_ddd.faker.domain.specification.interfaces import ISpecificationVisi
 from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 from ascetic_ddd.seedwork.domain.utils.data import is_subset, hashable
 
-__all__ = ('ObjectPatternSpecification',)
+__all__ = ('ObjectPatternResolvableSpecification',)
 
 
 T = typing.TypeVar("T", covariant=True)
 
 
-class ObjectPatternSpecification(IResolvableSpecification[T], typing.Generic[T]):
+class ObjectPatternResolvableSpecification(IResolvableSpecification[T], typing.Generic[T]):
     _object_pattern: dict
     _hash: int | None
     _str: str | None
@@ -37,7 +37,7 @@ class ObjectPatternSpecification(IResolvableSpecification[T], typing.Generic[T])
     def __str__(self) -> str:
         if self._resolved_pattern is None:
             raise TypeError(
-                "Cannot cast to string unresolved ObjectPatternSpecification. "
+                "Cannot cast to string unresolved ObjectPatternResolvableSpecification. "
                 "Call resolve_nested() first."
             )
         if self._str is None:
@@ -47,7 +47,7 @@ class ObjectPatternSpecification(IResolvableSpecification[T], typing.Generic[T])
     def __hash__(self) -> int:
         if self._resolved_pattern is None:
             raise TypeError(
-                "Cannot hash unresolved ObjectPatternSpecification. "
+                "Cannot hash unresolved ObjectPatternResolvableSpecification. "
                 "Call resolve_nested() first."
             )
         if self._hash is None:
@@ -55,12 +55,12 @@ class ObjectPatternSpecification(IResolvableSpecification[T], typing.Generic[T])
         return self._hash
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, ObjectPatternSpecification):
+        if not isinstance(other, ObjectPatternResolvableSpecification):
             return False
         # Оба должны быть resolved для сравнения
         if self._resolved_pattern is None or other._resolved_pattern is None:
             raise TypeError(
-                "Cannot compare unresolved ObjectPatternSpecification. "
+                "Cannot compare unresolved ObjectPatternResolvableSpecification. "
                 "Call resolve_nested() first."
             )
         return self._resolved_pattern == other._resolved_pattern
@@ -68,7 +68,7 @@ class ObjectPatternSpecification(IResolvableSpecification[T], typing.Generic[T])
     async def is_satisfied_by(self, session: ISession, obj: T) -> bool:
         if self._resolved_pattern is None:
             raise TypeError(
-                "Cannot use unresolved ObjectPatternSpecification. "
+                "Cannot use unresolved ObjectPatternResolvableSpecification. "
                 "Call resolve_nested() first."
             )
         state = self._object_exporter(obj)
