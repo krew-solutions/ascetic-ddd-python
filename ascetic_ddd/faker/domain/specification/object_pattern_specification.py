@@ -1,7 +1,7 @@
 import typing
 # from pydash import predicates
 
-from ascetic_ddd.faker.domain.specification.interfaces import ISpecificationVisitor, IEagerSpecification
+from ascetic_ddd.faker.domain.specification.interfaces import ISpecificationVisitor, IResolvableSpecification
 from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 from ascetic_ddd.seedwork.domain.utils.data import is_subset, hashable
 
@@ -11,7 +11,7 @@ __all__ = ('ObjectPatternSpecification',)
 T = typing.TypeVar("T", covariant=True)
 
 
-class ObjectPatternSpecification(IEagerSpecification[T], typing.Generic[T]):
+class ObjectPatternSpecification(IResolvableSpecification[T], typing.Generic[T]):
     _object_pattern: dict
     _hash: int | None
     _str: str | None

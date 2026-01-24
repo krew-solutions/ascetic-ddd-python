@@ -7,7 +7,7 @@ __all__ = (
     'ISpecificationVisitor',
     'ISpecificationVisitable',
     'ISpecification',
-    'IEagerSpecification',
+    'IResolvableSpecification',
 )
 
 T = typing.TypeVar("T", covariant=True)
@@ -50,5 +50,6 @@ class ISpecification(ISpecificationVisitable[T], typing.Protocol[T]):
         ...
 
 
-class IEagerSpecification(ISpecification[T], typing.Protocol[T]):
-    pass
+class IResolvableSpecification(ISpecification[T], typing.Protocol[T]):
+    async def resolve_nested(self, session: ISession) -> None:
+        ...
