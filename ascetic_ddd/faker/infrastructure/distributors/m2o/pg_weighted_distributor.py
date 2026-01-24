@@ -87,7 +87,7 @@ class BasePgDistributor(IM2ODistributor[T], typing.Generic[T]):
         value, should_create_new = await self._get_next_value(session, specification)
         if should_create_new:
             try:
-                value = await self._delegate.next(session, specification)
+                value = await self._delegate.next(session)
             except Cursor as cursor:
                 raise Cursor(
                     position=None,

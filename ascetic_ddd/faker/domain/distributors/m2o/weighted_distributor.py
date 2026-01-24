@@ -191,7 +191,7 @@ class BaseDistributor(IM2ODistributor[T], typing.Generic[T]):
             value = target_index.next(self._mean)
         except StopIteration:
             try:
-                value = await self._delegate.next(session, specification)
+                value = await self._delegate.next(session)
             except Cursor as cursor:
                 raise Cursor(
                     position=None,
