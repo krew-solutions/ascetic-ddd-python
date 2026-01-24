@@ -3,7 +3,8 @@
 """
 import typing
 
-from ascetic_ddd.faker.domain.specification.interfaces import ISpecificationVisitor, ISpecification
+from ascetic_ddd.faker.domain.specification.interfaces import ISpecificationVisitor, ILookupSpecification
+from ascetic_ddd.seedwork.domain.session import ISession
 from ascetic_ddd.seedwork.domain.utils.data import is_subset, hashable
 
 __all__ = ('ObjectPatternLookupSpecification',)
@@ -12,7 +13,7 @@ __all__ = ('ObjectPatternLookupSpecification',)
 T = typing.TypeVar("T", covariant=True)
 
 
-class ObjectPatternLookupSpecification(ISpecification[T], typing.Generic[T]):
+class ObjectPatternLookupSpecification(ILookupSpecification[T], typing.Generic[T]):
     """
     Specification с nested lookup в is_satisfied_by().
 
@@ -81,7 +82,7 @@ class ObjectPatternLookupSpecification(ISpecification[T], typing.Generic[T]):
             return False
         return self._object_pattern == other._object_pattern
 
-    async def is_satisfied_by(self, session: typing.Any, obj: T) -> bool:
+    async def is_satisfied_by(self, session: ISession, obj: T) -> bool:
         if self._aggregate_provider_accessor is None:
             # Без провайдеров - только простое сравнение
             state = self._object_exporter(obj)

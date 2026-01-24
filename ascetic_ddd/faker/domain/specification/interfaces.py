@@ -1,6 +1,15 @@
 import typing
 
-__all__ = ('ISpecificationVisitor', 'ISpecificationVisitable', 'ISpecification',)
+from ascetic_ddd.faker.domain.session.interfaces import ISession
+
+
+__all__ = (
+    'ISpecificationVisitor',
+    'ISpecificationVisitable',
+    'IBaseSpecification',
+    'ISpecification',
+    'ILookupSpecification',
+)
 
 T = typing.TypeVar("T", covariant=True)
 
@@ -27,7 +36,7 @@ class ISpecificationVisitable(typing.Protocol[T]):
         ...
 
 
-class ISpecification(ISpecificationVisitable[T], typing.Protocol[T]):
+class IBaseSpecification(ISpecificationVisitable[T], typing.Protocol[T]):
 
     def __str__(self) -> str:
         ...
@@ -38,5 +47,14 @@ class ISpecification(ISpecificationVisitable[T], typing.Protocol[T]):
     def __eq__(self, other: object) -> bool:
         ...
 
+
+class ISpecification(IBaseSpecification[T], typing.Protocol[T]):
+
     def is_satisfied_by(self, obj: T) -> bool:
+        ...
+
+
+class ILookupSpecification(IBaseSpecification[T], typing.Protocol[T]):
+
+    async def is_satisfied_by(self, session: ISession, obj: T) -> bool:
         ...
