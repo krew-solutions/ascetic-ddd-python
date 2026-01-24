@@ -72,7 +72,7 @@ class Length(Validator):
         super().__init__(msg)
 
     async def __call__(self, value, gettext=dummy_gettext):
-        length = len(str(value))
+        length = len(value)
         if not (length >= self.min_length and
                 (self.max_length is None or length <= self.max_length)):
             raise ValidationError(gettext(self.msg), (
@@ -123,6 +123,9 @@ class ChainValidator:
 
 
 class MultivalueValidator:
+    """
+    Combine with LengthValidator if necessary.
+    """
     def __init__(self, validator):
         self.validator = validator
 
@@ -166,4 +169,4 @@ class MappingValidator:
             raise MappingValidationError(errors)
 
     def __getitem__(self, item: str):
-        return  self.validators[item]
+        return self.validators[item]
