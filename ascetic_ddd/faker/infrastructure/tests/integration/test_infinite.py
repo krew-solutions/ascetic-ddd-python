@@ -425,7 +425,7 @@ class ThirdModelFaker(AggregateProvider[dict, ThirdModel]):
         self.second_model_id.set({
             'id': {'first_model_id': id_.first_model_id},
         })
-        for attr, provider in self._providers.items():
+        for attr, provider in self.providers.items():
             if attr == 'id':
                 continue
             await provider.populate(session)

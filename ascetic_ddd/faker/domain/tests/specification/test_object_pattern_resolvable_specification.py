@@ -484,7 +484,7 @@ class ObjectPatternResolvableSpecificationResolveNestedTestCase(IsolatedAsyncioT
                 self.status_id = MockReferenceProvider()
 
             @property
-            def _providers(self):
+            def providers(self):
                 return {'status_id': self.status_id}
 
         mock_agg_provider = MockAggregateProvider()

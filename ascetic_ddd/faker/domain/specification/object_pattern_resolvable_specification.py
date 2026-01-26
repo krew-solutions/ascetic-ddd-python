@@ -108,7 +108,7 @@ class ObjectPatternResolvableSpecification(IResolvableSpecification[T], typing.G
         from ascetic_ddd.faker.domain.providers.interfaces import IReferenceProvider
 
         aggregate_provider = self._aggregate_provider_accessor()
-        providers = aggregate_provider._providers
+        providers = aggregate_provider.providers
         resolved = {}
 
         for key, value in self._object_pattern.items():

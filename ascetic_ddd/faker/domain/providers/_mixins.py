@@ -206,16 +206,16 @@ class BaseCompositeProvider(
     def is_complete(self) -> bool:
         return (
             self._output is not empty or
-            all(provider.is_complete() for provider in self._providers.values())
+            all(provider.is_complete() for provider in self.providers.values())
         )
 
     def is_transient(self) -> bool:
-        return any(provider.is_transient() for provider in self._providers.values())
+        return any(provider.is_transient() for provider in self.providers.values())
 
     def do_empty(self, clone: typing.Self, shunt: ICloningShunt):
         clone._input = empty
         clone._output = empty
-        for attr, provider in self._providers.items():
+        for attr, provider in self.providers.items():
             setattr(clone, attr, provider.empty(shunt))
         clone.on_init()
 
@@ -223,7 +223,7 @@ class BaseCompositeProvider(
         self._input = empty
         self._output = empty
         self.notify('input', self._input)
-        for provider in self._providers.values():
+        for provider in self.providers.values():
             provider.reset()
 
     def set(self, value: T_Input) -> None:
@@ -243,7 +243,7 @@ class BaseCompositeProvider(
 
     def get(self) -> T_Input:
         value = dict()
-        for attr, provider in self._providers.items():
+        for attr, provider in self.providers.items():
             val = provider.get()
             if val is not empty:
                 value[attr] = val
@@ -253,15 +253,15 @@ class BaseCompositeProvider(
         pass
 
     async def setup(self, session: ISession):
-        for provider in self._providers.values():
+        for provider in self.providers.values():
             await provider.setup(session)
-        for provider in self._dependent_providers.values():
+        for provider in self.dependent_providers.values():
             await provider.setup(session)
 
     async def cleanup(self, session: ISession):
-        for provider in self._providers.values():
+        for provider in self.providers.values():
             await provider.cleanup(session)
-        for provider in self._dependent_providers.values():
+        for provider in self.dependent_providers.values():
             await provider.cleanup(session)
 
     @classmethod
@@ -296,11 +296,11 @@ class BaseCompositeProvider(
         return attrs
 
     @property
-    def _providers(self) -> dict[str, IValueProvider[typing.Any, typing.Any]]:
+    def providers(self) -> dict[str, IValueProvider[typing.Any, typing.Any]]:
         return {i: getattr(self, i) for i in self._provider_attrs}
 
     @property
-    def _dependent_providers(self) -> dict[str, IDependentProvider[typing.Any, typing.Any, typing.Any]]:
+    def dependent_providers(self) -> dict[str, IDependentProvider[typing.Any, typing.Any, typing.Any]]:
         return {i: getattr(self, i) for i in self._dependent_provider_attrs}
 
     @property
@@ -310,9 +310,9 @@ class BaseCompositeProvider(
     @provider_name.setter
     def provider_name(self, value):
         self._provider_name = value
-        for attr, provider in self._providers.items():
+        for attr, provider in self.providers.items():
             provider.provider_name = "%s.%s" % (value, attr)
-        for attr, provider in self._dependent_providers.items():
+        for attr, provider in self.dependent_providers.items():
             provider.provider_name = "%s.%s" % (value, attr)
 
 
@@ -351,5 +351,5 @@ class BaseCompositeDistributionProvider(
     def provider_name(self, value):
         self._provider_name = value
         self._distributor.provider_name = value
-        for attr, provider in self._providers.items():
+        for attr, provider in self.providers.items():
             provider.provider_name = "%s.%s" % (value, attr)

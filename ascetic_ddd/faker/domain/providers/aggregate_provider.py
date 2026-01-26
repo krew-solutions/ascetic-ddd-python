@@ -112,9 +112,9 @@ class AggregateProvider(
         self._output = result
 
         # Create dependent entities AFTER this aggregate is created (they need its ID for FK)
-        if self._dependent_providers:
+        if self.dependent_providers:
             dependency_id = self.id_provider.get()
-            for attr, dep_provider in self._dependent_providers.items():
+            for attr, dep_provider in self.dependent_providers.items():
                 dep_provider.set_dependency_id(dependency_id)
                 await dep_provider.populate(session)
                 await dep_provider.create(session)
@@ -127,7 +127,7 @@ class AggregateProvider(
         if self.is_complete():
             return
         await self.do_populate(session)
-        for attr, provider in self._providers.items():
+        for attr, provider in self.providers.items():
             await provider.populate(session)
 
     async def do_populate(self, session: ISession) -> None:
@@ -135,7 +135,7 @@ class AggregateProvider(
 
     async def _default_factory(self, session: ISession, position: typing.Optional[int] = None):
         data = dict()
-        for attr, provider in self._providers.items():
+        for attr, provider in self.providers.items():
             data[attr] = await provider.create(session)
         return self._output_factory(**data)
 

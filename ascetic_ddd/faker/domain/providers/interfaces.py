@@ -149,7 +149,15 @@ class IRelativeValueProvider(IValueProvider[T_Input, T_Output], typing.Generic[T
 class ICompositeValueProvider(
     IValueProvider[T_Input, T_Output], typing.Generic[T_Input, T_Output], metaclass=ABCMeta
 ):
-    pass
+    @property
+    @abstractmethod
+    def providers(self) -> dict[str, IValueProvider[typing.Any, typing.Any]]:
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def dependent_providers(self) -> dict[str, 'IDependentProvider[typing.Any, typing.Any, typing.Any]']:
+        raise NotImplementedError
 
 
 class IEntityProvider(

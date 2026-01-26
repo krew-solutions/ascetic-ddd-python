@@ -174,7 +174,7 @@ class ObjectPatternLookupSpecification(ISpecification[T], typing.Generic[T]):
         """
         from ascetic_ddd.faker.domain.providers.interfaces import IReferenceProvider
 
-        providers = aggregate_provider._providers
+        providers = aggregate_provider.providers
         nested_provider = providers.get(field_key)
 
         if not isinstance(nested_provider, IReferenceProvider):

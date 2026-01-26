@@ -75,7 +75,7 @@ class PgSpecificationVisitor(ISpecificationVisitor):
             from ascetic_ddd.faker.domain.providers.interfaces import IReferenceProvider
 
             aggregate_provider = aggregate_provider_accessor()
-            providers = aggregate_provider._providers
+            providers = aggregate_provider.providers
 
             for key, nested_pattern in nested_constraints.items():
                 nested_provider = providers.get(key)

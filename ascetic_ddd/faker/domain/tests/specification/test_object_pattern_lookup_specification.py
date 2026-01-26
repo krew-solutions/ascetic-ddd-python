@@ -234,6 +234,10 @@ class MockAggregateProvider:
         self._output_exporter = output_exporter or (lambda x: x)
         self._repository = repository
 
+    @property
+    def providers(self):
+        return self._providers
+
 
 # =============================================================================
 # Real Providers for Sociable Tests

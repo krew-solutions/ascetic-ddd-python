@@ -62,7 +62,7 @@ class EntityProvider(
 
     async def _default_factory(self, session: ISession, position: typing.Optional[int] = None):
         data = dict()
-        for attr, provider in self._providers.items():
+        for attr, provider in self.providers.items():
             data[attr] = await provider.create(session)
         return self._output_factory(**data)
 
@@ -74,7 +74,7 @@ class EntityProvider(
         if self.is_complete():
             return
         await self.do_populate(session)
-        for attr, provider in self._providers.items():
+        for attr, provider in self.providers.items():
             try:
                 await provider.populate(session)
             except ICursor:
