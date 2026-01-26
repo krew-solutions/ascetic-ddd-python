@@ -20,6 +20,9 @@ class EntityProvider(
     typing.Generic[T_Input, T_Output],
     metaclass=ABCMeta
 ):
+    """
+    Mutable output - composite Entity. Saved as part of aggregate.
+    """
     _id_attr: str
     _output_factory: typing.Callable[[...], T_Output] = None
     _output_exporter: typing.Callable[[T_Output], T_Input] = None

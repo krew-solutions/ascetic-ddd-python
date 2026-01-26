@@ -21,6 +21,31 @@ class ValueProvider(
     IValueProvider[T_Input, T_Output],
     typing.Generic[T_Input, T_Output]
 ):
+    """
+    Immutable output - simple ValueObject.
+    Architecture:
+    IValueProvider = f(input | None) = result,
+    where
+    result : T <- Distributor[T] <- (
+        <- result : result ∈ Sᴛ ∧ P(specification) ~ 𝒟(S)  # select from a set with given probability distribution and Specification
+        or
+        <- result <- output_factory(input)
+            <- input <- (
+                set(value)
+                or
+                ValueGenerator(position | None) <- position | None
+            )
+        ),
+    where
+        ":" means instance of type,
+        "<-" means "from",
+        "∈" means belongs,
+        "Sᴛ" or "{x : T}" means set of type "T",
+        "∧" means satisfies the condition P(),
+        "~ 𝒟(S)" means according to the probability distribution,
+        "Σx" means composition of "x",
+        "⊆" means subset of a composition.
+    """
     _input_generator: IInputGenerator[T_Input] | None = None
     _output_factory: typing.Callable[[T_Input], T_Output] = None  # T_Output of each nested Provider.
     _output_exporter: typing.Callable[[T_Output], T_Input] = None

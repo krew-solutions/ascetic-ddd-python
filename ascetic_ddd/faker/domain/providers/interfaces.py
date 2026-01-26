@@ -100,13 +100,27 @@ class IProvidable(metaclass=ABCMeta):
 
 
 class IInputOutput(typing.Generic[T_Input, T_Output], metaclass=ABCMeta):
+    """
+    Структура EntityProvider не совпадает со структурой агрегата,
+    если агрегат приводится в требуемое состояние многоходово
+    (см. агрегат Specialist at grade project).
+    Это подсказка на вопрос о том, должен ли Distributor хранить сырые значения провайдера или готовый агрегат.
 
+    В method self.set(...) технически невозможно установить в качестве значения итоговый тип,
+    т.к. для валидного его состояния банально может не хватать данных (Auto Increment PK, FK).
+    """
     @abstractmethod
     async def create(self, session: ISession) -> T_Output:
         raise NotImplementedError
 
     @abstractmethod
     def set(self, value: T_Input) -> None:
+        """
+        Для CompositeProvider не используем **kwargs,
+        т.к. иначе придется инспектировать сигнатуру каждого вложенного вызываемого сеттера
+        (композиция может быть вложенной).
+        Ну и в принципе здесь можно принимать Specification вторым аргументом.
+        """
         raise NotImplementedError
 
     @abstractmethod
@@ -122,31 +136,6 @@ class IValueProvider(
     IInputOutput[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
     ISetupable, typing.Generic[T_Input, T_Output], metaclass=ABCMeta
 ):
-    """
-    Immutable.
-    Architecture:
-    IValueProvider = f(input | None) = result,
-    where
-    result : T <- Distributor[T] <- (
-        <- result : result ∈ Sᴛ ∧ P(specification) ~ 𝒟(S)  # select from a set with given probability distribution and Specification
-        or
-        <- result <- output_factory(input)
-            <- input <- (
-                set(value)
-                or
-                ValueGenerator(position | None) <- position | None
-            )
-        ),
-    where
-        ":" means instance of type,
-        "<-" means "from",
-        "∈" means belongs,
-        "Sᴛ" or "{x : T}" means set of type "T",
-        "∧" means satisfies the condition P(),
-        "~ 𝒟(S)" means according to the probability distribution,
-        "Σx" means composition of "x",
-        "⊆" means subset of a composition.
-    """
     pass
 
 
@@ -157,74 +146,15 @@ class IRelativeValueProvider(IValueProvider[T_Input, T_Output], typing.Generic[T
         raise NotImplementedError
 
 
-class ICompositeInputOutput(typing.Generic[T_Input, T_Output], metaclass=ABCMeta):
-    """
-    Структура Provider не совпадает со структурой агрегата, если агрегат приводится в требуемое состояние многоходово
-    (см. агрегат Specialist at grade project).
-    Это подсказка на вопрос о том, должен ли Distributor хранить сырые значения провайдера или готовый агрегат.
-
-    В method self.set(...) технически невозможно установить в качестве значения итоговый тип,
-    т.к. для валидного его состояния банально может не хватать данных (Auto Increment PK, FK).
-    """
-
-    @abstractmethod
-    async def create(self, session: ISession) -> T_Output:
-        raise NotImplementedError
-
-    @abstractmethod
-    def set(self, value: T_Input) -> None:
-        """
-        Не используем **kwargs, т.к. иначе придется инспектировать сигнатуру каждого вложенного сеттера
-        (композиция может быть вложенной).
-        Ну и в принципе здесь можно принимать Specification вторым аргументом.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def get(self) -> T_Input:
-        raise NotImplementedError
-
-    @abstractmethod
-    async def append(self, session: ISession, value: T_Output):
-        raise NotImplementedError
-
-
 class ICompositeValueProvider(
-    IInputOutput[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
-    ISetupable, typing.Generic[T_Input, T_Output], metaclass=ABCMeta
+    IValueProvider[T_Input, T_Output], typing.Generic[T_Input, T_Output], metaclass=ABCMeta
 ):
-    """
-    Immutable. Composite ValueObject.
-    Architecture:
-    ICompositeValueProvider = f(Σ input | None) = result,
-    where
-    result : T <- Distributor[T] <- (
-        <- result : result ∈ Sᴛ ∧ P(specification) ~ 𝒟(S)  # select from a set with given probability distribution and Specification
-        or
-        <- result <- output_factory(Σ leaf_result)
-            <- Σ IValueProvider(∈ Σ input) | ICompositeValueProvider(⊆ Σ input)
-    ),
-    where
-        ":" means instance of type,
-        "<-" means "from",
-        "∈" means belongs,
-        "Sᴛ" or "{x : T}" means set of type "T",
-        "∧" means satisfies the condition P(),
-        "~ 𝒟(S)" means according to the probability distribution,
-        "Σx" means composition of "x",
-        "⊆" means subset of a composition.
-    """
     pass
 
 
 class IEntityProvider(
-    ICompositeInputOutput[T_Input, T_Output], IProvidable, IObservable, INameable, ICloneable,
-    ISetupable, typing.Generic[T_Input, T_Output], metaclass=ABCMeta
+    ICompositeValueProvider[T_Input, T_Output], typing.Generic[T_Input, T_Output], metaclass=ABCMeta
 ):
-    """
-    Mutable. Saved as part of aggregate.
-    """
-
     @abstractmethod
     def on_init(self):
         raise NotImplementedError

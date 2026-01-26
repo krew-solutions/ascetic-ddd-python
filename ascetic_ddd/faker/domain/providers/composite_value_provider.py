@@ -22,6 +22,27 @@ class CompositeValueProvider(
     BaseCompositeDistributionProvider,
     typing.Generic[T_Input, T_Output]
 ):
+    """
+    Immutable output - composite ValueObject.
+    Architecture:
+    ICompositeValueProvider = f(Σ input | None) = result,
+    where
+    result : T <- Distributor[T] <- (
+        <- result : result ∈ Sᴛ ∧ P(specification) ~ 𝒟(S)  # select from a set with given probability distribution and Specification
+        or
+        <- result <- output_factory(Σ leaf_result)
+            <- Σ IValueProvider(∈ Σ input) | ICompositeValueProvider(⊆ Σ input)
+    ),
+    where
+        ":" means instance of type,
+        "<-" means "from",
+        "∈" means belongs,
+        "Sᴛ" or "{x : T}" means set of type "T",
+        "∧" means satisfies the condition P(),
+        "~ 𝒟(S)" means according to the probability distribution,
+        "Σx" means composition of "x",
+        "⊆" means subset of a composition.
+    """
     _output_factory: typing.Callable[[...], T_Output] = None  # T_Output of each nested Provider.
     _output_exporter: typing.Callable[[T_Output], T_Input] = None
     _specification_factory: typing.Callable[..., ISpecification]
