@@ -4,7 +4,7 @@ from abc import ABCMeta
 from ascetic_ddd.seedwork.domain.identity.interfaces import IAccessible
 from ascetic_ddd.faker.domain.providers._mixins import BaseCompositeProvider, ObservableMixin
 from ascetic_ddd.faker.domain.specification.interfaces import ISpecification
-from ascetic_ddd.faker.domain.providers.interfaces import IEntityProvider
+from ascetic_ddd.faker.domain.providers.interfaces import IAggregateProvider
 from ascetic_ddd.seedwork.domain.session.interfaces import ISession
 from ascetic_ddd.faker.domain.values.empty import empty
 from ascetic_ddd.observable.interfaces import IObservable
@@ -39,7 +39,7 @@ class IAggregateRepository(IObservable, typing.Protocol[T_Output]):
 
 class AggregateProvider(
     BaseCompositeProvider[T_Input, T_Output],
-    IEntityProvider[T_Input, T_Output],
+    IAggregateProvider[T_Input, T_Output],
     typing.Generic[T_Input, T_Output],
     metaclass=ABCMeta
 ):

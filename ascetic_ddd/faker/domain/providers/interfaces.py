@@ -15,9 +15,9 @@ __all__ = (
     'IInputOutput',
     'IValueProvider',
     'IRelativeValueProvider',
-    'ICompositeInputOutput',
     'ICompositeValueProvider',
     'IEntityProvider',
+    'IAggregateProvider',
     'IReferenceProvider',
     'IDependentInputOutput',
     'IDependentProvider',
@@ -173,6 +173,13 @@ class IEntityProvider(
         raise NotImplementedError
 
 
+class IAggregateProvider(
+    IEntityProvider[T_Input, T_Output], typing.Generic[T_Input, T_Output], metaclass=ABCMeta
+):
+    # TODO: Add repository here, move id_provider here
+    pass
+
+
 class IReferenceProvider(
     IValueProvider[T_Input, T_Id_Output],
     typing.Generic[T_Input, T_Output, T_Id_Output], metaclass=ABCMeta
@@ -180,14 +187,14 @@ class IReferenceProvider(
 
     @property
     @abstractmethod
-    def aggregate_provider(self) -> IEntityProvider[T_Input, T_Output]:
+    def aggregate_provider(self) -> IAggregateProvider[T_Input, T_Output]:
         raise NotImplementedError
 
     @aggregate_provider.setter
     @abstractmethod
     def aggregate_provider(
             self,
-            aggregate_provider: IEntityProvider[T_Input, T_Output] | Callable[[], IEntityProvider[T_Input, T_Output]]
+            aggregate_provider: IAggregateProvider[T_Input, T_Output] | Callable[[], IAggregateProvider[T_Input, T_Output]]
     ) -> None:
         raise NotImplementedError
 
@@ -222,15 +229,15 @@ class IDependentProvider(
 
     @property
     @abstractmethod
-    def aggregate_providers(self) -> list[IEntityProvider[T_Input, T_Output]]:
+    def aggregate_providers(self) -> list[IAggregateProvider[T_Input, T_Output]]:
         raise NotImplementedError
 
     @aggregate_providers.setter
     @abstractmethod
     def aggregate_providers(
             self,
-            aggregate_provider: list[IEntityProvider[T_Input, T_Output] |
-                                     Callable[[], IEntityProvider[T_Input, T_Output]]]
+            aggregate_provider: list[IAggregateProvider[T_Input, T_Output] |
+                                     Callable[[], IAggregateProvider[T_Input, T_Output]]]
     ) -> None:
         raise NotImplementedError
 
