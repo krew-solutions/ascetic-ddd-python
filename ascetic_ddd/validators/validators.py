@@ -72,7 +72,10 @@ class Length(Validator):
         super().__init__(msg)
 
     async def __call__(self, value, gettext=dummy_gettext):
-        length = len(value)
+        try:
+            length = len(value)
+        except TypeError:
+            return
         if not (length >= self.min_length and
                 (self.max_length is None or length <= self.max_length)):
             raise ValidationError(gettext(self.msg), (
