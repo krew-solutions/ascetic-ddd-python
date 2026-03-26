@@ -4,7 +4,7 @@ from ascetic_ddd.faker.domain.distributors.m2o import DummyDistributor
 from ascetic_ddd.faker.domain.distributors.m2o.interfaces import ICursor, IM2ODistributor
 from ascetic_ddd.faker.domain.providers._mixins import BaseDistributionProvider
 from ascetic_ddd.faker.domain.providers.interfaces import IValueProvider
-from ascetic_ddd.faker.domain.query.operators import EqOperator
+from ascetic_ddd.faker.domain.query.operators import EqOperator, IsNullOperator
 from ascetic_ddd.faker.domain.generators.interfaces import IInputGenerator
 from ascetic_ddd.faker.domain.generators.generators import prepare_input_generator
 from ascetic_ddd.faker.domain.specification.query_lookup_specification import QueryLookupSpecification
@@ -87,6 +87,8 @@ class ValueProvider(
             if isinstance(self._criteria, EqOperator):
                 # Extract value from EqOperator
                 self._set_input(self._criteria.value)
+            elif isinstance(self._criteria, IsNullOperator) and self._criteria.value:
+                self._set_input(None)
             if self._input.is_some():
                 await self._set_output(session, self._output_factory(typing.cast(InputT, self._input.unwrap())))
                 # await cursor.append(session, self._output.unwrap())

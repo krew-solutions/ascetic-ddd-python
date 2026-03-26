@@ -7,7 +7,7 @@ import operator
 from hypothesis import strategies
 
 from ascetic_ddd.faker.domain.generators.interfaces import IInputGenerator
-from ascetic_ddd.faker.domain.query.operators import IQueryOperator, EqOperator
+from ascetic_ddd.faker.domain.query.operators import IQueryOperator, EqOperator, IsNullOperator
 from ascetic_ddd.session.interfaces import ISession
 
 

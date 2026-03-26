@@ -10,7 +10,7 @@ from ascetic_ddd.faker.domain.providers.interfaces import (
     IReferenceProvider, ICloningShunt, ISetupable, IAggregateProvider,
 )
 from ascetic_ddd.faker.domain.query.operators import (
-    IQueryOperator, EqOperator, RelOperator, MergeConflict
+    IQueryOperator, EqOperator, RelOperator, MergeConflict, IsNullOperator
 )
 from ascetic_ddd.faker.domain.query.parser import parse_query
 from ascetic_ddd.faker.domain.query.visitors import query_to_dict
@@ -128,6 +128,10 @@ class ReferenceProvider(
         if isinstance(new_criteria, EqOperator) and new_criteria.value is None:
             self._set_input(None)
             self._output = Some(None)
+            return
+        elif isinstance(new_criteria, IsNullOperator) and new_criteria.value:
+            self._output = Some(None)
+            self._is_transient = False
             return
 
         old_criteria = self._criteria

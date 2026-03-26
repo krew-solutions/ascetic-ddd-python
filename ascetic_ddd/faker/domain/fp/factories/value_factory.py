@@ -1,7 +1,7 @@
 import typing
 
 from ascetic_ddd.faker.domain.query import parse_query
-from ascetic_ddd.faker.domain.query.operators import EqOperator
+from ascetic_ddd.faker.domain.query.operators import EqOperator, IsNullOperator
 from ascetic_ddd.session.interfaces import ISession
 
 __all__ = ('ValueFactory',)
@@ -40,6 +40,8 @@ class ValueFactory(typing.Generic[T]):
             parsed = parse_query(criteria)
             if isinstance(parsed, EqOperator):
                 return parsed.value
+            elif isinstance(parsed, IsNullOperator) and parsed.value:
+                return None
         if self._input_generator is not None:
             return await self._input_generator(session, -1)
         return None

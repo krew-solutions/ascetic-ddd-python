@@ -5,7 +5,7 @@ from ascetic_ddd.option import Option, Some, Nothing
 from ascetic_ddd.faker.domain.aop.providers.interfaces import IProvider
 from ascetic_ddd.faker.domain.query import parse_query, query_to_dict
 from ascetic_ddd.faker.domain.query.operators import (
-    IQueryOperator, EqOperator, RelOperator, MergeConflict,
+    IQueryOperator, EqOperator, RelOperator, MergeConflict, IsNullOperator,
 )
 from ascetic_ddd.faker.domain.providers.exceptions import DiamondUpdateConflict
 from ascetic_ddd.session.interfaces import ISession
@@ -87,6 +87,10 @@ class ReferenceProvider(typing.Generic[IdT]):
 
         # Null FK — no reference
         if isinstance(new_criteria, EqOperator) and new_criteria.value is None:
+            self._output = Some(None)
+            self._is_transient = False
+            return
+        elif isinstance(new_criteria, IsNullOperator) and new_criteria.value:
             self._output = Some(None)
             self._is_transient = False
             return
