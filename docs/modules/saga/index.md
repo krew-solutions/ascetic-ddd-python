@@ -375,6 +375,318 @@ async def send_message(uri: str, routing_slip: RoutingSlip):
 await send_message(routing_slip.progress_uri, routing_slip)
 ```
 
+## RoutingSlip Serialization
+
+To run a saga across services, the `RoutingSlip` must travel with the message that
+hands work off to the next participant. `RoutingSlip` references activity *classes*
+directly, which are not JSON-serializable, so an additional indirection is needed:
+each side of the wire keeps a registry that translates between activity classes
+and their canonical names (strings).
+
+### Overview
+
+The serialization mechanism follows an **interface-based** approach with dependency
+injection. There is no global registry: each `ActivityTypeResolver` instance is
+independent, which prevents state pollution across tests and across services that
+should not know about each other's activities.
+
+
+### Components
+
+#### 1. ActivityTypeResolver
+
+Abstract base class providing bidirectional mapping between activity type names
+and activity classes:
+
+```python
+from abc import ABCMeta, abstractmethod
+
+class ActivityTypeResolver(metaclass=ABCMeta):
+    @abstractmethod
+    def resolve(self, type_name: str) -> type[Activity]: ...
+
+    @abstractmethod
+    def get_name(self, activity_type: type[Activity]) -> str: ...
+```
+
+
+#### 2. MapBasedResolver
+
+Default in-memory implementation backed by a pair of dicts (`name → type`,
+`type → name`):
+
+```python
+from ascetic_ddd.saga import MapBasedResolver
+
+resolver = MapBasedResolver()
+resolver.register("ReserveCarActivity", ReserveCarActivity)
+resolver.register("ReserveHotelActivity", ReserveHotelActivity)
+```
+
+
+#### 3. NamedActivity Protocol (Optional)
+
+Activities can optionally implement the `NamedActivity` protocol to expose their
+canonical name:
+
+```python
+from ascetic_ddd.saga import Activity
+
+class ReserveCarActivity(Activity):
+    def type_name(self) -> str:
+        return "ReserveCarActivity"
+    # ... do_work, compensate, work_item_queue_address, compensation_queue_address
+```
+
+**Benefits:**
+
+- Enables fallback name resolution in `get_name()` even without explicit registration
+- Deserialization still requires registration (no name → type mapping otherwise)
+- Makes activity type names self-documenting on the class itself
+
+`NamedActivity` is a `runtime_checkable` `Protocol`, so any class that defines a
+`type_name()` method satisfies it structurally — no inheritance required.
+
+
+### Basic Usage
+
+#### Step 1: Create a Resolver and Register Activities
+
+```python
+from ascetic_ddd.saga import MapBasedResolver
+
+resolver = MapBasedResolver()
+resolver.register("ReserveCarActivity", ReserveCarActivity)
+resolver.register("ReserveHotelActivity", ReserveHotelActivity)
+resolver.register("ReserveFlightActivity", ReserveFlightActivity)
+```
+
+#### Step 2: Serialize RoutingSlip
+
+```python
+import json
+
+from ascetic_ddd.saga import (
+    RoutingSlip, WorkItem, WorkItemArguments, to_serializable,
+)
+
+routing_slip = RoutingSlip([
+    WorkItem(ReserveCarActivity, WorkItemArguments({"vehicleType": "SUV"})),
+    WorkItem(ReserveHotelActivity, WorkItemArguments({"roomType": "Suite"})),
+])
+
+await routing_slip.process_next()
+
+serializable = to_serializable(routing_slip, resolver)
+wire = json.dumps(serializable.to_dict())
+
+await bus.publish(session, "saga/routing-slip", wire)
+```
+
+#### Step 3: Deserialize RoutingSlip
+
+```python
+import json
+
+from ascetic_ddd.saga import (
+    SerializableRoutingSlip, from_serializable,
+)
+
+wire = await bus.receive("saga/routing-slip")
+
+serializable = SerializableRoutingSlip.from_dict(json.loads(wire))
+routing_slip = from_serializable(serializable, resolver)
+
+await routing_slip.process_next()
+```
+
+
+### Wire Format
+
+`SerializableRoutingSlip.to_dict()` produces JSON-compatible dicts with **camelCase**
+keys, identical to the format produced by the Go implementation. This allows mixed
+Python/Go services to participate in the same distributed saga.
+
+```json
+{
+  "completedWorkLogs": [
+    {
+      "activityTypeName": "ReserveCarActivity",
+      "result": {
+        "reservationId": 12345
+      }
+    }
+  ],
+  "nextWorkItems": [
+    {
+      "activityTypeName": "ReserveHotelActivity",
+      "arguments": {
+        "roomType": "Suite",
+        "checkInDate": "2024-01-15"
+      }
+    },
+    {
+      "activityTypeName": "ReserveFlightActivity",
+      "arguments": {
+        "destination": "LAX",
+        "flightDate": "2024-01-15"
+      }
+    }
+  ]
+}
+```
+
+
+### Advanced Patterns
+
+#### Multiple Resolvers for Different Services
+
+Service-specific resolvers limit which activities each service can deserialize —
+useful as a defense-in-depth measure:
+
+```python
+# Orchestrator knows every activity
+orchestrator_resolver = MapBasedResolver()
+orchestrator_resolver.register("ReserveCarActivity", ReserveCarActivity)
+orchestrator_resolver.register("ReserveHotelActivity", ReserveHotelActivity)
+orchestrator_resolver.register("ReserveFlightActivity", ReserveFlightActivity)
+
+# Car service only knows car activities
+car_service_resolver = MapBasedResolver()
+car_service_resolver.register("ReserveCarActivity", ReserveCarActivity)
+
+# Hotel service only knows hotel activities
+hotel_service_resolver = MapBasedResolver()
+hotel_service_resolver.register("ReserveHotelActivity", ReserveHotelActivity)
+```
+
+#### Compensation Serialization
+
+The same serialization works for the backward path:
+
+```python
+serializable = to_serializable(routing_slip, resolver)
+wire = json.dumps(serializable.to_dict())
+
+await bus.publish(session, routing_slip.compensation_uri, wire)
+
+# On the compensation service:
+serializable = SerializableRoutingSlip.from_dict(json.loads(wire))
+routing_slip = from_serializable(serializable, resolver)
+
+while routing_slip.is_in_progress:
+    await routing_slip.undo_last()
+```
+
+#### Testing with Isolated Resolvers
+
+Each test creates its own resolver — no global state to clean up:
+
+```python
+class MySagaTestCase(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.resolver = MapBasedResolver()
+        self.resolver.register("TestActivity", TestActivity)
+```
+
+
+### Design Rationale
+
+#### Why Not a Global Registry?
+
+The interface-based approach was preferred over a global module-level registry
+because:
+
+1. **No global state** — each resolver is independent, preventing pollution between
+   tests and between services.
+2. **Better testability** — tests construct isolated resolvers with no cleanup.
+3. **Explicit dependencies** — resolvers are passed explicitly, making the
+   dependency on the registry visible at the call site.
+4. **Service isolation** — different services can have different resolver
+   configurations without shared mutable state.
+5. **Thread safety** — no need for locks on a global mutable map (though
+   `MapBasedResolver` itself is also not thread-safe; register everything at
+   startup).
+
+#### Trade-offs
+
+**Pros:** clean dependency injection, isolation, no global state.
+
+**Cons:** slightly more verbose (the resolver must be passed explicitly), and a
+resolver is required on both ends of the wire.
+
+
+### Error Handling
+
+#### Unregistered Activity (Deserialization)
+
+```python
+from_serializable(serializable, resolver)
+# KeyError: activity type not registered: UnknownActivity
+```
+
+**Solution:** register all expected activities before deserializing.
+
+#### Unregistered Activity Without NamedActivity (Serialization)
+
+```python
+to_serializable(routing_slip, resolver)
+# KeyError: activity type not registered: AnonymousActivity
+```
+
+**Solution:** register the activity, or implement `type_name()` on the class.
+
+
+### Best Practices
+
+1. **Register activities at module-load time:**
+
+   ```python
+   def make_resolver() -> MapBasedResolver:
+       resolver = MapBasedResolver()
+       resolver.register("Activity1", Activity1)
+       resolver.register("Activity2", Activity2)
+       return resolver
+   ```
+
+2. **Implement `type_name()` on every activity** so serialization keeps working
+   even if a registration is forgotten:
+
+   ```python
+   class MyActivity(Activity):
+       def type_name(self) -> str:
+           return "MyActivity"
+   ```
+
+3. **Use descriptive names** rather than abbreviations — they end up on the wire
+   and in logs:
+
+   ```python
+   resolver.register("ReserveCarActivity", ReserveCarActivity)
+   # not: resolver.register("car", ReserveCarActivity)
+   ```
+
+4. **Share resolver configuration** through a single factory function so every
+   service spins up an identically configured resolver.
+
+5. **Test round-trip serialization** to catch missing registrations and
+   non-JSON-safe arguments early:
+
+   ```python
+   async def test_round_trip(self):
+       original = make_routing_slip()
+       wire = json.dumps(to_serializable(original, resolver).to_dict())
+       restored = from_serializable(
+           SerializableRoutingSlip.from_dict(json.loads(wire)),
+           resolver,
+       )
+       self.assertEqual(
+           len(restored.pending_work_items),
+           len(original.pending_work_items),
+       )
+   ```
+
+
 ## References
 
 - [Sagas](https://vasters.com/archive/Sagas.html) - Clemens Vasters

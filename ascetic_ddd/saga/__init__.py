@@ -41,9 +41,23 @@ See Also:
 
 from ascetic_ddd.saga.activity import Activity
 from ascetic_ddd.saga.activity_host import ActivityHost
+from ascetic_ddd.saga.activity_resolver import (
+    ActivityTypeResolver,
+    MapBasedResolver,
+    NamedActivity,
+)
 from ascetic_ddd.saga.fallback_activity import FallbackActivity
 from ascetic_ddd.saga.parallel_activity import ParallelActivity
 from ascetic_ddd.saga.routing_slip import InvalidOperationError, RoutingSlip
+from ascetic_ddd.saga.routing_slip_serialization import (
+    from_serializable,
+    to_serializable,
+)
+from ascetic_ddd.saga.serializable_routing_slip import (
+    SerializableRoutingSlip,
+    SerializableWorkItem,
+    SerializableWorkLog,
+)
 from ascetic_ddd.saga.work_item import WorkItem
 from ascetic_ddd.saga.work_item_arguments import WorkItemArguments
 from ascetic_ddd.saga.work_log import WorkLog
@@ -53,12 +67,20 @@ from ascetic_ddd.saga.work_result import WorkResult
 __all__ = (
     'Activity',
     'ActivityHost',
+    'ActivityTypeResolver',
     'FallbackActivity',
     'InvalidOperationError',
+    'MapBasedResolver',
+    'NamedActivity',
     'ParallelActivity',
     'RoutingSlip',
+    'SerializableRoutingSlip',
+    'SerializableWorkItem',
+    'SerializableWorkLog',
     'WorkItem',
     'WorkItemArguments',
     'WorkLog',
     'WorkResult',
+    'from_serializable',
+    'to_serializable',
 )
