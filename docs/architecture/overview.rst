@@ -41,7 +41,7 @@ Package Structure
    +-- outbox/            # Transactional outbox
    +-- inbox/             # Idempotent inbox
    +-- saga/              # Saga orchestration
-   +-- event_bus/         # In-process event bus
+   +-- bus/               # In-process message bus
    +-- mediator/          # Command/query mediator
    +-- signals/           # Typed Signal pattern
    +-- session/           # Session/UoW management

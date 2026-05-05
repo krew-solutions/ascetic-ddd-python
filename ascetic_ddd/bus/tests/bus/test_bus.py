@@ -3,45 +3,45 @@ import time
 from contextlib import contextmanager
 from unittest import IsolatedAsyncioTestCase, mock
 
-from ascetic_ddd.event_bus.in_memory_event_bus import InMemoryEventBus
+from ascetic_ddd.bus.in_memory_bus import InMemoryBus
 
 
-class InMemoryEventBusTestCase(IsolatedAsyncioTestCase):
+class InMemoryBusTestCase(IsolatedAsyncioTestCase):
     session = object()
     uri = "sb://test-uri"
-    event = {"a": 5}
+    message = {"a": 5}
 
     def setUp(self) -> None:
-        self.event_bus = InMemoryEventBus()
+        self.bus = InMemoryBus()
 
     async def test_publish(self):
         handler = mock.AsyncMock()
-        await self.event_bus.subscribe(self.uri, handler)
+        await self.bus.subscribe(self.uri, handler)
         with self._wait_for_response_until(lambda: handler.called):
-            await self.event_bus.publish(self.session, self.uri, self.event)
-        handler.assert_called_once_with(self.session, self.uri, self.event)
+            await self.bus.publish(self.session, self.uri, self.message)
+        handler.assert_called_once_with(self.session, self.uri, self.message)
 
     async def test_unsubscribe(self):
         handler = mock.AsyncMock()
         handler2 = mock.AsyncMock()
-        await self.event_bus.subscribe(self.uri, handler)
-        await self.event_bus.subscribe(self.uri, handler2)
-        await self.event_bus.unsubscribe(self.uri, handler)
+        await self.bus.subscribe(self.uri, handler)
+        await self.bus.subscribe(self.uri, handler2)
+        await self.bus.unsubscribe(self.uri, handler)
         with self._wait_for_response_until(lambda: handler2.called):
-            await self.event_bus.publish(self.session, self.uri, self.event)
+            await self.bus.publish(self.session, self.uri, self.message)
         handler.assert_not_called()
-        handler2.assert_called_once_with(self.session, self.uri, self.event)
+        handler2.assert_called_once_with(self.session, self.uri, self.message)
 
-    async def test_disposable_event(self):
+    async def test_disposable(self):
         handler = mock.AsyncMock()
         handler2 = mock.AsyncMock()
-        disposable = await self.event_bus.subscribe(self.uri, handler)
-        await self.event_bus.subscribe(self.uri, handler2)
+        disposable = await self.bus.subscribe(self.uri, handler)
+        await self.bus.subscribe(self.uri, handler2)
         await disposable.dispose()
         with self._wait_for_response_until(lambda: handler2.called):
-            await self.event_bus.publish(self.session, self.uri, self.event)
+            await self.bus.publish(self.session, self.uri, self.message)
         handler.assert_not_called()
-        handler2.assert_called_once_with(self.session, self.uri, self.event)
+        handler2.assert_called_once_with(self.session, self.uri, self.message)
 
     @staticmethod
     def _wait_for_response_until(*checkers):

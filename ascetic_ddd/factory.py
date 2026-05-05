@@ -1,4 +1,4 @@
-from ascetic_ddd.event_bus import IEventBus, InMemoryEventBus
+from ascetic_ddd.bus import IBus, InMemoryBus
 from ascetic_ddd.session.interfaces import ISession
 from ascetic_ddd.utils.amemo import amemo
 
@@ -10,8 +10,8 @@ __all__ = (
 
 class BuildingBlocksFactory:
     @amemo
-    async def make_in_memory_event_bus(self) -> IEventBus[ISession]:
-        return InMemoryEventBus[ISession]()
+    async def make_in_memory_bus(self) -> IBus[ISession]:
+        return InMemoryBus[ISession]()
 
 
 ascetic_ddd_factory = BuildingBlocksFactory()
