@@ -480,6 +480,7 @@ await routing_slip.process_next()
 serializable = to_serializable(routing_slip, resolver)
 wire = json.dumps(serializable.to_dict())
 
+# Pseudocode -- substitute your message bus client here.
 await bus.publish(session, "saga/routing-slip", wire)
 ```
 
@@ -492,6 +493,7 @@ from ascetic_ddd.saga import (
     SerializableRoutingSlip, from_serializable,
 )
 
+# Pseudocode -- substitute your message bus client here.
 wire = await bus.receive("saga/routing-slip")
 
 serializable = SerializableRoutingSlip.from_dict(json.loads(wire))
@@ -568,6 +570,7 @@ The same serialization works for the backward path:
 serializable = to_serializable(routing_slip, resolver)
 wire = json.dumps(serializable.to_dict())
 
+# Pseudocode -- substitute your message bus client here.
 await bus.publish(session, routing_slip.compensation_uri, wire)
 
 # On the compensation service:
@@ -670,21 +673,15 @@ to_serializable(routing_slip, resolver)
    service spins up an identically configured resolver.
 
 5. **Test round-trip serialization** to catch missing registrations and
-   non-JSON-safe arguments early:
+   non-JSON-safe arguments early. A complete, executable end-to-end demo
+   covering both the forward path (with a mid-saga handoff) and the
+   compensation path is shipped with the library:
 
-   ```python
-   async def test_round_trip(self):
-       original = make_routing_slip()
-       wire = json.dumps(to_serializable(original, resolver).to_dict())
-       restored = from_serializable(
-           SerializableRoutingSlip.from_dict(json.loads(wire)),
-           resolver,
-       )
-       self.assertEqual(
-           len(restored.pending_work_items),
-           len(original.pending_work_items),
-       )
-   ```
+   - Module: `ascetic_ddd/saga/examples/serialization_example.py`
+   - Run it: `python -m ascetic_ddd.saga.examples.serialization_example`
+   - Importable entry points: `make_orchestrator_resolver()`,
+     `run_travel_booking_with_serialization()`,
+     `run_compensation_with_serialization()`
 
 
 ## References

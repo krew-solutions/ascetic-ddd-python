@@ -58,3 +58,7 @@ class ReserveCarActivity(Activity):
     def compensation_queue_address(self) -> str:
         """Queue address for car cancellation requests."""
         return "sb://./carCancellations"
+
+    def type_name(self) -> str:
+        """Canonical name used by ActivityTypeResolver for serialization."""
+        return "ReserveCarActivity"

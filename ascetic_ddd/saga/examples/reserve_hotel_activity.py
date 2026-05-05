@@ -58,3 +58,7 @@ class ReserveHotelActivity(Activity):
     def compensation_queue_address(self) -> str:
         """Queue address for hotel cancellation requests."""
         return "sb://./hotelCancellations"
+
+    def type_name(self) -> str:
+        """Canonical name used by ActivityTypeResolver for serialization."""
+        return "ReserveHotelActivity"

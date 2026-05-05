@@ -65,6 +65,10 @@ class ReserveFlightActivity(Activity):
         """Queue address for flight cancellation requests."""
         return "sb://./flightCancellations"
 
+    def type_name(self) -> str:
+        """Canonical name used by ActivityTypeResolver for serialization."""
+        return "ReserveFlightActivity"
+
 
 class FailingReserveFlightActivity(ReserveFlightActivity):
     """Flight activity that always fails - for demonstrating compensation."""

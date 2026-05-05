@@ -2,6 +2,7 @@
 
 import unittest
 
+from ascetic_ddd.saga.activity_resolver import NamedActivity
 from ascetic_ddd.saga.examples import (
     FailingReserveFlightActivity,
     ReserveCarActivity,
@@ -147,6 +148,35 @@ class FailingReserveFlightActivityTestCase(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(activity.work_item_queue_address, "sb://./flightReservations")
         self.assertEqual(activity.compensation_queue_address, "sb://./flightCancellations")
+
+
+class NamedActivityProtocolTestCase(unittest.TestCase):
+    """Each example activity exposes its canonical name via NamedActivity."""
+
+    def test_reserve_car_activity_is_named(self):
+        activity = ReserveCarActivity()
+
+        self.assertIsInstance(activity, NamedActivity)
+        self.assertEqual(activity.type_name(), "ReserveCarActivity")
+
+    def test_reserve_hotel_activity_is_named(self):
+        activity = ReserveHotelActivity()
+
+        self.assertIsInstance(activity, NamedActivity)
+        self.assertEqual(activity.type_name(), "ReserveHotelActivity")
+
+    def test_reserve_flight_activity_is_named(self):
+        activity = ReserveFlightActivity()
+
+        self.assertIsInstance(activity, NamedActivity)
+        self.assertEqual(activity.type_name(), "ReserveFlightActivity")
+
+    def test_failing_reserve_flight_activity_inherits_name(self):
+        """FailingReserveFlightActivity inherits type_name() from its parent."""
+        activity = FailingReserveFlightActivity()
+
+        self.assertIsInstance(activity, NamedActivity)
+        self.assertEqual(activity.type_name(), "ReserveFlightActivity")
 
 
 class TravelBookingSagaTestCase(unittest.IsolatedAsyncioTestCase):

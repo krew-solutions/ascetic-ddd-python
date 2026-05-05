@@ -18,6 +18,12 @@ from ascetic_ddd.saga.examples.reserve_flight_activity import (
 )
 from ascetic_ddd.saga.examples.reserve_hotel_activity import ReserveHotelActivity
 
+# Note: serialization_example is intentionally NOT re-exported here. It is
+# a runnable demo intended to be used either via `python -m ...` or imported
+# explicitly by its full path. Re-exporting it would trigger a RuntimeWarning
+# when running as a script, since the package import would load it before
+# runpy gets a chance to execute it.
+
 
 __all__ = (
     'FailingReserveFlightActivity',

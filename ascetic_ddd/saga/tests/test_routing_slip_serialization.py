@@ -267,6 +267,72 @@ class RoundTripTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(restored.completed_work_logs[0].result["id"], 1)
 
 
+class CompensationAfterRoundTripTestCase(unittest.IsolatedAsyncioTestCase):
+    """Backward path still works after a slip has been serialized and restored."""
+
+    def setUp(self) -> None:
+        _reset_counters()
+
+    async def test_undo_last_works_after_round_trip(self):
+        """Single round-trip preserves the ability to compensate."""
+        resolver = MapBasedResolver()
+        resolver.register("SerializableSuccessActivity", SerializableSuccessActivity)
+        original = RoutingSlip([
+            WorkItem(SerializableSuccessActivity, WorkItemArguments({"step": 1})),
+            WorkItem(SerializableSuccessActivity, WorkItemArguments({"step": 2})),
+        ])
+        await original.process_next()
+        await original.process_next()
+
+        wire = json.dumps(to_serializable(original, resolver).to_dict())
+        restored = from_serializable(
+            SerializableRoutingSlip.from_dict(json.loads(wire)),
+            resolver,
+        )
+
+        while restored.is_in_progress:
+            await restored.undo_last()
+
+        self.assertFalse(restored.is_in_progress)
+        self.assertEqual(SerializableSuccessActivity.compensate_count, 2)
+
+    async def test_multi_stage_round_trip(self):
+        """Multiple handoffs across services preserve correctness end-to-end."""
+        resolver = MapBasedResolver()
+        resolver.register("SerializableSuccessActivity", SerializableSuccessActivity)
+
+        # Stage 1: orchestrator processes the first item, then ships the slip.
+        slip = RoutingSlip([
+            WorkItem(SerializableSuccessActivity, WorkItemArguments({"step": 1})),
+            WorkItem(SerializableSuccessActivity, WorkItemArguments({"step": 2})),
+            WorkItem(SerializableSuccessActivity, WorkItemArguments({"step": 3})),
+        ])
+        await slip.process_next()
+        slip = from_serializable(
+            SerializableRoutingSlip.from_dict(
+                json.loads(json.dumps(to_serializable(slip, resolver).to_dict())),
+            ),
+            resolver,
+        )
+
+        # Stage 2: downstream service processes the second item, ships again.
+        await slip.process_next()
+        slip = from_serializable(
+            SerializableRoutingSlip.from_dict(
+                json.loads(json.dumps(to_serializable(slip, resolver).to_dict())),
+            ),
+            resolver,
+        )
+
+        # Stage 3: another service decides to abort and runs the backward path.
+        while slip.is_in_progress:
+            await slip.undo_last()
+
+        self.assertFalse(slip.is_in_progress)
+        self.assertEqual(SerializableSuccessActivity.call_count, 2)
+        self.assertEqual(SerializableSuccessActivity.compensate_count, 2)
+
+
 class JsonWireFormatTestCase(unittest.TestCase):
     """to_dict() / from_dict() use camelCase keys for cross-language interop."""
 
