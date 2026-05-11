@@ -1,4 +1,5 @@
 """Composite expression node for handling composite keys."""
+import typing
 from typing import Protocol
 
 from ascetic_ddd.specification.domain.nodes import (
@@ -9,6 +10,9 @@ from ascetic_ddd.specification.domain.nodes import (
     Not,
     NotEqual,
 )
+
+
+T = typing.TypeVar("T")
 
 
 class CompositeExpressionsDifferentLengthError(Exception):
@@ -28,7 +32,7 @@ class ICompositeExpression(Protocol):
         """Create not-equal expression with another composite."""
         ...
 
-    def accept(self, visitor: Visitor) -> None:
+    def accept(self, visitor: Visitor[T]) -> T:
         """Accept a visitor."""
         ...
 
@@ -93,6 +97,15 @@ class CompositeExpression(Visitable):
 
         return Not(And(operands[0], *operands[1:]))
 
-    def accept(self, visitor: Visitor) -> None:
-        """Accept a visitor (no-op for composite nodes)."""
-        pass
+    def accept(self, visitor: Visitor[T]) -> T:
+        """Accept a visitor.
+
+        CompositeExpression is a structural marker for composite keys: it never
+        participates in dispatch — ``TransformVisitor`` inspects it via
+        ``isinstance`` and handles it directly. This method exists solely to
+        satisfy the ``Visitable`` Protocol and must not be invoked.
+        """
+        raise NotImplementedError(
+            "CompositeExpression.accept is not part of visitor dispatch — "
+            "it is handled structurally by TransformVisitor.visit_infix"
+        )

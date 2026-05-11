@@ -2,8 +2,8 @@
 from typing import Any, List, Protocol
 
 from ascetic_ddd.specification.domain.nodes import (
-    Visitor, Collection, Field, GlobalScope, Infix, Item, Object, Prefix, Value, Visitable, And,
-    extract_field_path, Not, Postfix,
+    Collection, Field, GlobalScope, Infix, Item, Object, Prefix, Value, Visitable,
+    Postfix, Visitor, extract_field_path,
 )
 from ascetic_ddd.specification.domain.constants import OPERATOR, OPERATOR_MAPPING
 
@@ -28,7 +28,7 @@ class ITransformContext(Protocol):
         ...
 
 
-class TransformVisitor(Visitor):
+class TransformVisitor(Visitor[Visitable]):
     """
     Visitor that transforms domain specification AST to infrastructure specification AST.
 
@@ -42,84 +42,59 @@ class TransformVisitor(Visitor):
 
     def __init__(self, context: ITransformContext):
         self._context = context
-        self._current_node: Visitable | None = None
-        self._stack: List[ITransformContext] = []
 
-    def push(self, ctx: ITransformContext) -> None:
-        """Push current context onto stack and switch to new context."""
-        self._stack.append(self._context)
-        self._context = ctx
+    def visit_global_scope(self, node: GlobalScope) -> Visitable:
+        """Visit global scope node — passthrough."""
+        return node
 
-    def pop(self) -> None:
-        """Restore previous context from stack."""
-        self._context = self._stack[-1]
-        self._stack = self._stack[:-1]
+    def visit_object(self, node: Object) -> Visitable:
+        """Visit object node — passthrough."""
+        return node
 
-    def visit_global_scope(self, node: GlobalScope) -> None:
-        """Visit global scope node."""
-        # Context push/pop handled at higher level if needed
-        pass
+    def visit_collection(self, node: Collection) -> Visitable:
+        """Visit collection node — passthrough."""
+        return node
 
-    def visit_object(self, node: Object) -> None:
-        """Visit object node."""
-        pass
+    def visit_item(self, node: Item) -> Visitable:
+        """Visit item node — passthrough."""
+        return node
 
-    def visit_collection(self, node: Collection) -> None:
-        """Visit collection node."""
-        pass
-
-    def visit_item(self, node: Item) -> None:
-        """Visit item node."""
-        # Context push/pop handled at higher level if needed
-        pass
-
-    def visit_field(self, node: Field) -> None:
+    def visit_field(self, node: Field) -> Visitable:
         """
         Visit field node and transform to infrastructure field(s).
 
         Extracts the field path and uses context to map it to infrastructure.
         May return a composite expression for composite keys.
         """
-        path = extract_field_path(node)
-        self._current_node = self._context.attr_node(path)
+        return self._context.attr_node(extract_field_path(node))
 
-    def visit_value(self, node: Value) -> None:
+    def visit_value(self, node: Value) -> Visitable:
         """
         Visit value node and transform to infrastructure value(s).
 
         Uses context to decompose value objects into database-compatible values.
         May return a composite expression for composite value objects.
         """
-        self._current_node = self._context.value_node(node.value())
+        return self._context.value_node(node.value())
 
-    def visit_prefix(self, node: Prefix) -> None:
+    def visit_prefix(self, node: Prefix) -> Visitable:
         """
         Visit prefix node (e.g., NOT).
 
         Recursively transforms the operand and wraps in prefix operator.
         """
-        node.operand().accept(self)
-        assert self._current_node is not None
-        self._current_node = Prefix(
-            node.operator(), self._current_node, node.associativity()
-        )
+        operand = node.operand().accept(self)
+        return Prefix(node.operator(), operand, node.associativity())
 
-    def visit_infix(self, node: Infix) -> None:
+    def visit_infix(self, node: Infix) -> Visitable:
         """
         Visit infix node (e.g., AND, OR, =, >).
 
         Recursively transforms left and right operands.
         Special handling for composite expressions with equality/inequality.
         """
-        # Transform left operand
-        node.left().accept(self)
-        assert self._current_node is not None
-        left = self._current_node
-
-        # Transform right operand
-        node.right().accept(self)
-        assert self._current_node is not None
-        right = self._current_node
+        left = node.left().accept(self)
+        right = node.right().accept(self)
 
         # Check if we have composite expressions
         if isinstance(left, CompositeExpression):
@@ -131,28 +106,19 @@ class TransformVisitor(Visitor):
             # Handle composite expression operators
             if node.operator() not in (OPERATOR.EQ, OPERATOR.NE):
                 raise ValueError(
-                    f'Operator "{node.operator()}" is not supported for composite expressions'
+                    'Operator "%s" is not supported for composite expressions'
+                    % node.operator()
                 )
-            self._current_node = self._OPERATOR_MAPPING[node.operator()](left, right)
-        else:
-            # Regular infix operation
-            self._current_node = Infix(
-                left, node.operator(), right, node.associativity()
-            )
+            return self._OPERATOR_MAPPING[node.operator()](left, right)
 
-    def visit_postfix(self, node: Postfix) -> None:
+        # Regular infix operation
+        return Infix(left, node.operator(), right, node.associativity())
+
+    def visit_postfix(self, node: Postfix) -> Visitable:
         """
         Visit postfix node (e.g., IS NULL).
 
         Recursively transforms the operand and wraps in postfix operator.
         """
-        node.operand().accept(self)
-        assert self._current_node is not None
-        self._current_node = Postfix(
-            self._current_node, node.operator(), node.associativity()
-        )
-
-    def result(self) -> Visitable:
-        """Return the transformed AST."""
-        assert self._current_node is not None
-        return self._current_node
+        operand = node.operand().accept(self)
+        return Postfix(operand, node.operator(), node.associativity())

@@ -726,10 +726,13 @@ class ParametrizedSpecificationJsonPath2:
         spec_ast = self._extract_filter_expression(path, ctx)
 
         # Evaluate using EvaluateVisitor
-        visitor = EvaluateVisitor(data)
-        spec_ast.accept(visitor)
-
-        return visitor.result()
+        result = spec_ast.accept(EvaluateVisitor(data))
+        if not isinstance(result, bool):
+            raise TypeError(
+                "Specification did not yield a boolean, got: %s"
+                % type(result).__name__
+            )
+        return result
 
 
 def parse(template: str) -> ParametrizedSpecificationJsonPath2:

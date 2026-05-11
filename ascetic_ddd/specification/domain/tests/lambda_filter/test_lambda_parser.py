@@ -96,13 +96,13 @@ class TestLambdaParser(unittest.TestCase):
         # Verify evaluation
         user = DictContext({"age": 30})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"age": 20})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_simple_less_than(self):
         """Test simple less-than comparison."""
@@ -110,13 +110,13 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"age": 25})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"age": 35})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_simple_equal(self):
         """Test simple equality comparison."""
@@ -126,13 +126,13 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"name": "Alice"})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"name": "Bob"})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_simple_not_equal(self):
         """Test simple not-equal comparison."""
@@ -140,13 +140,13 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"status": "active"})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"status": "deleted"})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_greater_than_or_equal(self):
         """Test greater-than-or-equal comparison."""
@@ -154,18 +154,18 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"age": 30})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"age": 35})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"age": 25})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_less_than_or_equal(self):
         """Test less-than-or-equal comparison."""
@@ -173,18 +173,18 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"age": 30})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"age": 25})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"age": 35})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_logical_and(self):
         """Test logical AND operator."""
@@ -194,18 +194,18 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"age": 30, "active": True})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"age": 30, "active": False})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
         user = DictContext({"age": 20, "active": True})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_logical_or(self):
         """Test logical OR operator."""
@@ -215,18 +215,18 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"age": 15})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"age": 70})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"age": 30})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_logical_not(self):
         """Test logical NOT operator."""
@@ -236,13 +236,13 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"deleted": False})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"deleted": True})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_complex_expression(self):
         """Test complex expression with multiple operators."""
@@ -250,18 +250,18 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"age": 30, "active": True})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"age": 30, "active": False})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
         user = DictContext({"age": 70, "active": True})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_any_with_generator_expression(self):
         """Test any() with generator expression -> Wildcard."""
@@ -282,8 +282,8 @@ class TestLambdaParser(unittest.TestCase):
         store = DictContext({"items": items})
 
         visitor = EvaluateVisitor(store)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())  # Laptop price > 500
+        result = spec.accept(visitor)
+        self.assertTrue(result)  # Laptop price > 500
 
         # Test with all items below threshold
         item1 = DictContext({"name": "Mouse", "price": 29})
@@ -293,8 +293,8 @@ class TestLambdaParser(unittest.TestCase):
         store = DictContext({"items": items})
 
         visitor = EvaluateVisitor(store)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_any_with_list_comprehension(self):
         """Test any() with list comprehension -> Wildcard."""
@@ -309,8 +309,8 @@ class TestLambdaParser(unittest.TestCase):
         store = DictContext({"items": items})
 
         visitor = EvaluateVisitor(store)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
     def test_wildcard_with_complex_predicate(self):
         """Test wildcard with complex predicate."""
@@ -326,8 +326,8 @@ class TestLambdaParser(unittest.TestCase):
         store = DictContext({"items": items})
 
         visitor = EvaluateVisitor(store)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         # Test with high price but not available
         item1 = DictContext({"name": "Laptop", "price": 999, "available": False})
@@ -337,8 +337,8 @@ class TestLambdaParser(unittest.TestCase):
         store = DictContext({"items": items})
 
         visitor = EvaluateVisitor(store)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_nested_any_list_comprehension(self):
         """Test nested any with list comprehensions - Wildcard inside Wildcard."""
@@ -383,8 +383,8 @@ class TestLambdaParser(unittest.TestCase):
 
         # Test: should be True because category1 has item with price > 100
         visitor = EvaluateVisitor(order)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         # Test with all cheap items
         item1_cheap = DictContext({"name": "Laptop", "price": 90})
@@ -402,8 +402,8 @@ class TestLambdaParser(unittest.TestCase):
 
         # Test: should be False because no items have price > 100
         visitor = EvaluateVisitor(order_cheap)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_nested_any_generator_expression(self):
         """Test nested any with generator expressions."""
@@ -426,8 +426,8 @@ class TestLambdaParser(unittest.TestCase):
         order = DictContext({"id": 1, "categories": categories})
 
         visitor = EvaluateVisitor(order)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
     def test_boolean_literal_true(self):
         """Test boolean literal True."""
@@ -435,8 +435,8 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"active": True})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
     def test_boolean_literal_false(self):
         """Test boolean literal False."""
@@ -444,8 +444,8 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"active": False})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
     def test_string_literal(self):
         """Test string literal."""
@@ -453,8 +453,8 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"role": "admin"})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
     def test_integer_literal(self):
         """Test integer literal."""
@@ -462,8 +462,8 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"count": 42})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
     def test_float_literal(self):
         """Test float literal."""
@@ -471,8 +471,8 @@ class TestLambdaParser(unittest.TestCase):
 
         product = DictContext({"price": 149.99})
         visitor = EvaluateVisitor(product)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
     def test_arithmetic_addition(self):
         """Test arithmetic addition."""
@@ -483,13 +483,13 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"age": 26})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())  # 26 + 5 = 31 > 30
+        result = spec.accept(visitor)
+        self.assertTrue(result)  # 26 + 5 = 31 > 30
 
         user = DictContext({"age": 24})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())  # 24 + 5 = 29 < 30
+        result = spec.accept(visitor)
+        self.assertFalse(result)  # 24 + 5 = 29 < 30
 
     def test_arithmetic_subtraction(self):
         """Test arithmetic subtraction."""
@@ -497,13 +497,13 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"age": 25})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())  # 25 - 5 = 20 >= 18
+        result = spec.accept(visitor)
+        self.assertTrue(result)  # 25 - 5 = 20 >= 18
 
         user = DictContext({"age": 20})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())  # 20 - 5 = 15 < 18
+        result = spec.accept(visitor)
+        self.assertFalse(result)  # 20 - 5 = 15 < 18
 
     def test_arithmetic_multiplication(self):
         """Test arithmetic multiplication."""
@@ -511,13 +511,13 @@ class TestLambdaParser(unittest.TestCase):
 
         product = DictContext({"price": 60})
         visitor = EvaluateVisitor(product)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())  # 60 * 2 = 120 > 100
+        result = spec.accept(visitor)
+        self.assertTrue(result)  # 60 * 2 = 120 > 100
 
         product = DictContext({"price": 40})
         visitor = EvaluateVisitor(product)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())  # 40 * 2 = 80 < 100
+        result = spec.accept(visitor)
+        self.assertFalse(result)  # 40 * 2 = 80 < 100
 
     def test_arithmetic_division(self):
         """Test arithmetic division."""
@@ -525,13 +525,13 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"score": 85})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())  # 85 / 2 = 42.5 >= 40
+        result = spec.accept(visitor)
+        self.assertTrue(result)  # 85 / 2 = 42.5 >= 40
 
         user = DictContext({"score": 70})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())  # 70 / 2 = 35 < 40
+        result = spec.accept(visitor)
+        self.assertFalse(result)  # 70 / 2 = 35 < 40
 
     def test_arithmetic_modulo(self):
         """Test arithmetic modulo."""
@@ -539,13 +539,13 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"id": 10})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())  # 10 % 2 = 0
+        result = spec.accept(visitor)
+        self.assertTrue(result)  # 10 % 2 = 0
 
         user = DictContext({"id": 11})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())  # 11 % 2 = 1
+        result = spec.accept(visitor)
+        self.assertFalse(result)  # 11 % 2 = 1
 
     def test_complex_arithmetic(self):
         """Test complex arithmetic expression."""
@@ -553,13 +553,13 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"age": 28})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())  # (28 + 5) * 2 = 66 > 60
+        result = spec.accept(visitor)
+        self.assertTrue(result)  # (28 + 5) * 2 = 66 > 60
 
         user = DictContext({"age": 25})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())  # (25 + 5) * 2 = 60 == 60
+        result = spec.accept(visitor)
+        self.assertFalse(result)  # (25 + 5) * 2 = 60 == 60
 
     def test_nested_path_simple(self):
         """Test simple nested path: user.profile.age."""
@@ -578,8 +578,8 @@ class TestLambdaParser(unittest.TestCase):
         })
 
         visitor = EvaluateVisitor(data)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         # Test with age <= 25
         data = NestedDictContext({
@@ -590,8 +590,8 @@ class TestLambdaParser(unittest.TestCase):
         })
 
         visitor = EvaluateVisitor(data)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_nested_path_deep(self):
         """Test deep nested path: user.company.department.manager.level."""
@@ -609,8 +609,8 @@ class TestLambdaParser(unittest.TestCase):
         })
 
         visitor = EvaluateVisitor(data)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         # Test with level <= 5
         data = NestedDictContext({
@@ -625,8 +625,8 @@ class TestLambdaParser(unittest.TestCase):
         })
 
         visitor = EvaluateVisitor(data)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_nested_path_with_and_operator(self):
         """Test nested path with AND operator."""
@@ -642,8 +642,8 @@ class TestLambdaParser(unittest.TestCase):
         })
 
         visitor = EvaluateVisitor(data)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         # Test with active = False
         data = NestedDictContext({
@@ -654,8 +654,8 @@ class TestLambdaParser(unittest.TestCase):
         })
 
         visitor = EvaluateVisitor(data)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_nested_path_with_or_operator(self):
         """Test nested path with OR operator."""
@@ -668,8 +668,8 @@ class TestLambdaParser(unittest.TestCase):
         })
 
         visitor = EvaluateVisitor(data)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         data = NestedDictContext({
             "profile": {
@@ -678,8 +678,8 @@ class TestLambdaParser(unittest.TestCase):
         })
 
         visitor = EvaluateVisitor(data)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         data = NestedDictContext({
             "profile": {
@@ -688,8 +688,8 @@ class TestLambdaParser(unittest.TestCase):
         })
 
         visitor = EvaluateVisitor(data)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_nested_path_equality(self):
         """Test nested path with equality comparison."""
@@ -702,8 +702,8 @@ class TestLambdaParser(unittest.TestCase):
         })
 
         visitor = EvaluateVisitor(data)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         data = NestedDictContext({
             "profile": {
@@ -712,8 +712,8 @@ class TestLambdaParser(unittest.TestCase):
         })
 
         visitor = EvaluateVisitor(data)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_nested_path_complex_expression(self):
         """Test nested path with complex expression."""
@@ -727,8 +727,8 @@ class TestLambdaParser(unittest.TestCase):
         })
 
         visitor = EvaluateVisitor(data)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         # Test with age out of range
         data = NestedDictContext({
@@ -739,8 +739,8 @@ class TestLambdaParser(unittest.TestCase):
         })
 
         visitor = EvaluateVisitor(data)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
         # Test with active = False
         data = NestedDictContext({
@@ -751,8 +751,8 @@ class TestLambdaParser(unittest.TestCase):
         })
 
         visitor = EvaluateVisitor(data)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
 
     # --- Method-based comparison operators ---
@@ -769,13 +769,13 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"age": 30})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"age": 25})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_method_equal(self):
         """Test .Equal() method comparison."""
@@ -785,13 +785,13 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"name": "Alice"})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"name": "Bob"})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_method_equals(self):
         """Test .Equals() method comparison."""
@@ -801,8 +801,8 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"name": "Alice"})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
     def test_method_ne(self):
         """Test .Ne() method comparison."""
@@ -812,13 +812,13 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"status": "active"})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"status": "deleted"})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_method_not_equal(self):
         """Test .NotEqual() method comparison."""
@@ -846,13 +846,13 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"age": 25})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"age": 35})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_method_less_than(self):
         """Test .LessThan() method comparison."""
@@ -868,13 +868,13 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"age": 30})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"age": 35})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_method_le(self):
         """Test .Le() method comparison."""
@@ -902,13 +902,13 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"age": 30})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"age": 20})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_method_greater_than(self):
         """Test .GreaterThan() method comparison."""
@@ -924,13 +924,13 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"age": 25})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"age": 20})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_method_ge(self):
         """Test .Ge() method comparison."""
@@ -962,13 +962,13 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"email": None})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"email": "test@example.com"})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_method_is_not_null(self):
         """Test .IsNotNull() method."""
@@ -980,13 +980,13 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"email": "test@example.com"})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"email": None})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     # --- Method-based operators with nested paths ---
 
@@ -1005,8 +1005,8 @@ class TestLambdaParser(unittest.TestCase):
         })
 
         visitor = EvaluateVisitor(data)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         data = NestedDictContext({
             "profile": {
@@ -1015,8 +1015,8 @@ class TestLambdaParser(unittest.TestCase):
         })
 
         visitor = EvaluateVisitor(data)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_method_nested_path_is_null(self):
         """Test IsNull with nested path: user.profile.email.IsNull()."""
@@ -1031,8 +1031,8 @@ class TestLambdaParser(unittest.TestCase):
         })
 
         visitor = EvaluateVisitor(data)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         data = NestedDictContext({
             "profile": {
@@ -1041,8 +1041,8 @@ class TestLambdaParser(unittest.TestCase):
         })
 
         visitor = EvaluateVisitor(data)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     # --- Method-based operators combined with logical operators ---
 
@@ -1054,13 +1054,13 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"age": 25, "active": True})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"age": 15, "active": True})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_method_combined_with_or(self):
         """Test method comparison combined with OR."""
@@ -1070,18 +1070,18 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"age": 15})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"age": 70})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"age": 30})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     def test_method_is_null_combined_with_or(self):
         """Test IsNull combined with OR: user.email.IsNull() or user.email.Eq("")."""
@@ -1091,18 +1091,18 @@ class TestLambdaParser(unittest.TestCase):
 
         user = DictContext({"email": None})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"email": ""})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         user = DictContext({"email": "test@example.com"})
         visitor = EvaluateVisitor(user)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
     # --- Method-based operators inside wildcards ---
 
@@ -1120,8 +1120,8 @@ class TestLambdaParser(unittest.TestCase):
         store = DictContext({"items": items})
 
         visitor = EvaluateVisitor(store)
-        spec.accept(visitor)
-        self.assertTrue(visitor.result())
+        result = spec.accept(visitor)
+        self.assertTrue(result)
 
         item1 = DictContext({"price": 29})
         item2 = DictContext({"price": 49})
@@ -1130,8 +1130,8 @@ class TestLambdaParser(unittest.TestCase):
         store = DictContext({"items": items})
 
         visitor = EvaluateVisitor(store)
-        spec.accept(visitor)
-        self.assertFalse(visitor.result())
+        result = spec.accept(visitor)
+        self.assertFalse(result)
 
 
 if __name__ == "__main__":

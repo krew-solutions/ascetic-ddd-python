@@ -4,6 +4,7 @@ from typing import Any, Protocol, runtime_checkable
 from ascetic_ddd.specification.domain.constants import OPERATOR_MAPPING
 from ascetic_ddd.specification.domain.nodes import (
     Collection, Field, GlobalScope, Infix, Item, Object, Prefix, Value, Postfix,
+    Visitor,
 )
 
 
@@ -16,52 +17,37 @@ class Context(Protocol):
         ...
 
 
-class EvaluateVisitor:
+class EvaluateVisitor(Visitor[Any]):
     """Visitor that evaluates specification expressions."""
 
     _OPERATOR_MAPPING = OPERATOR_MAPPING
 
-    def __init__(self, context: Context):
+    __slots__ = ('_context', '_current_item')
+
+    def __init__(self, context: Context, current_item: Context | None = None):
         self._context = context
-        self._current_value: Any = None
-        self._current_item: Context | None = None
-        self._stack: list[Context] = []
+        self._current_item = current_item
 
-    def _push(self, ctx: Context) -> None:
-        """Push current context onto stack and set new context."""
-        self._stack.append(self._context)
-        self._context = ctx
+    def _with_item(self, item: Context) -> 'EvaluateVisitor':
+        """Return a sub-visitor bound to a new current item (for wildcard iteration)."""
+        return EvaluateVisitor(self._context, item)
 
-    def _pop(self) -> None:
-        """Restore previous context from stack."""
-        self._context = self._stack.pop()
+    def visit_global_scope(self, node: GlobalScope) -> Context:
+        """Visit global scope node — return the root context."""
+        return self._context
 
-    def current_value(self) -> Any:
-        """Return current evaluation result."""
-        return self._current_value
-
-    def set_current_value(self, val: Any) -> None:
-        """Set current evaluation result."""
-        self._current_value = val
-
-    def visit_global_scope(self, node: GlobalScope) -> None:
-        """Visit global scope node."""
-        self._push(self._context)
-
-    def visit_object(self, node: Object) -> None:
-        """Visit object node and navigate to it."""
-        node.parent().accept(self)
-        obj = self._context.get(node.name())
-        self._pop()
+    def visit_object(self, node: Object) -> Context:
+        """Visit object node — navigate to it from the parent context."""
+        parent_ctx = node.parent().accept(self)
+        obj = parent_ctx.get(node.name())
         if not isinstance(obj, Context):
-            raise TypeError(f"Object {node.name()} is not a Context")
-        self._push(obj)
+            raise TypeError("Object %s is not a Context" % node.name())
+        return obj
 
-    def visit_collection(self, node: Collection) -> None:
-        """Visit collection node and evaluate predicate for each item."""
-        node.parent().accept(self)
-        items = self._context.get(node.name())
-        self._pop()
+    def visit_collection(self, node: Collection) -> bool:
+        """Visit collection node — evaluate predicate for each item; OR-aggregate."""
+        parent_ctx = node.parent().accept(self)
+        items = parent_ctx.get(node.name())
 
         if not isinstance(items, list):
             raise TypeError("Value is not a collection of Contexts")
@@ -70,58 +56,42 @@ class EvaluateVisitor:
         for item in items:
             if not isinstance(item, Context):
                 raise TypeError("Collection item is not a Context")
-            self._current_item = item
-            node.predicate().accept(self)
-            if not isinstance(self.current_value(), bool):
+            value = node.predicate().accept(self._with_item(item))
+            if not isinstance(value, bool):
                 raise TypeError("Predicate did not yield a boolean")
-            result = result or self.current_value()
+            result = result or value
+        return result
 
-        self.set_current_value(result)
-
-    def visit_item(self, node: Item) -> None:
+    def visit_item(self, node: Item) -> Context:
         """Visit item node (current collection item)."""
         if self._current_item is None:
             raise RuntimeError("No current item in context")
-        self._push(self._current_item)
+        return self._current_item
 
-    def visit_field(self, node: Field) -> None:
-        """Visit field node and retrieve its value."""
-        node.object().accept(self)
-        value = self._context.get(node.name())
-        self._pop()
-        self.set_current_value(value)
+    def visit_field(self, node: Field) -> Any:
+        """Visit field node — retrieve its value from the object context."""
+        obj_ctx = node.object().accept(self)
+        return obj_ctx.get(node.name())
 
-    def visit_value(self, node: Value) -> None:
-        """Visit value node."""
-        self.set_current_value(node.value())
+    def visit_value(self, node: Value) -> Any:
+        """Visit value node — return the literal."""
+        return node.value()
 
-    def visit_prefix(self, node: Prefix) -> None:
+    def visit_prefix(self, node: Prefix) -> Any:
         """Visit prefix operator node."""
-        node.operand().accept(self)
-        operand = self.current_value()
-        self.set_current_value(self._OPERATOR_MAPPING[node.operator()](operand))
+        operand = node.operand().accept(self)
+        return self._OPERATOR_MAPPING[node.operator()](operand)
 
-    def visit_infix(self, node: Infix) -> None:
+    def visit_infix(self, node: Infix) -> Any:
         """Visit infix operator node."""
-        node.left().accept(self)
-        left = self.current_value()
+        left = node.left().accept(self)
+        right = node.right().accept(self)
+        return self._OPERATOR_MAPPING[node.operator()](left, right)
 
-        node.right().accept(self)
-        right = self.current_value()
-        self.set_current_value(self._OPERATOR_MAPPING[node.operator()](left, right))
-
-    def visit_postfix(self, node: Postfix) -> None:
+    def visit_postfix(self, node: Postfix) -> Any:
         """Visit postfix operator node."""
-        node.operand().accept(self)
-        operand = self.current_value()
-        self.set_current_value(self._OPERATOR_MAPPING[node.operator()](operand))
-
-    def result(self) -> bool:
-        """Get final boolean result of evaluation."""
-        result = self.current_value()
-        if not isinstance(result, bool):
-            raise TypeError("The result %r is not a bool", (result,))
-        return result
+        operand = node.operand().accept(self)
+        return self._OPERATOR_MAPPING[node.operator()](operand)
 
 
 class CollectionContext:

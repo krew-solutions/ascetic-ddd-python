@@ -1,6 +1,8 @@
 """PostgreSQL visitor for generating SQL from specification AST."""
+import dataclasses
+
 import inflection
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 from ascetic_ddd.specification.domain.nodes import (
     Visitor,
@@ -24,9 +26,12 @@ from ascetic_ddd.specification.infrastructure.transform_visitor import ITransfor
 from ascetic_ddd.specification.infrastructure.schema import SchemaRegistry
 
 
+SqlFragment = Tuple[str, List[Any]]
+
+
 def compile_specification(
     context: ITransformContext, expression: Visitable
-) -> Tuple[str, List[Any]]:
+) -> SqlFragment:
     """
     Compile a domain specification to SQL.
 
@@ -38,20 +43,16 @@ def compile_specification(
         Tuple of (sql_string, parameters)
     """
     # First, transform domain expression to infrastructure expression
-    transform_visitor = TransformVisitor(context)
-    expression.accept(transform_visitor)
-    infrastructure_expr = transform_visitor.result()
+    infrastructure_expr = expression.accept(TransformVisitor(context))
 
     # Then, generate SQL from infrastructure expression
-    postgresql_visitor = PostgresqlVisitor()
-    infrastructure_expr.accept(postgresql_visitor)
-    return postgresql_visitor.result()
+    return infrastructure_expr.accept(PostgresqlVisitor())
 
 
 def compile_to_sql(
     expression: Visitable,
     schema: Optional[SchemaRegistry] = None
-) -> Tuple[str, List[Any]]:
+) -> SqlFragment:
     """
     Compile AST directly to SQL without context transformation.
 
@@ -64,14 +65,61 @@ def compile_to_sql(
     Returns:
         Tuple of (sql_string, parameters)
     """
-    postgresql_visitor = PostgresqlVisitor(schema=schema)
-    expression.accept(postgresql_visitor)
-    return postgresql_visitor.result()
+    return expression.accept(PostgresqlVisitor(schema=schema))
 
 
-class PostgresqlVisitor(Visitor):
+@dataclasses.dataclass
+class _Counters:
+    """Shared monotonic counters across the visitor tree.
+
+    These cross sub-visitor boundaries: each new $-placeholder and each new
+    wildcard alias must get a globally-unique number, so they live in a
+    mutable container that is shared by reference among all sub-visitors.
+    """
+    placeholder_index: int = 0
+    wildcard_counter: int = 0
+
+
+def _build_precedence_mapping() -> dict[str, int]:
+    """
+    Setup PostgreSQL operator precedence.
+
+    Based on: https://www.postgresql.org/docs/14/sql-syntax-lexical.html#SQL-PRECEDENCE-TABLE
+    Higher numbers = higher precedence.
+    """
+    mapping: dict[str, int] = {}
+
+    def assign(precedence: int, *operators: str) -> None:
+        for op in operators:
+            mapping[op] = precedence
+
+    assign(160, ". LEFT", ":: LEFT")
+    assign(150, "[ LEFT")
+    assign(140, "+ RIGHT", "- RIGHT")
+    assign(130, "^ LEFT")
+    assign(120, "* LEFT", "/ LEFT", "% LEFT")
+    assign(110, "+ LEFT", "- LEFT")
+    # All other native and user-defined operators
+    assign(100, "(any other operator) LEFT")
+    assign(90, "BETWEEN NON", "IN NON", "LIKE NON", "ILIKE NON", "SIMILAR NON")
+    assign(80, "< NON", "> NON", "= NON", "<= NON", ">= NON", "!= NON")
+    assign(70, "IS NON", "ISNULL NON", "NOTNULL NON")
+    assign(60, "NOT RIGHT")
+    assign(50, "AND LEFT")
+    assign(40, "OR LEFT")
+    return mapping
+
+
+class PostgresqlVisitor(Visitor[SqlFragment]):
     """
     Visitor that generates PostgreSQL SQL from specification AST.
+
+    Functional: each ``visit_*`` returns ``(sql_fragment, params)``. No mutable
+    accumulator state — instead, scoped state (outer precedence, wildcard
+    context) is captured in immutable ``__slots__`` attributes and changed by
+    constructing a sub-visitor via ``_at_precedence``/``_enter_wildcard``.
+    Monotonic counters ($-placeholder index, wildcard alias counter) live in a
+    shared ``_Counters`` container that crosses sub-visitor boundaries.
 
     Handles:
     - Field path rendering (e.g., "something.tenant_id")
@@ -81,108 +129,87 @@ class PostgresqlVisitor(Visitor):
     - Infix operators (AND, OR, =, <, >, etc.)
     - Collection/Wildcard operators with embedded (unnest) and relational (EXISTS) modes
     """
-    _sql: str
-    _parameters: List[Any]
-    _placeholder_index: int
-    _precedence: int
-    _precedence_mapping: Dict[str, int]
-    # Wildcard context tracking
-    _in_wildcard: bool
-    _wildcard_alias: str
-    _wildcard_counter: int
-    # Schema registry for relational collections
-    _schema: Optional[SchemaRegistry]
+
+    _PRECEDENCE_MAPPING: dict[str, int] = _build_precedence_mapping()
+
+    __slots__ = (
+        '_counters', '_schema',
+        '_outer_precedence', '_in_wildcard', '_wildcard_alias',
+    )
 
     def __init__(
         self,
         placeholder_index: int = 0,
-        schema: Optional[SchemaRegistry] = None
+        schema: Optional[SchemaRegistry] = None,
+        *,
+        _counters: Optional[_Counters] = None,
+        _outer_precedence: int = 0,
+        _in_wildcard: bool = False,
+        _wildcard_alias: str = "",
     ):
-        self._sql = ""
-        self._placeholder_index = placeholder_index
-        self._parameters = []
-        self._precedence = 0
-        self._precedence_mapping = {}
-        self._setup_precedence()
-        # Wildcard context tracking
-        self._in_wildcard = False
-        self._wildcard_alias = ""
-        self._wildcard_counter = 0
-        # Schema registry for relational collections
+        if _counters is None:
+            _counters = _Counters(placeholder_index=placeholder_index)
+        self._counters = _counters
         self._schema = schema
+        self._outer_precedence = _outer_precedence
+        self._in_wildcard = _in_wildcard
+        self._wildcard_alias = _wildcard_alias
 
-    def _setup_precedence(self) -> None:
-        """
-        Setup PostgreSQL operator precedence.
+    # --- Sub-visitor builders ---
 
-        Based on: https://www.postgresql.org/docs/14/sql-syntax-lexical.html#SQL-PRECEDENCE-TABLE
-        """
-        # Higher numbers = higher precedence
-        self._set_precedence(160, ". LEFT", ":: LEFT")
-        self._set_precedence(150, "[ LEFT")
-        self._set_precedence(140, "+ RIGHT", "- RIGHT")
-        self._set_precedence(130, "^ LEFT")
-        self._set_precedence(120, "* LEFT", "/ LEFT", "% LEFT")
-        self._set_precedence(110, "+ LEFT", "- LEFT")
-        # All other native and user-defined operators
-        self._set_precedence(100, "(any other operator) LEFT")
-        self._set_precedence(
-            90, "BETWEEN NON", "IN NON", "LIKE NON", "ILIKE NON", "SIMILAR NON"
-        )
-        self._set_precedence(
-            80, "< NON", "> NON", "= NON", "<= NON", ">= NON", "!= NON"
-        )
-        self._set_precedence(70, "IS NON", "ISNULL NON", "NOTNULL NON")
-        self._set_precedence(60, "NOT RIGHT")
-        self._set_precedence(50, "AND LEFT")
-        self._set_precedence(40, "OR LEFT")
-
-    def _set_precedence(self, precedence: int, *operators: str) -> None:
-        """Set precedence for given operators."""
-        for op in operators:
-            self._precedence_mapping[op] = precedence
-
-    def _get_node_precedence_key(self, node: Operable) -> str:
-        """Get precedence key for an operable node."""
-        operator = node.operator()
-        associativity = node.associativity()
-        return f"{operator} {associativity}"
-
-    def _visit(self, precedence_key: str, callable_fn: Callable[[], None]) -> None:
-        """
-        Visit with precedence handling.
-
-        Automatically adds parentheses if inner precedence is lower than outer.
-        """
-        outer_precedence = self._precedence
-        inner_precedence = self._precedence_mapping.get(
-            precedence_key,
-            self._precedence_mapping.get("(any other operator) LEFT", outer_precedence),
+    def _at_precedence(self, prec: int) -> 'PostgresqlVisitor':
+        """Return a sub-visitor with the given outer precedence."""
+        return PostgresqlVisitor(
+            schema=self._schema,
+            _counters=self._counters,
+            _outer_precedence=prec,
+            _in_wildcard=self._in_wildcard,
+            _wildcard_alias=self._wildcard_alias,
         )
 
-        self._precedence = inner_precedence
+    def _enter_wildcard(self, alias: str) -> 'PostgresqlVisitor':
+        """Return a sub-visitor scoped to a new wildcard context."""
+        return PostgresqlVisitor(
+            schema=self._schema,
+            _counters=self._counters,
+            _outer_precedence=0,
+            _in_wildcard=True,
+            _wildcard_alias=alias,
+        )
 
-        # Add opening parenthesis if needed
-        if inner_precedence < outer_precedence:
-            self._sql += "("
+    # --- Precedence helpers ---
 
-        callable_fn()
+    def _lookup_precedence(self, node: Operable) -> int:
+        """Return the inner precedence for an operable node."""
+        key = "%s %s" % (node.operator(), node.associativity())
+        return self._PRECEDENCE_MAPPING.get(
+            key,
+            self._PRECEDENCE_MAPPING.get(
+                "(any other operator) LEFT", self._outer_precedence
+            ),
+        )
 
-        # Add closing parenthesis if needed
-        if inner_precedence < outer_precedence:
-            self._sql += ")"
+    def _wrap_parens(self, inner_prec: int, sql: str) -> str:
+        """Add parentheses if inner precedence is lower than current outer."""
+        if inner_prec < self._outer_precedence:
+            return "(%s)" % sql
+        return sql
 
-        self._precedence = outer_precedence
+    # --- Visit methods ---
 
-    def visit_global_scope(self, node: GlobalScope) -> None:
-        """Visit global scope node."""
-        pass
+    def visit_global_scope(self, node: GlobalScope) -> SqlFragment:
+        """Visit global scope node — produces no SQL fragment."""
+        return "", []
 
-    def visit_object(self, node: Object) -> None:
-        """Visit object node."""
-        pass
+    def visit_object(self, node: Object) -> SqlFragment:
+        """Visit object node — produces no SQL fragment."""
+        return "", []
 
-    def visit_collection(self, node: Collection) -> None:
+    def visit_item(self, node: Item) -> SqlFragment:
+        """Visit item node — produces no SQL fragment (handled by visit_field)."""
+        return "", []
+
+    def visit_collection(self, node: Collection) -> SqlFragment:
         """
         Visit collection node (Wildcard).
 
@@ -190,128 +217,78 @@ class PostgresqlVisitor(Visitor):
         1. Embedded (JSONB/array): EXISTS (SELECT 1 FROM unnest(collection) AS item WHERE predicate)
         2. Relational (separate table): EXISTS (SELECT 1 FROM table AS item WHERE fk_conditions AND predicate)
         """
-        # Extract collection name for alias and schema lookup
         collection_name = self._extract_collection_name(node)
         field_name = self._extract_field_name(node)
 
-        # Check if this is a relational collection
         if self._schema is not None and self._schema.is_relational(field_name):
-            self._visit_relational_collection(node, field_name, collection_name)
-        else:
-            # Default: embedded collection (JSONB/array)
-            self._visit_embedded_collection(node, collection_name)
+            return self._visit_relational_collection(node, field_name, collection_name)
+        return self._visit_embedded_collection(node, collection_name)
 
-    def _visit_embedded_collection(self, node: Collection, collection_name: str) -> None:
+    def _visit_embedded_collection(
+        self, node: Collection, collection_name: str
+    ) -> SqlFragment:
         """Generate SQL for JSONB/array collections using unnest."""
-        # Extract collection path (e.g., "Items" from Object(GlobalScope(), "Items"))
         collection_path = self._extract_collection_path(node)
 
-        # Generate unique alias for this wildcard
-        self._wildcard_counter += 1
-        alias = f"{collection_name.lower()}_{self._wildcard_counter}"
+        self._counters.wildcard_counter += 1
+        alias = "%s_%d" % (collection_name.lower(), self._counters.wildcard_counter)
 
-        # Save context
-        outer_in_wildcard = self._in_wildcard
-        outer_wildcard_alias = self._wildcard_alias
+        sub = self._enter_wildcard(alias)
+        predicate_sql, predicate_params = node.predicate().accept(sub)
 
-        # Enter wildcard context
-        self._in_wildcard = True
-        self._wildcard_alias = alias
-
-        # Generate EXISTS subquery with unnest
-        self._sql += "EXISTS (SELECT 1 FROM unnest("
-        self._sql += collection_path
-        self._sql += ") AS "
-        self._sql += alias
-        self._sql += " WHERE "
-
-        # Visit predicate
-        node.predicate().accept(self)
-
-        self._sql += ")"
-
-        # Restore context
-        self._in_wildcard = outer_in_wildcard
-        self._wildcard_alias = outer_wildcard_alias
+        sql = "EXISTS (SELECT 1 FROM unnest(%s) AS %s WHERE %s)" % (
+            collection_path, alias, predicate_sql,
+        )
+        return sql, predicate_params
 
     def _visit_relational_collection(
         self,
         node: Collection,
         field_name: str,
-        collection_name: str
-    ) -> None:
+        collection_name: str,
+    ) -> SqlFragment:
         """Generate SQL for collections in separate tables."""
         assert self._schema is not None
         mapping = self._schema.get(field_name)
         if mapping is None:
             # Fallback to embedded if no mapping found
-            self._visit_embedded_collection(node, collection_name)
-            return
+            return self._visit_embedded_collection(node, collection_name)
 
-        # Generate unique alias for this wildcard
-        self._wildcard_counter += 1
+        self._counters.wildcard_counter += 1
         alias = mapping.alias if mapping.alias else collection_name.lower()
-        alias = f"{alias}_{self._wildcard_counter}"
+        alias = "%s_%d" % (alias, self._counters.wildcard_counter)
 
-        # Save context BEFORE determining parent ref
-        outer_in_wildcard = self._in_wildcard
-        outer_wildcard_alias = self._wildcard_alias
+        # Determine parent reference BEFORE entering new wildcard context
+        parent_ref = self._get_parent_ref_for_relational()
 
-        # Determine parent reference BEFORE entering new context
-        parent_ref = self._get_parent_ref_for_relational(
-            outer_in_wildcard, outer_wildcard_alias
-        )
-
-        # Enter wildcard context
-        self._in_wildcard = True
-        self._wildcard_alias = alias
-
-        # Generate EXISTS subquery with JOIN conditions
-        self._sql += "EXISTS (SELECT 1 FROM "
-        self._sql += mapping.table
-        self._sql += " AS "
-        self._sql += alias
-        self._sql += " WHERE "
+        sub = self._enter_wildcard(alias)
+        predicate_sql, predicate_params = node.predicate().accept(sub)
 
         # Generate FK conditions (supports composite keys)
-        for i, fk in enumerate(mapping.foreign_keys):
-            if i > 0:
-                self._sql += " AND "
-            self._sql += alias
-            self._sql += "."
-            self._sql += fk.child_column
-            self._sql += " = "
-            self._sql += parent_ref
-            self._sql += "."
-            self._sql += fk.parent_column
+        fk_parts = []
+        for fk in mapping.foreign_keys:
+            fk_parts.append(
+                "%s.%s = %s.%s"
+                % (alias, fk.child_column, parent_ref, fk.parent_column)
+            )
+        fk_conditions = " AND ".join(fk_parts)
 
-        # Add predicate
-        self._sql += " AND "
+        sql = "EXISTS (SELECT 1 FROM %s AS %s WHERE %s AND %s)" % (
+            mapping.table, alias, fk_conditions, predicate_sql,
+        )
+        return sql, predicate_params
 
-        # Visit predicate
-        node.predicate().accept(self)
-
-        self._sql += ")"
-
-        # Restore context
-        self._in_wildcard = outer_in_wildcard
-        self._wildcard_alias = outer_wildcard_alias
-
-    def _get_parent_ref_for_relational(
-        self,
-        outer_in_wildcard: bool,
-        outer_wildcard_alias: str
-    ) -> str:
+    def _get_parent_ref_for_relational(self) -> str:
         """
-        Return parent reference using saved context.
+        Return parent reference based on current wildcard context.
 
-        Called BEFORE entering new wildcard context to get the correct outer reference.
+        Called BEFORE entering a new wildcard context to get the correct outer reference.
         """
-        # If we were in a nested wildcard, use the outer wildcard alias
-        if outer_in_wildcard and outer_wildcard_alias:
-            return outer_wildcard_alias
+        # If we are inside a nested wildcard, use the outer wildcard alias.
+        if self._in_wildcard and self._wildcard_alias:
+            return self._wildcard_alias
 
-        # Otherwise, use schema's parent reference
+        # Otherwise, use schema's parent reference.
         if self._schema is not None:
             return self._schema.get_parent_ref()
 
@@ -334,7 +311,7 @@ class PostgresqlVisitor(Visitor):
             parts.insert(0, parent.name())
             parent = parent.parent()
 
-        # If we're in a wildcard context and the root parent is Item(), prefix with current alias
+        # If we're in a wildcard context and the root parent is Item(), prefix with current alias.
         # This handles nested wildcards: category_1.Items instead of just Items
         if self._in_wildcard and self._is_item_reference(parent):
             if parts:
@@ -358,96 +335,68 @@ class PostgresqlVisitor(Visitor):
         """Check if the object is Item() (current item in wildcard)."""
         return isinstance(obj, Item)
 
-    def visit_item(self, node: Item) -> None:
-        """
-        Visit item node.
-
-        Item() in wildcard context refers to the current item alias.
-        This is handled in visit_field when we detect Item() as parent.
-        """
-        pass
-
-    def visit_field(self, node: Field) -> None:
+    def visit_field(self, node: Field) -> SqlFragment:
         """
         Visit field node and render as SQL field path.
 
         Handles both normal field access and item references in wildcard context.
         """
-        # Check if this field references an item in a wildcard context
         if self._in_wildcard and self._is_item_reference(node.object()):
             # This is a field of the current item: item.Price, item.Active, etc.
-            self._sql += self._wildcard_alias
-            self._sql += "."
-            self._sql += node.name()
-        else:
-            # Normal field access
-            path = extract_field_path(node)
-            name = ".".join(path)
-            self._sql += name
+            return "%s.%s" % (self._wildcard_alias, node.name()), []
 
-    def visit_value(self, node: Value) -> None:
+        # Normal field access
+        path = extract_field_path(node)
+        return ".".join(path), []
+
+    def visit_value(self, node: Value) -> SqlFragment:
         """
-        Visit value node and add parameterized placeholder.
-
-        Adds parameter to list and renders as $N placeholder.
+        Visit value node and produce a parameterized placeholder.
         """
-        val = node.value()
-        self._parameters.append(val)
-        self._sql += f"${len(self._parameters)}"
+        self._counters.placeholder_index += 1
+        return "$%d" % self._counters.placeholder_index, [node.value()]
 
-    def visit_prefix(self, node: Prefix) -> None:
+    def visit_prefix(self, node: Prefix) -> SqlFragment:
         """
         Visit prefix node (e.g., NOT, unary +/-).
 
         Handles precedence and renders operator before operand.
         """
-        precedence_key = self._get_node_precedence_key(node)
+        inner_prec = self._lookup_precedence(node)
+        sub = self._at_precedence(inner_prec)
+        op_sql, op_params = node.operand().accept(sub)
 
-        def visit_fn():
-            operator = node.operator()
-            # Unary +/- don't need space
-            if operator in (OPERATOR.POS, OPERATOR.NEG):
-                self._sql += str(operator.value)
-            else:
-                self._sql += f"{operator.value} "
-            node.operand().accept(self)
+        # Unary +/- don't need space
+        if node.operator() in (OPERATOR.POS, OPERATOR.NEG):
+            sql = "%s%s" % (node.operator().value, op_sql)
+        else:
+            sql = "%s %s" % (node.operator().value, op_sql)
 
-        self._visit(precedence_key, visit_fn)
+        return self._wrap_parens(inner_prec, sql), op_params
 
-    def visit_infix(self, node: Infix) -> None:
+    def visit_infix(self, node: Infix) -> SqlFragment:
         """
         Visit infix node (e.g., AND, OR, =, <, >).
 
         Handles precedence and renders: left operator right
         """
-        precedence_key = self._get_node_precedence_key(node)
+        inner_prec = self._lookup_precedence(node)
+        sub = self._at_precedence(inner_prec)
+        left_sql, left_params = node.left().accept(sub)
+        right_sql, right_params = node.right().accept(sub)
 
-        def visit_fn():
-            node.left().accept(self)
-            self._sql += f" {node.operator().value} "
-            node.right().accept(self)
+        sql = "%s %s %s" % (left_sql, node.operator().value, right_sql)
+        return self._wrap_parens(inner_prec, sql), left_params + right_params
 
-        self._visit(precedence_key, visit_fn)
-
-    def visit_postfix(self, node: Postfix) -> None:
+    def visit_postfix(self, node: Postfix) -> SqlFragment:
         """
         Visit postfix node (e.g., IS NULL).
 
         Handles precedence and renders operand before operator.
         """
-        precedence_key = self._get_node_precedence_key(node)
+        inner_prec = self._lookup_precedence(node)
+        sub = self._at_precedence(inner_prec)
+        op_sql, op_params = node.operand().accept(sub)
 
-        def visit_fn():
-            node.operand().accept(self)
-            self._sql += f" {node.operator().value}"
-
-        self._visit(precedence_key, visit_fn)
-
-    def result(self) -> Tuple[str, List[Any]]:
-        """
-        Return the generated SQL and parameters.
-
-        Returns:
-            Tuple of (sql_string, parameter_list)
-        """
-        return self._sql, self._parameters
+        sql = "%s %s" % (op_sql, node.operator().value)
+        return self._wrap_parens(inner_prec, sql), op_params

@@ -862,9 +862,15 @@ class NativeParametrizedSpecification:
 
         # Evaluate using EvaluateVisitor
         visitor = EvaluateVisitor(data)
-        bound_ast.accept(visitor)
+        result = bound_ast.accept(visitor)
 
-        return visitor.result()
+        if not isinstance(result, bool):
+            raise JSONPathTypeError(
+                "Specification did not yield a boolean",
+                expected="bool",
+                got=type(result).__name__,
+            )
+        return result
 
 
 def parse(template: str) -> NativeParametrizedSpecification:

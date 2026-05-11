@@ -120,9 +120,9 @@ class TestEvaluateVisitor(unittest.TestCase):
         visitor = EvaluateVisitor(ctx)
 
         val_node = Value(True)
-        val_node.accept(visitor)
+        result = val_node.accept(visitor)
 
-        self.assertEqual(visitor.current_value(), True)
+        self.assertEqual(result, True)
 
     def test_not_operator(self):
         """Test NOT operator evaluation."""
@@ -130,9 +130,9 @@ class TestEvaluateVisitor(unittest.TestCase):
         visitor = EvaluateVisitor(ctx)
 
         expression = Not(Value(True))
-        expression.accept(visitor)
+        result = expression.accept(visitor)
 
-        self.assertEqual(visitor.result(), False)
+        self.assertEqual(result, False)
 
     def test_and_operator(self):
         """Test AND operator evaluation."""
@@ -140,9 +140,9 @@ class TestEvaluateVisitor(unittest.TestCase):
         visitor = EvaluateVisitor(ctx)
 
         expression = And(Value(True), Value(True))
-        expression.accept(visitor)
+        result = expression.accept(visitor)
 
-        self.assertEqual(visitor.result(), True)
+        self.assertEqual(result, True)
 
     def test_and_operator_false(self):
         """Test AND operator with false operand."""
@@ -150,9 +150,9 @@ class TestEvaluateVisitor(unittest.TestCase):
         visitor = EvaluateVisitor(ctx)
 
         expression = And(Value(True), Value(False))
-        expression.accept(visitor)
+        result = expression.accept(visitor)
 
-        self.assertEqual(visitor.result(), False)
+        self.assertEqual(result, False)
 
     def test_equal_operator(self):
         """Test equality operator."""
@@ -160,9 +160,9 @@ class TestEvaluateVisitor(unittest.TestCase):
         visitor = EvaluateVisitor(ctx)
 
         expression = Equal(Value(ComparableInt(5)), Value(ComparableInt(5)))
-        expression.accept(visitor)
+        result = expression.accept(visitor)
 
-        self.assertEqual(visitor.result(), True)
+        self.assertEqual(result, True)
 
     def test_equal_operator_not_equal(self):
         """Test equality operator with different values."""
@@ -170,9 +170,9 @@ class TestEvaluateVisitor(unittest.TestCase):
         visitor = EvaluateVisitor(ctx)
 
         expression = Equal(Value(ComparableInt(5)), Value(ComparableInt(10)))
-        expression.accept(visitor)
+        result = expression.accept(visitor)
 
-        self.assertEqual(visitor.result(), False)
+        self.assertEqual(result, False)
 
     def test_greater_than_operator(self):
         """Test greater-than operator."""
@@ -182,9 +182,9 @@ class TestEvaluateVisitor(unittest.TestCase):
         expression = GreaterThan(
             Value(ComparableInt(10)), Value(ComparableInt(5))
         )
-        expression.accept(visitor)
+        result = expression.accept(visitor)
 
-        self.assertEqual(visitor.result(), True)
+        self.assertEqual(result, True)
 
     def test_greater_than_operator_false(self):
         """Test greater-than operator with false result."""
@@ -194,9 +194,9 @@ class TestEvaluateVisitor(unittest.TestCase):
         expression = GreaterThan(
             Value(ComparableInt(5)), Value(ComparableInt(10))
         )
-        expression.accept(visitor)
+        result = expression.accept(visitor)
 
-        self.assertEqual(visitor.result(), False)
+        self.assertEqual(result, False)
 
     def test_field_access(self):
         """Test field access through context."""
@@ -204,9 +204,7 @@ class TestEvaluateVisitor(unittest.TestCase):
         visitor = EvaluateVisitor(ctx)
 
         field_node = Field(GlobalScope(), "age")
-        field_node.accept(visitor)
-
-        result = visitor.current_value()
+        result = field_node.accept(visitor)
         self.assertIsInstance(result, ComparableInt)
         self.assertEqual(result.val, 25)
 
@@ -218,9 +216,9 @@ class TestEvaluateVisitor(unittest.TestCase):
 
         obj = Object(GlobalScope(), "user")
         field_node = Field(obj, "name")
-        field_node.accept(visitor)
+        result = field_node.accept(visitor)
 
-        self.assertEqual(visitor.current_value(), "Alice")
+        self.assertEqual(result, "Alice")
 
     def test_complex_expression(self):
         """Test complex boolean expression."""
@@ -233,9 +231,9 @@ class TestEvaluateVisitor(unittest.TestCase):
         active_field = Field(GlobalScope(), "active")
         expression = And(age_check, active_field)
 
-        expression.accept(visitor)
+        result = expression.accept(visitor)
 
-        self.assertEqual(visitor.result(), True)
+        self.assertEqual(result, True)
 
     def test_collection_wildcard(self):
         """Test collection with wildcard and predicate."""
@@ -253,10 +251,10 @@ class TestEvaluateVisitor(unittest.TestCase):
         predicate = GreaterThan(score_field, Value(ComparableInt(80)))
         wildcard_node = Wildcard(items_obj, predicate)
 
-        wildcard_node.accept(visitor)
+        result = wildcard_node.accept(visitor)
 
         # Should be True because at least one item has score > 80
-        self.assertEqual(visitor.result(), True)
+        self.assertEqual(result, True)
 
     def test_collection_all_false(self):
         """Test collection where no items match predicate."""
@@ -273,10 +271,10 @@ class TestEvaluateVisitor(unittest.TestCase):
         predicate = GreaterThan(score_field, Value(ComparableInt(80)))
         wildcard_node = Wildcard(items_obj, predicate)
 
-        wildcard_node.accept(visitor)
+        result = wildcard_node.accept(visitor)
 
         # Should be False because no items have score > 80
-        self.assertEqual(visitor.result(), False)
+        self.assertEqual(result, False)
 
 
 class TestErrorHandling(unittest.TestCase):
@@ -304,9 +302,9 @@ class TestErrorHandling(unittest.TestCase):
 
         # This will actually work because strings have __eq__
         # So we just verify it doesn't raise an error
-        expression.accept(visitor)
+        result = expression.accept(visitor)
         # Result should be False since strings are different
-        self.assertEqual(visitor.result(), False)
+        self.assertEqual(result, False)
 
 
 if __name__ == "__main__":

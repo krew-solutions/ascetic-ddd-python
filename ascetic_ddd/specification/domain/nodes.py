@@ -1,46 +1,51 @@
 """AST nodes for Specification pattern."""
+import typing
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Protocol
 
 from ascetic_ddd.specification.domain.constants import OPERATOR, ASSOCIATIVITY
 
 
-class Visitor(Protocol):
+T = typing.TypeVar("T")
+T_co = typing.TypeVar("T_co", covariant=True)
+
+
+class Visitor(Protocol[T_co]):
     """Visitor interface for traversing AST nodes."""
 
-    def visit_global_scope(self, node: "GlobalScope") -> None:
+    def visit_global_scope(self, node: "GlobalScope") -> T_co:
         """Visit a global scope node."""
         ...
 
-    def visit_object(self, node: "Object") -> None:
+    def visit_object(self, node: "Object") -> T_co:
         """Visit an object node."""
         ...
 
-    def visit_collection(self, node: "Collection") -> None:
+    def visit_collection(self, node: "Collection") -> T_co:
         """Visit a collection node."""
         ...
 
-    def visit_item(self, node: "Item") -> None:
+    def visit_item(self, node: "Item") -> T_co:
         """Visit an item node."""
         ...
 
-    def visit_field(self, node: "Field") -> None:
+    def visit_field(self, node: "Field") -> T_co:
         """Visit a field node."""
         ...
 
-    def visit_value(self, node: "Value") -> None:
+    def visit_value(self, node: "Value") -> T_co:
         """Visit a value node."""
         ...
 
-    def visit_prefix(self, node: "Prefix") -> None:
+    def visit_prefix(self, node: "Prefix") -> T_co:
         """Visit a prefix node."""
         ...
 
-    def visit_infix(self, node: "Infix") -> None:
+    def visit_infix(self, node: "Infix") -> T_co:
         """Visit an infix node."""
         ...
 
-    def visit_postfix(self, node: "Postfix") -> None:
+    def visit_postfix(self, node: "Postfix") -> T_co:
         """Visit a prefix node."""
         ...
 
@@ -49,9 +54,9 @@ class Visitable(ABC):
     """Base class for visitable nodes."""
 
     @abstractmethod
-    def accept(self, visitor: Visitor) -> None:
+    def accept(self, visitor: Visitor[T]) -> T:
         """Accept a visitor."""
-        pass
+        ...
 
 
 class Operable(Protocol):
@@ -81,7 +86,7 @@ class EmptiableObject(Protocol):
         """Check if this is a root object."""
         ...
 
-    def accept(self, visitor: Visitor) -> None:
+    def accept(self, visitor: Visitor[T]) -> T:
         """Accept a visitor."""
         ...
 
@@ -96,9 +101,9 @@ class Value(Visitable):
         """Return the stored value."""
         return self._value
 
-    def accept(self, visitor: Visitor) -> None:
+    def accept(self, visitor: Visitor[T]) -> T:
         """Accept a visitor."""
-        visitor.visit_value(self)
+        return visitor.visit_value(self)
 
 
 class Prefix(Visitable):
@@ -126,9 +131,9 @@ class Prefix(Visitable):
         """Return operator associativity."""
         return self._associativity
 
-    def accept(self, visitor: Visitor) -> None:
+    def accept(self, visitor: Visitor[T]) -> T:
         """Accept a visitor."""
-        visitor.visit_prefix(self)
+        return visitor.visit_prefix(self)
 
 
 class Not(Prefix):
@@ -167,9 +172,9 @@ class Infix(Visitable):
         """Return operator associativity."""
         return self._associativity
 
-    def accept(self, visitor: Visitor) -> None:
+    def accept(self, visitor: Visitor[T]) -> T:
         """Accept a visitor."""
-        visitor.visit_infix(self)
+        return visitor.visit_infix(self)
 
 
 class Equal(Infix):
@@ -295,9 +300,9 @@ class Postfix(Visitable):
         """Return operator associativity."""
         return self._associativity
 
-    def accept(self, visitor: Visitor) -> None:
+    def accept(self, visitor: Visitor[T]) -> T:
         """Accept a visitor."""
-        visitor.visit_postfix(self)
+        return visitor.visit_postfix(self)
 
 
 class IsNull(Postfix):
@@ -325,9 +330,9 @@ class GlobalScope(Visitable):
         """Check if this is root."""
         return True
 
-    def accept(self, visitor: Visitor) -> None:
+    def accept(self, visitor: Visitor[T]) -> T:
         """Accept a visitor."""
-        visitor.visit_global_scope(self)
+        return visitor.visit_global_scope(self)
 
 
 class Object(Visitable):
@@ -349,9 +354,9 @@ class Object(Visitable):
         """Check if this is root."""
         return False
 
-    def accept(self, visitor: Visitor) -> None:
+    def accept(self, visitor: Visitor[T]) -> T:
         """Accept a visitor."""
-        visitor.visit_object(self)
+        return visitor.visit_object(self)
 
 
 class Collection(Visitable):
@@ -378,9 +383,9 @@ class Collection(Visitable):
         """Return the predicate for filtering collection items."""
         return self._predicate
 
-    def accept(self, visitor: Visitor) -> None:
+    def accept(self, visitor: Visitor[T]) -> T:
         """Accept a visitor."""
-        visitor.visit_collection(self)
+        return visitor.visit_collection(self)
 
 
 class Wildcard(Collection):
@@ -403,9 +408,9 @@ class Item(Visitable):
         """Check if this is root."""
         return True
 
-    def accept(self, visitor: Visitor) -> None:
+    def accept(self, visitor: Visitor[T]) -> T:
         """Accept a visitor."""
-        visitor.visit_item(self)
+        return visitor.visit_item(self)
 
 
 class Field(Visitable):
@@ -423,9 +428,9 @@ class Field(Visitable):
         """Return the object containing this field."""
         return self._object
 
-    def accept(self, visitor: Visitor) -> None:
+    def accept(self, visitor: Visitor[T]) -> T:
         """Accept a visitor."""
-        visitor.visit_field(self)
+        return visitor.visit_field(self)
 
 
 def extract_field_path(node: Field) -> list[str]:
