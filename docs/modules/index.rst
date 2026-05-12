@@ -21,4 +21,5 @@ Detailed documentation for each module in the ascetic-ddd package.
    event-bus/index
    batch/index
    scaffold/index
+   rop/index
    utils/index
