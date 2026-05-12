@@ -171,3 +171,9 @@ host language.
 - Scott Wlaschin, [Railway-Oriented Programming, Part 2 — The Recipe](https://fsharpforfunandprofit.com/posts/recipe-part2/)
 - [Sibling Go port](https://github.com/krew-solutions/ascetic-ddd-go/tree/main/asceticddd/rop)
 - [OCaml reference implementation](https://github.com/krew-solutions/trading-ml/tree/main/shared/lib/rop)
+
+## See also
+
+- [Railway oriented programming](https://returns.readthedocs.io/en/latest/pages/railway.html) with [returns](https://github.com/dry-python/returns) library
+- [Expression](https://github.com/dbrattli/Expression) -- a toolkit for Railway oriented programming
+- [OSlash](https://github.com/dbrattli/OSlash) -- Functors, Applicatives, And Monads in Python
