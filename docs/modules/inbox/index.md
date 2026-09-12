@@ -70,9 +70,9 @@ await inbox.publish(InboxMessage(
     stream_id={"id": "order-123"},
     stream_position=1,
     uri="kafka://orders/order-123",
-    payload={"type": "OrderCreated", "amount": 100},
+    payload=b'{"type": "OrderCreated", "amount": 100}',
     metadata={
-        "event_id": "uuid-123",
+        "message_id": "uuid-123",
         "causal_dependencies": [
             {"tenant_id": "tenant1", "stream_type": "User", "stream_id": {"id": "user-1"}, "stream_position": 5}
         ]
@@ -177,8 +177,8 @@ CREATE TABLE inbox (
     stream_type varchar(128) NOT NULL,
     stream_id jsonb NOT NULL,
     stream_position integer NOT NULL,
-    uri varchar(60) NOT NULL,
-    payload jsonb NOT NULL,
+    uri varchar(255) NOT NULL,
+    payload bytea NOT NULL,
     metadata jsonb NULL,
     received_position bigint NOT NULL UNIQUE DEFAULT nextval('inbox_received_position_seq'),
     processed_position bigint NULL,
@@ -204,8 +204,8 @@ class InboxMessage:
     stream_id: dict[str, Any]         # Stream identifier (e.g., aggregate ID)
     stream_position: int              # Position in the stream
     uri: str                          # Routing URI (e.g., 'kafka://orders/order-123')
-    payload: dict[str, Any]           # Event payload
-    metadata: dict[str, Any] | None   # Optional metadata (causal_dependencies, event_id)
+    payload: bytes                    # The message as it came off the wire
+    metadata: dict[str, Any] | None   # Optional metadata (causal_dependencies, message_id)
     received_position: int | None     # Auto-assigned by DB
     processed_position: int | None    # Set when processed
 ```

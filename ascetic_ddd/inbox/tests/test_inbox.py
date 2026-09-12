@@ -6,6 +6,7 @@ from unittest import IsolatedAsyncioTestCase
 
 from ascetic_ddd.inbox.inbox import Inbox
 from ascetic_ddd.inbox.message import InboxMessage
+from ascetic_ddd.utils.tests.payload import json_payload
 
 
 class MockCursor:
@@ -101,8 +102,8 @@ class InboxReceiveTestCase(IsolatedAsyncioTestCase):
             stream_id={"id": "order-123"},
             stream_position=1,
             uri="kafka://orders",
-            payload={"type": "OrderCreated", "amount": 100},
-            metadata={"event_id": "uuid-123"},
+            payload=json_payload({"type": "OrderCreated", "amount": 100}),
+            metadata={"message_id": "uuid-123"},
         )
 
         await inbox.publish(message)
@@ -148,7 +149,7 @@ class InboxDispatchTestCase(IsolatedAsyncioTestCase):
             {"id": "order-123"},  # stream_id
             1,  # stream_position
             "kafka://orders",  # uri
-            {"type": "OrderCreated", "amount": 100},  # payload
+            json_payload({"type": "OrderCreated", "amount": 100}),  # payload
             None,  # metadata
             1,  # received_position
             None,  # processed_position
@@ -182,7 +183,7 @@ class InboxDependencyCheckTestCase(IsolatedAsyncioTestCase):
             stream_id={"id": "order-123"},
             stream_position=1,
             uri="kafka://orders",
-            payload={"type": "OrderCreated"},
+            payload=json_payload({"type": "OrderCreated"}),
             metadata=None,
         )
 
@@ -264,7 +265,7 @@ class InboxAsyncIteratorTestCase(IsolatedAsyncioTestCase):
             {"id": "order-123"},
             1,
             "kafka://orders",
-            {"type": "OrderCreated", "amount": 100},
+            json_payload({"type": "OrderCreated", "amount": 100}),
             None,
             1,
             None,
@@ -293,7 +294,7 @@ class InboxAsyncIteratorTestCase(IsolatedAsyncioTestCase):
             {"id": "order-123"},
             1,
             "kafka://orders",
-            {"type": "OrderCreated", "amount": 100},
+            json_payload({"type": "OrderCreated", "amount": 100}),
             None,
             1,
             None,
@@ -328,7 +329,7 @@ class InboxRunTestCase(IsolatedAsyncioTestCase):
             {"id": "order-123"},
             1,
             "kafka://orders",
-            {"type": "OrderCreated", "amount": 100},
+            json_payload({"type": "OrderCreated", "amount": 100}),
             None,
             1,
             None,
@@ -368,7 +369,7 @@ class InboxRunTestCase(IsolatedAsyncioTestCase):
                 {"id": "order-%d" % i},
                 i,
                 "kafka://orders",
-                {"type": "OrderCreated", "amount": 100},
+                json_payload({"type": "OrderCreated", "amount": 100}),
                 None,
                 i,
                 None,

@@ -7,6 +7,7 @@ from unittest import IsolatedAsyncioTestCase
 from ascetic_ddd.inbox.inbox import Inbox
 from ascetic_ddd.inbox.message import InboxMessage
 from ascetic_ddd.utils.tests.db import make_pg_session_pool
+from ascetic_ddd.utils.tests.payload import json_payload, decode_payload
 
 
 class TestInbox(Inbox):
@@ -59,8 +60,8 @@ class InboxIntegrationTestCase(IsolatedAsyncioTestCase):
             stream_id={"id": "order-123"},
             stream_position=1,
             uri="kafka://orders",
-            payload={"amount": 100},
-            metadata={"event_id": "uuid-123"},
+            payload=json_payload({"amount": 100}),
+            metadata={"message_id": "uuid-123"},
         )
 
         await self.inbox.publish(message)
@@ -79,7 +80,7 @@ class InboxIntegrationTestCase(IsolatedAsyncioTestCase):
             stream_id={"id": "order-123"},
             stream_position=1,
             uri="kafka://orders",
-            payload={"amount": 100},
+            payload=json_payload({"amount": 100}),
         )
 
         # Publish same message twice
@@ -102,7 +103,7 @@ class InboxIntegrationTestCase(IsolatedAsyncioTestCase):
             stream_id={"id": "order-123"},
             stream_position=2,
             uri="kafka://shipments",
-            payload={"tracking": "123"},
+            payload=json_payload({"tracking": "123"}),
             metadata={
                 "causal_dependencies": [
                     {
@@ -129,7 +130,7 @@ class InboxIntegrationTestCase(IsolatedAsyncioTestCase):
             stream_id={"id": "order-123"},
             stream_position=1,
             uri="kafka://orders",
-            payload={"amount": 100},
+            payload=json_payload({"amount": 100}),
         )
         await self.inbox.publish(dependency_message)
 
@@ -152,7 +153,7 @@ class InboxIntegrationTestCase(IsolatedAsyncioTestCase):
                 stream_id={"id": "order-%d" % i},
                 stream_position=1,
                 uri="kafka://orders",
-                payload={"type": "OrderCreated", "order": i},
+                payload=json_payload({"type": "OrderCreated", "order": i}),
             )
             await self.inbox.publish(message)
 
@@ -162,7 +163,7 @@ class InboxIntegrationTestCase(IsolatedAsyncioTestCase):
 
         self.assertEqual(len(self.handled_messages), 3)
         for i, msg in enumerate(self.handled_messages):
-            self.assertEqual(msg.payload["order"], i)
+            self.assertEqual(decode_payload(msg.payload)["order"], i)
 
     async def test_routing_by_uri(self):
         """Subscriber can route by uri."""
@@ -181,7 +182,7 @@ class InboxIntegrationTestCase(IsolatedAsyncioTestCase):
             stream_id={"id": "order-1"},
             stream_position=1,
             uri="kafka://orders",
-            payload={"type": "OrderCreated"},
+            payload=json_payload({"type": "OrderCreated"}),
         ))
         await self.inbox.publish(InboxMessage(
             tenant_id="tenant1",
@@ -189,7 +190,7 @@ class InboxIntegrationTestCase(IsolatedAsyncioTestCase):
             stream_id={"id": "order-2"},
             stream_position=1,
             uri="kafka://shipments",
-            payload={"type": "OrderShipped"},
+            payload=json_payload({"type": "OrderShipped"}),
         ))
 
         # Process messages
@@ -209,7 +210,7 @@ class InboxIntegrationTestCase(IsolatedAsyncioTestCase):
                 stream_id={"id": "order-%d" % i},
                 stream_position=1,
                 uri="kafka://orders",
-                payload={"type": "OrderCreated", "order": i},
+                payload=json_payload({"type": "OrderCreated", "order": i}),
             ))
 
         messages = []
@@ -226,8 +227,8 @@ class InboxIntegrationTestCase(IsolatedAsyncioTestCase):
         await iterator.aclose()
 
         self.assertEqual(len(messages), 2)
-        self.assertEqual(messages[0].payload["order"], 0)
-        self.assertEqual(messages[1].payload["order"], 1)
+        self.assertEqual(decode_payload(messages[0].payload)["order"], 0)
+        self.assertEqual(decode_payload(messages[1].payload)["order"], 1)
 
     async def test_run_with_single_worker(self):
         """run() with single worker processes messages."""
@@ -238,7 +239,7 @@ class InboxIntegrationTestCase(IsolatedAsyncioTestCase):
                 stream_id={"id": "order-%d" % i},
                 stream_position=1,
                 uri="kafka://orders",
-                payload={"type": "OrderCreated", "order": i},
+                payload=json_payload({"type": "OrderCreated", "order": i}),
             ))
 
         # Run with graceful shutdown
@@ -264,7 +265,7 @@ class InboxIntegrationTestCase(IsolatedAsyncioTestCase):
                 stream_id={"id": "order-%d" % i},
                 stream_position=1,
                 uri="kafka://orders",
-                payload={"type": "OrderCreated", "order": i},
+                payload=json_payload({"type": "OrderCreated", "order": i}),
             ))
 
         # Run with multiple workers and graceful shutdown
@@ -291,7 +292,7 @@ class InboxIntegrationTestCase(IsolatedAsyncioTestCase):
             stream_id={"id": "order-1"},
             stream_position=1,
             uri="kafka://orders",
-            payload={},
+            payload=json_payload({}),
         ))
 
         # Run with multiple workers and graceful shutdown
@@ -321,7 +322,7 @@ class InboxIntegrationTestCase(IsolatedAsyncioTestCase):
                 stream_id={"id": "order-%d" % i},
                 stream_position=1,
                 uri="kafka://orders/order-%d" % i,
-                payload={"type": "OrderCreated", "order": i},
+                payload=json_payload({"type": "OrderCreated", "order": i}),
             ))
 
         # The set must contain URIs with a negative hashtext(), otherwise the

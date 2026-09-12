@@ -3,6 +3,7 @@
 import unittest
 
 from ascetic_ddd.inbox.message import InboxMessage
+from ascetic_ddd.utils.tests.payload import json_payload
 
 
 class InboxMessageTestCase(unittest.TestCase):
@@ -16,7 +17,7 @@ class InboxMessageTestCase(unittest.TestCase):
             stream_id={"id": "order-123"},
             stream_position=1,
             uri="kafka://orders",
-            payload={"amount": 100},
+            payload=json_payload({"amount": 100}),
         )
 
         self.assertEqual(message.tenant_id, "tenant1")
@@ -24,7 +25,7 @@ class InboxMessageTestCase(unittest.TestCase):
         self.assertEqual(message.stream_id, {"id": "order-123"})
         self.assertEqual(message.stream_position, 1)
         self.assertEqual(message.uri, "kafka://orders")
-        self.assertEqual(message.payload, {"amount": 100})
+        self.assertEqual(message.payload, json_payload({"amount": 100}))
         self.assertIsNone(message.metadata)
         self.assertIsNone(message.received_position)
         self.assertIsNone(message.processed_position)
@@ -37,11 +38,11 @@ class InboxMessageTestCase(unittest.TestCase):
             stream_id={"id": "order-123"},
             stream_position=1,
             uri="kafka://orders",
-            payload={"amount": 100},
-            metadata={"event_id": "uuid-123", "timestamp": "2024-01-01T00:00:00Z"},
+            payload=json_payload({"amount": 100}),
+            metadata={"message_id": "uuid-123", "timestamp": "2024-01-01T00:00:00Z"},
         )
 
-        self.assertEqual(message.metadata["event_id"], "uuid-123")
+        self.assertEqual(message.metadata["message_id"], "uuid-123")
 
     def test_causal_dependencies_empty_when_no_metadata(self):
         """causal_dependencies returns empty list when no metadata."""
@@ -51,7 +52,7 @@ class InboxMessageTestCase(unittest.TestCase):
             stream_id={"id": "order-123"},
             stream_position=1,
             uri="kafka://orders",
-            payload={},
+            payload=json_payload({}),
         )
 
         self.assertEqual(message.causal_dependencies, [])
@@ -64,8 +65,8 @@ class InboxMessageTestCase(unittest.TestCase):
             stream_id={"id": "order-123"},
             stream_position=1,
             uri="kafka://orders",
-            payload={},
-            metadata={"event_id": "uuid-123"},
+            payload=json_payload({}),
+            metadata={"message_id": "uuid-123"},
         )
 
         self.assertEqual(message.causal_dependencies, [])
@@ -82,39 +83,39 @@ class InboxMessageTestCase(unittest.TestCase):
             stream_id={"id": "order-123"},
             stream_position=1,
             uri="kafka://orders",
-            payload={},
+            payload=json_payload({}),
             metadata={"causal_dependencies": deps},
         )
 
         self.assertEqual(message.causal_dependencies, deps)
         self.assertEqual(len(message.causal_dependencies), 2)
 
-    def test_event_id_none_when_no_metadata(self):
-        """event_id returns None when no metadata."""
+    def test_message_id_none_when_no_metadata(self):
+        """message_id returns None when no metadata."""
         message = InboxMessage(
             tenant_id="tenant1",
             stream_type="Order",
             stream_id={"id": "order-123"},
             stream_position=1,
             uri="kafka://orders",
-            payload={},
+            payload=json_payload({}),
         )
 
-        self.assertIsNone(message.event_id)
+        self.assertIsNone(message.message_id)
 
-    def test_event_id_returns_value(self):
-        """event_id returns the value from metadata."""
+    def test_message_id_returns_value(self):
+        """message_id returns the value from metadata."""
         message = InboxMessage(
             tenant_id="tenant1",
             stream_type="Order",
             stream_id={"id": "order-123"},
             stream_position=1,
             uri="kafka://orders",
-            payload={},
-            metadata={"event_id": "uuid-456"},
+            payload=json_payload({}),
+            metadata={"message_id": "uuid-456"},
         )
 
-        self.assertEqual(message.event_id, "uuid-456")
+        self.assertEqual(message.message_id, "uuid-456")
 
     def test_received_and_processed_positions(self):
         """InboxMessage can store received and processed positions."""
@@ -124,7 +125,7 @@ class InboxMessageTestCase(unittest.TestCase):
             stream_id={"id": "order-123"},
             stream_position=1,
             uri="kafka://orders",
-            payload={},
+            payload=json_payload({}),
             received_position=100,
             processed_position=50,
         )

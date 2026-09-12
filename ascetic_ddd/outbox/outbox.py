@@ -54,7 +54,7 @@ class Outbox(IOutbox):
 
         params = {
             'uri': message.uri,
-            'payload': self._to_jsonb(message.payload),
+            'payload': message.payload,
             'metadata': self._to_jsonb(message.metadata),
         }
 
@@ -375,7 +375,7 @@ class Outbox(IOutbox):
         position, transaction_id, uri, payload, metadata, created_at = row
         return OutboxMessage(
             uri=uri,
-            payload=payload if isinstance(payload, dict) else {},
+            payload=bytes(payload),
             metadata=metadata if isinstance(metadata, dict) else {},
             created_at=str(created_at) if created_at else None,
             position=position,
@@ -399,7 +399,7 @@ class Outbox(IOutbox):
             CREATE TABLE IF NOT EXISTS %s (
                 "position" BIGSERIAL,
                 "uri" VARCHAR(255) NOT NULL,
-                "payload" JSONB NOT NULL,
+                "payload" BYTEA NOT NULL,
                 "metadata" JSONB NOT NULL,
                 "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 "transaction_id" xid8 NOT NULL,
@@ -423,10 +423,10 @@ class Outbox(IOutbox):
         async with self._extract_connection(session).cursor() as cursor:
             await cursor.execute(sql)
 
-        # Unique index on event_id for idempotency
+        # Unique index on message_id for idempotency
         sql = """
-            CREATE UNIQUE INDEX IF NOT EXISTS %s_event_id_uniq
-            ON %s (((metadata->>'event_id')::uuid))
+            CREATE UNIQUE INDEX IF NOT EXISTS %s_message_id_uniq
+            ON %s (((metadata->>'message_id')::uuid))
         """ % (self._outbox_table, self._outbox_table)
         async with self._extract_connection(session).cursor() as cursor:
             await cursor.execute(sql)

@@ -5,8 +5,8 @@ CREATE TABLE inbox (
     stream_type varchar(128) NOT NULL,
     stream_id jsonb NOT NULL,
     stream_position integer NOT NULL,
-    uri varchar(60) NOT NULL,
-    payload jsonb NOT NULL,
+    uri varchar(255) NOT NULL,
+    payload bytea NOT NULL,
     metadata jsonb NULL,
     received_position bigint NOT NULL UNIQUE DEFAULT nextval('inbox_received_position_seq'),
     processed_position bigint NULL,
@@ -15,4 +15,4 @@ CREATE TABLE inbox (
 
 CREATE INDEX inbox__received_position_idx ON inbox(received_position);
 CREATE INDEX inbox__processed_position_idx ON inbox(processed_position) WHERE processed_position IS NULL;
-CREATE UNIQUE INDEX inbox__event_id_uniq ON inbox( ((metadata->>'event_id')::uuid) );
+CREATE UNIQUE INDEX inbox__message_id_uniq ON inbox( ((metadata->>'message_id')::uuid) );

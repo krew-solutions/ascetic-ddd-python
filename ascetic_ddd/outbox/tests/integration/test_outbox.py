@@ -7,6 +7,7 @@ from unittest import IsolatedAsyncioTestCase
 from ascetic_ddd.outbox.message import OutboxMessage
 from ascetic_ddd.outbox.outbox import Outbox
 from ascetic_ddd.utils.tests.db import make_pg_session_pool
+from ascetic_ddd.utils.tests.payload import json_payload, decode_payload
 
 
 class OutboxIntegrationTestCase(IsolatedAsyncioTestCase):
@@ -56,8 +57,8 @@ class OutboxIntegrationTestCase(IsolatedAsyncioTestCase):
             async with session.atomic() as tx_session:
                 message = OutboxMessage(
                     uri="kafka://orders",
-                    payload={"type": "OrderCreated", "order_id": "123", "amount": 100},
-                    metadata={"event_id": "550e8400-e29b-41d4-a716-446655440001"},
+                    payload=json_payload({"type": "OrderCreated", "order_id": "123", "amount": 100}),
+                    metadata={"message_id": "550e8400-e29b-41d4-a716-446655440001"},
                 )
                 await self.outbox.publish(tx_session, message)
 
@@ -66,7 +67,7 @@ class OutboxIntegrationTestCase(IsolatedAsyncioTestCase):
         self.assertTrue(result)
         self.assertEqual(len(self.published_messages), 1)
         self.assertEqual(self.published_messages[0].uri, "kafka://orders")
-        self.assertEqual(self.published_messages[0].payload["order_id"], "123")
+        self.assertEqual(decode_payload(self.published_messages[0].payload)["order_id"], "123")
 
     async def test_dispatch_returns_false_when_empty(self):
         """dispatch() returns False when no messages."""
@@ -81,8 +82,8 @@ class OutboxIntegrationTestCase(IsolatedAsyncioTestCase):
             async with session.atomic() as tx_session:
                 message = OutboxMessage(
                     uri="kafka://orders",
-                    payload={"type": "OrderCreated", "order_id": "123"},
-                    metadata={"event_id": "550e8400-e29b-41d4-a716-446655440002"},
+                    payload=json_payload({"type": "OrderCreated", "order_id": "123"}),
+                    metadata={"message_id": "550e8400-e29b-41d4-a716-446655440002"},
                 )
                 await self.outbox.publish(tx_session, message)
 
@@ -98,8 +99,8 @@ class OutboxIntegrationTestCase(IsolatedAsyncioTestCase):
             async with session.atomic() as tx_session:
                 message = OutboxMessage(
                     uri="kafka://orders",
-                    payload={"type": "OrderCreated", "order_id": "123"},
-                    metadata={"event_id": "550e8400-e29b-41d4-a716-446655440003"},
+                    payload=json_payload({"type": "OrderCreated", "order_id": "123"}),
+                    metadata={"message_id": "550e8400-e29b-41d4-a716-446655440003"},
                 )
                 await self.outbox.publish(tx_session, message)
 
@@ -124,8 +125,8 @@ class OutboxIntegrationTestCase(IsolatedAsyncioTestCase):
                 async with session.atomic() as tx_session:
                     message = OutboxMessage(
                         uri="kafka://orders",
-                        payload={"type": "OrderCreated", "order": i},
-                        metadata={"event_id": "550e8400-e29b-41d4-a716-44665544000%d" % i},
+                        payload=json_payload({"type": "OrderCreated", "order": i}),
+                        metadata={"message_id": "550e8400-e29b-41d4-a716-44665544000%d" % i},
                     )
                     await self.outbox.publish(tx_session, message)
 
@@ -135,7 +136,7 @@ class OutboxIntegrationTestCase(IsolatedAsyncioTestCase):
 
         self.assertEqual(len(self.published_messages), 3)
         for i, msg in enumerate(self.published_messages):
-            self.assertEqual(msg.payload["order"], i)
+            self.assertEqual(decode_payload(msg.payload)["order"], i)
 
     async def test_batch_dispatch(self):
         """dispatch() processes batch of messages."""
@@ -144,8 +145,8 @@ class OutboxIntegrationTestCase(IsolatedAsyncioTestCase):
                 for i in range(5):
                     message = OutboxMessage(
                         uri="kafka://orders",
-                        payload={"type": "OrderCreated", "order": i},
-                        metadata={"event_id": "550e8400-e29b-41d4-a716-44665544010%d" % i},
+                        payload=json_payload({"type": "OrderCreated", "order": i}),
+                        metadata={"message_id": "550e8400-e29b-41d4-a716-44665544010%d" % i},
                     )
                     await self.outbox.publish(tx_session, message)
 
@@ -190,8 +191,8 @@ class OutboxIntegrationTestCase(IsolatedAsyncioTestCase):
                 async with session.atomic() as tx_session:
                     message = OutboxMessage(
                         uri="kafka://orders",
-                        payload={"type": "OrderCreated", "order": i},
-                        metadata={"event_id": "550e8400-e29b-41d4-a716-44665544020%d" % i},
+                        payload=json_payload({"type": "OrderCreated", "order": i}),
+                        metadata={"message_id": "550e8400-e29b-41d4-a716-44665544020%d" % i},
                     )
                     await self.outbox.publish(tx_session, message)
 
@@ -209,8 +210,8 @@ class OutboxIntegrationTestCase(IsolatedAsyncioTestCase):
         await iterator.aclose()
 
         self.assertEqual(len(messages), 2)
-        self.assertEqual(messages[0].payload["order"], 0)
-        self.assertEqual(messages[1].payload["order"], 1)
+        self.assertEqual(decode_payload(messages[0].payload)["order"], 0)
+        self.assertEqual(decode_payload(messages[1].payload)["order"], 1)
 
     async def test_run_with_single_worker(self):
         """run() with single worker processes messages."""
@@ -219,8 +220,8 @@ class OutboxIntegrationTestCase(IsolatedAsyncioTestCase):
                 async with session.atomic() as tx_session:
                     message = OutboxMessage(
                         uri="kafka://orders",
-                        payload={"type": "OrderCreated", "order": i},
-                        metadata={"event_id": "550e8400-e29b-41d4-a716-44665544030%d" % i},
+                        payload=json_payload({"type": "OrderCreated", "order": i}),
+                        metadata={"message_id": "550e8400-e29b-41d4-a716-44665544030%d" % i},
                     )
                     await self.outbox.publish(tx_session, message)
 
@@ -245,8 +246,8 @@ class OutboxIntegrationTestCase(IsolatedAsyncioTestCase):
                 async with session.atomic() as tx_session:
                     message = OutboxMessage(
                         uri="kafka://orders",
-                        payload={"type": "OrderCreated", "order": i},
-                        metadata={"event_id": "550e8400-e29b-41d4-a716-44665544040%d" % i},
+                        payload=json_payload({"type": "OrderCreated", "order": i}),
+                        metadata={"message_id": "550e8400-e29b-41d4-a716-44665544040%d" % i},
                     )
                     await self.outbox.publish(tx_session, message)
 
@@ -273,8 +274,8 @@ class OutboxIntegrationTestCase(IsolatedAsyncioTestCase):
                 async with conn.cursor() as cursor:
                     await cursor.execute("""
                         INSERT INTO %s (uri, payload, metadata, transaction_id)
-                        VALUES ('kafka://orders', '{"type": "OrderCreated", "order": 1}'::jsonb,
-                                '{"event_id": "550e8400-e29b-41d4-a716-446655440050"}'::jsonb,
+                        VALUES ('kafka://orders', '{"type": "OrderCreated", "order": 1}'::bytea,
+                                '{"message_id": "550e8400-e29b-41d4-a716-446655440050"}'::jsonb,
                                 pg_current_xact_id())
                     """ % self._outbox_table)
 
@@ -296,18 +297,18 @@ class OutboxIntegrationTestCase(IsolatedAsyncioTestCase):
                 # Publish to different URIs
                 await self.outbox.publish(tx_session, OutboxMessage(
                     uri="kafka://orders",
-                    payload={"type": "OrderCreated", "order_id": "1"},
-                    metadata={"event_id": "550e8400-e29b-41d4-a716-446655440080"},
+                    payload=json_payload({"type": "OrderCreated", "order_id": "1"}),
+                    metadata={"message_id": "550e8400-e29b-41d4-a716-446655440080"},
                 ))
                 await self.outbox.publish(tx_session, OutboxMessage(
                     uri="kafka://users",
-                    payload={"type": "UserCreated", "user_id": "1"},
-                    metadata={"event_id": "550e8400-e29b-41d4-a716-446655440081"},
+                    payload=json_payload({"type": "UserCreated", "user_id": "1"}),
+                    metadata={"message_id": "550e8400-e29b-41d4-a716-446655440081"},
                 ))
                 await self.outbox.publish(tx_session, OutboxMessage(
                     uri="kafka://orders",
-                    payload={"type": "OrderShipped", "order_id": "1"},
-                    metadata={"event_id": "550e8400-e29b-41d4-a716-446655440082"},
+                    payload=json_payload({"type": "OrderShipped", "order_id": "1"}),
+                    metadata={"message_id": "550e8400-e29b-41d4-a716-446655440082"},
                 ))
 
         # Dispatch only kafka://orders
@@ -333,13 +334,13 @@ class OutboxIntegrationTestCase(IsolatedAsyncioTestCase):
                 async with session.atomic() as tx_session:
                     await self.outbox.publish(tx_session, OutboxMessage(
                         uri="kafka://orders",
-                        payload={"type": "OrderCreated", "order": i},
-                        metadata={"event_id": "550e8400-e29b-41d4-a716-44665544009%d" % i},
+                        payload=json_payload({"type": "OrderCreated", "order": i}),
+                        metadata={"message_id": "550e8400-e29b-41d4-a716-44665544009%d" % i},
                     ))
                     await self.outbox.publish(tx_session, OutboxMessage(
                         uri="kafka://users",
-                        payload={"type": "UserCreated", "user": i},
-                        metadata={"event_id": "550e8400-e29b-41d4-a716-44665544019%d" % i},
+                        payload=json_payload({"type": "UserCreated", "user": i}),
+                        metadata={"message_id": "550e8400-e29b-41d4-a716-44665544019%d" % i},
                     ))
 
         # Consumer 1 processes orders
@@ -364,14 +365,14 @@ class OutboxIntegrationTestCase(IsolatedAsyncioTestCase):
         self.assertTrue(all(m.uri == "kafka://orders" for m in orders_messages))
         self.assertTrue(all(m.uri == "kafka://users" for m in users_messages))
 
-    async def test_idempotency_via_event_id(self):
-        """Duplicate event_id causes unique constraint violation."""
+    async def test_idempotency_via_message_id(self):
+        """Duplicate message_id causes unique constraint violation."""
         async with self._session_pool.session() as session:
             async with session.atomic() as tx_session:
                 message = OutboxMessage(
                     uri="kafka://orders",
-                    payload={"type": "OrderCreated", "order_id": "123"},
-                    metadata={"event_id": "550e8400-e29b-41d4-a716-446655440060"},
+                    payload=json_payload({"type": "OrderCreated", "order_id": "123"}),
+                    metadata={"message_id": "550e8400-e29b-41d4-a716-446655440060"},
                 )
                 await self.outbox.publish(tx_session, message)
 
@@ -381,8 +382,8 @@ class OutboxIntegrationTestCase(IsolatedAsyncioTestCase):
                 async with session.atomic() as tx_session:
                     message = OutboxMessage(
                         uri="kafka://orders",
-                        payload={"type": "OrderCreated", "order_id": "456"},
-                        metadata={"event_id": "550e8400-e29b-41d4-a716-446655440060"},
+                        payload=json_payload({"type": "OrderCreated", "order_id": "456"}),
+                        metadata={"message_id": "550e8400-e29b-41d4-a716-446655440060"},
                     )
                     await self.outbox.publish(tx_session, message)
 
@@ -396,8 +397,8 @@ class OutboxIntegrationTestCase(IsolatedAsyncioTestCase):
                 for i in range(total):
                     await self.outbox.publish(tx_session, OutboxMessage(
                         uri="kafka://orders/order-%d" % i,
-                        payload={"type": "OrderCreated", "order": i},
-                        metadata={"event_id": "550e8400-e29b-41d4-a716-4466554407%02d" % i},
+                        payload=json_payload({"type": "OrderCreated", "order": i}),
+                        metadata={"message_id": "550e8400-e29b-41d4-a716-4466554407%02d" % i},
                     ))
 
         # The set must contain URIs with a negative hashtext(), otherwise the
@@ -474,8 +475,8 @@ class OutboxConcurrencyTestCase(IsolatedAsyncioTestCase):
             async with session.atomic() as tx_session:
                 message = OutboxMessage(
                     uri="kafka://orders",
-                    payload={"type": "OrderCreated", "order_id": "123"},
-                    metadata={"event_id": "550e8400-e29b-41d4-a716-446655440070"},
+                    payload=json_payload({"type": "OrderCreated", "order_id": "123"}),
+                    metadata={"message_id": "550e8400-e29b-41d4-a716-446655440070"},
                 )
                 await self.outbox.publish(tx_session, message)
 

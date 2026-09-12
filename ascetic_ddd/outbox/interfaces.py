@@ -40,7 +40,7 @@ Key Concepts:
 Problems and Considerations:
 ---------------------------
 
-1. **Duplicate Delivery**: Consumers must handle duplicates (use metadata.event_id for dedup).
+1. **Duplicate Delivery**: Consumers must handle duplicates (use metadata.message_id for dedup).
 
 2. **Message Ordering**: Within a single transaction, messages are ordered by position.
    Across transactions, they're ordered by transaction_id.

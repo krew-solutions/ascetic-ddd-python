@@ -28,8 +28,8 @@ class InboxMessage:
         uri: Routing URI (e.g., 'kafka://orders', 'amqp://exchange/key'). Can be one of:
             - bus_type://topic_or_channel_name
             - bus_type://topic_or_channel_name/partition_key
-        payload: Event payload data (must contain 'type' for deserialization).
-        metadata: Optional event metadata (may contain event_id, causal_dependencies, etc.).
+        payload: The message as it came off the wire: serialized bytes.
+        metadata: Optional event metadata (may contain message_id, causal_dependencies, etc.).
         partition_key: Key for worker distribution (computed by strategy, auto-assigned).
         received_position: Position when message was received (auto-assigned by DB).
         processed_position: Position when message was processed (None if not processed).
@@ -47,7 +47,7 @@ class InboxMessage:
     stream_id: dict[str, Any]
     stream_position: int
     uri: str
-    payload: dict[str, Any]
+    payload: bytes
     metadata: dict[str, Any] | None = None
     received_position: int | None = None
     processed_position: int | None = None
@@ -65,8 +65,8 @@ class InboxMessage:
         return self.metadata.get('causal_dependencies', [])
 
     @property
-    def event_id(self) -> str | None:
-        """Get event_id from metadata if present."""
+    def message_id(self) -> str | None:
+        """Get message_id from metadata if present."""
         if self.metadata is None:
             return None
-        return self.metadata.get('event_id')
+        return self.metadata.get('message_id')

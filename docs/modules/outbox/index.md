@@ -29,8 +29,8 @@ async with session.atomic():
     await repository.save(order)
     await outbox.publish(session, OutboxMessage(
         uri="kafka://orders",
-        payload={"type": "OrderCreated", "order_id": str(order.id), "amount": order.amount},
-        metadata={"event_id": str(uuid4())},
+        payload=json.dumps({"type": "OrderCreated", "order_id": str(order.id), "amount": order.amount}).encode(),
+        metadata={"message_id": str(uuid4())},
     ))
 # Both are committed atomically - or neither
 ```
@@ -162,8 +162,10 @@ async with session_pool.session() as session:
 ### Publishing Messages
 
 ```python
-from ascetic_ddd.outbox import OutboxMessage
+import json
 from uuid import uuid4
+
+from ascetic_ddd.outbox import OutboxMessage
 
 async with session.atomic():
     # Business logic
@@ -172,14 +174,14 @@ async with session.atomic():
     # Publish to outbox (same transaction)
     await outbox.publish(session, OutboxMessage(
         uri="kafka://orders",
-        payload={
+        payload=json.dumps({
             "type": "OrderCreated",
             "order_id": str(order.id),
             "customer_id": str(order.customer_id),
             "amount": order.amount,
-        },
+        }).encode(),
         metadata={
-            "event_id": str(uuid4()),  # Required for idempotency
+            "message_id": str(uuid4()),  # Required for idempotency
             "correlation_id": correlation_id,
             "causation_id": causation_id,
         },
@@ -291,7 +293,7 @@ The `setup(session)` method creates:
 CREATE TABLE outbox (
     "position" BIGSERIAL,
     "uri" VARCHAR(255) NOT NULL,
-    "payload" JSONB NOT NULL,
+    "payload" BYTEA NOT NULL,
     "metadata" JSONB NOT NULL,
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "transaction_id" xid8 NOT NULL,
@@ -300,7 +302,7 @@ CREATE TABLE outbox (
 
 CREATE INDEX outbox_position_idx ON outbox ("position");
 CREATE INDEX outbox_uri_idx ON outbox ("uri");
-CREATE UNIQUE INDEX outbox_event_id_uniq ON outbox (((metadata->>'event_id')::uuid));
+CREATE UNIQUE INDEX outbox_message_id_uniq ON outbox (((metadata->>'message_id')::uuid));
 ```
 
 ### outbox_offsets table
@@ -326,16 +328,16 @@ The composite primary key `(consumer_group, uri)` allows:
 
 ### Duplicate Delivery
 
-Consumers must handle duplicates. Use `metadata.event_id` for deduplication:
+Consumers must handle duplicates. Use `metadata.message_id` for deduplication:
 
 ```python
 async def handle_message(message: OutboxMessage) -> None:
-    event_id = message.metadata.get("event_id")
-    if await is_already_processed(event_id):
+    message_id = message.metadata.get("message_id")
+    if await is_already_processed(message_id):
         return  # Skip duplicate
 
     await process(message)
-    await mark_as_processed(event_id)
+    await mark_as_processed(message_id)
 ```
 
 
@@ -376,8 +378,8 @@ This implementation uses polling. For lower latency, consider:
 @dataclass
 class OutboxMessage:
     uri: str                     # Routing URI (e.g., 'kafka://orders')
-    payload: dict[str, Any]      # Message payload (must contain 'type' for deserialization)
-    metadata: dict[str, Any]     # Must contain 'event_id' for idempotency
+    payload: bytes               # The message as it goes on the wire
+    metadata: dict[str, Any]     # Must contain 'message_id' for idempotency
     created_at: str | None       # Auto-assigned by DB
     position: int | None         # Auto-assigned by DB
     transaction_id: int | None   # Auto-assigned by pg_current_xact_id()

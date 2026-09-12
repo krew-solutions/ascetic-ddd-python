@@ -196,7 +196,7 @@ class Inbox(IInbox):
                     self._to_jsonb(message.stream_id),
                     message.stream_position,
                     message.uri,
-                    self._to_jsonb(message.payload),
+                    message.payload,
                     self._to_jsonb(message.metadata) if message.metadata else None,
                 )
             )
@@ -282,7 +282,7 @@ class Inbox(IInbox):
             stream_id=row[2] if isinstance(row[2], dict) else json.loads(row[2]),
             stream_position=row[3],
             uri=row[4],
-            payload=row[5] if isinstance(row[5], dict) else json.loads(row[5]),
+            payload=bytes(row[5]),
             metadata=row[6] if row[6] is None or isinstance(row[6], dict) else json.loads(row[6]),
             received_position=row[7],
             processed_position=row[8],
@@ -377,8 +377,8 @@ class Inbox(IInbox):
                 stream_type varchar(128) NOT NULL,
                 stream_id jsonb NOT NULL,
                 stream_position integer NOT NULL,
-                uri varchar(60) NOT NULL,
-                payload jsonb NOT NULL,
+                uri varchar(255) NOT NULL,
+                payload bytea NOT NULL,
                 metadata jsonb NULL,
                 received_position bigint NOT NULL UNIQUE DEFAULT nextval('%s'),
                 processed_position bigint NULL,

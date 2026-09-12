@@ -6,6 +6,7 @@ from unittest import IsolatedAsyncioTestCase
 
 from ascetic_ddd.outbox.message import OutboxMessage
 from ascetic_ddd.outbox.outbox import Outbox
+from ascetic_ddd.utils.tests.payload import json_payload, decode_payload
 
 
 class MockCursor:
@@ -130,8 +131,8 @@ class OutboxPublishTestCase(IsolatedAsyncioTestCase):
         outbox = Outbox(pool)
         message = OutboxMessage(
             uri="kafka://orders",
-            payload={"type": "OrderCreated", "order_id": "123", "amount": 100},
-            metadata={"event_id": "uuid-123", "correlation_id": "corr-456"},
+            payload=json_payload({"type": "OrderCreated", "order_id": "123", "amount": 100}),
+            metadata={"message_id": "uuid-123", "correlation_id": "corr-456"},
         )
 
         await outbox.publish(session, message)
@@ -153,8 +154,8 @@ class OutboxPublishTestCase(IsolatedAsyncioTestCase):
         outbox = Outbox(pool, outbox_table="custom_outbox")
         message = OutboxMessage(
             uri="kafka://orders",
-            payload={"type": "OrderCreated", "order_id": "123"},
-            metadata={"event_id": "uuid-123"},
+            payload=json_payload({"type": "OrderCreated", "order_id": "123"}),
+            metadata={"message_id": "uuid-123"},
         )
 
         await outbox.publish(session, message)
@@ -186,8 +187,8 @@ class OutboxDispatchTestCase(IsolatedAsyncioTestCase):
     async def test_dispatch_publishes_messages(self):
         """dispatch() calls publisher for each message."""
         rows = [
-            (1, 100, "kafka://orders", {"type": "OrderCreated", "order_id": "123"}, {"event_id": "uuid-1"}, "2024-01-01 00:00:00"),
-            (2, 100, "kafka://orders", {"type": "OrderShipped", "order_id": "123"}, {"event_id": "uuid-2"}, "2024-01-01 00:00:01"),
+            (1, 100, "kafka://orders", json_payload({"type": "OrderCreated", "order_id": "123"}), {"message_id": "uuid-1"}, "2024-01-01 00:00:00"),
+            (2, 100, "kafka://orders", json_payload({"type": "OrderShipped", "order_id": "123"}), {"message_id": "uuid-2"}, "2024-01-01 00:00:01"),
         ]
         cursor = MockCursor(rows=rows)
         connection = MockConnection(cursor)
@@ -205,13 +206,13 @@ class OutboxDispatchTestCase(IsolatedAsyncioTestCase):
         self.assertTrue(result)
         self.assertEqual(len(published), 2)
         self.assertEqual(published[0].uri, "kafka://orders")
-        self.assertEqual(published[0].payload["type"], "OrderCreated")
-        self.assertEqual(published[1].payload["type"], "OrderShipped")
+        self.assertEqual(decode_payload(published[0].payload)["type"], "OrderCreated")
+        self.assertEqual(decode_payload(published[1].payload)["type"], "OrderShipped")
 
     async def test_dispatch_acknowledges_last_message(self):
         """dispatch() updates consumer position after publishing."""
         rows = [
-            (5, 100, "kafka://orders", {"type": "OrderCreated", "order_id": "123"}, {"event_id": "uuid-1"}, "2024-01-01 00:00:00"),
+            (5, 100, "kafka://orders", json_payload({"type": "OrderCreated", "order_id": "123"}), {"message_id": "uuid-1"}, "2024-01-01 00:00:00"),
         ]
         cursor = MockCursor(rows=rows)
         connection = MockConnection(cursor)
@@ -232,7 +233,7 @@ class OutboxDispatchTestCase(IsolatedAsyncioTestCase):
     async def test_dispatch_with_uri_filter(self):
         """dispatch() with uri filters messages by uri prefix."""
         rows = [
-            (1, 100, "kafka://orders", {"type": "OrderCreated", "order_id": "123"}, {"event_id": "uuid-1"}, "2024-01-01 00:00:00"),
+            (1, 100, "kafka://orders", json_payload({"type": "OrderCreated", "order_id": "123"}), {"message_id": "uuid-1"}, "2024-01-01 00:00:00"),
         ]
         cursor = MockCursor(rows=rows)
         connection = MockConnection(cursor)
@@ -260,7 +261,7 @@ class OutboxDispatchTestCase(IsolatedAsyncioTestCase):
     async def test_dispatch_with_partitioning(self):
         """dispatch() with worker_id and num_workers partitions messages."""
         rows = [
-            (1, 100, "kafka://orders/order-123", {"type": "OrderCreated"}, {}, "2024-01-01 00:00:00"),
+            (1, 100, "kafka://orders/order-123", json_payload({"type": "OrderCreated"}), {}, "2024-01-01 00:00:00"),
         ]
         cursor = MockCursor(rows=rows)
         connection = MockConnection(cursor)
@@ -382,7 +383,7 @@ class OutboxRunTestCase(IsolatedAsyncioTestCase):
     async def test_run_processes_messages(self):
         """run() processes messages."""
         rows = [
-            (1, 100, "kafka://orders", {"type": "OrderCreated", "order_id": "123"}, {"event_id": "uuid-1"}, "2024-01-01 00:00:00"),
+            (1, 100, "kafka://orders", json_payload({"type": "OrderCreated", "order_id": "123"}), {"message_id": "uuid-1"}, "2024-01-01 00:00:00"),
         ]
         cursor = MockCursor(rows=rows, consume_on_fetch=True)
         connection = MockConnection(cursor)
@@ -439,7 +440,7 @@ class OutboxRunTestCase(IsolatedAsyncioTestCase):
     async def test_run_with_partitioning(self):
         """run() with partitioning distributes messages across workers."""
         rows = [
-            (1, 100, "kafka://orders/order-123", {"type": "OrderCreated"}, {}, "2024-01-01 00:00:00"),
+            (1, 100, "kafka://orders/order-123", json_payload({"type": "OrderCreated"}), {}, "2024-01-01 00:00:00"),
         ]
         cursor = MockCursor(rows=rows, consume_on_fetch=True)
         connection = MockConnection(cursor)
@@ -482,7 +483,7 @@ class OutboxAsyncIteratorTestCase(IsolatedAsyncioTestCase):
     async def test_aiter_yields_messages(self):
         """Async iterator yields OutboxMessage."""
         rows = [
-            (1, 100, "kafka://orders", {"type": "OrderCreated", "order_id": "123"}, {"event_id": "uuid-1"}, "2024-01-01 00:00:00"),
+            (1, 100, "kafka://orders", json_payload({"type": "OrderCreated", "order_id": "123"}), {"message_id": "uuid-1"}, "2024-01-01 00:00:00"),
         ]
         cursor = MockCursor(rows=rows)
         connection = MockConnection(cursor)
@@ -495,7 +496,7 @@ class OutboxAsyncIteratorTestCase(IsolatedAsyncioTestCase):
         message = await iterator.__anext__()
 
         self.assertEqual(message.uri, "kafka://orders")
-        self.assertEqual(message.payload["type"], "OrderCreated")
+        self.assertEqual(decode_payload(message.payload)["type"], "OrderCreated")
         self.assertEqual(message.position, 1)
         self.assertEqual(message.transaction_id, 100)
 
@@ -509,13 +510,13 @@ class OutboxMessageTestCase(unittest.TestCase):
         """OutboxMessage is created with required fields."""
         message = OutboxMessage(
             uri="kafka://orders",
-            payload={"type": "OrderCreated", "order_id": "123"},
-            metadata={"event_id": "uuid-123"},
+            payload=json_payload({"type": "OrderCreated", "order_id": "123"}),
+            metadata={"message_id": "uuid-123"},
         )
 
         self.assertEqual(message.uri, "kafka://orders")
-        self.assertEqual(message.payload, {"type": "OrderCreated", "order_id": "123"})
-        self.assertEqual(message.metadata, {"event_id": "uuid-123"})
+        self.assertEqual(message.payload, json_payload({"type": "OrderCreated", "order_id": "123"}))
+        self.assertEqual(message.metadata, {"message_id": "uuid-123"})
         self.assertIsNone(message.position)
         self.assertIsNone(message.transaction_id)
 
@@ -523,8 +524,8 @@ class OutboxMessageTestCase(unittest.TestCase):
         """OutboxMessage is created with all fields."""
         message = OutboxMessage(
             uri="kafka://orders",
-            payload={"type": "OrderCreated", "order_id": "123"},
-            metadata={"event_id": "uuid-123"},
+            payload=json_payload({"type": "OrderCreated", "order_id": "123"}),
+            metadata={"message_id": "uuid-123"},
             created_at="2024-01-01 00:00:00",
             position=5,
             transaction_id=100,
