@@ -386,6 +386,44 @@ class OutboxIntegrationTestCase(IsolatedAsyncioTestCase):
                     )
                     await self.outbox.publish(tx_session, message)
 
+    async def test_workers_share_uris_without_gaps_or_overlap(self):
+        """Every keyed URI is dispatched by exactly one of several workers."""
+        total = 40
+        num_workers = 3
+
+        async with self._session_pool.session() as session:
+            async with session.atomic() as tx_session:
+                for i in range(total):
+                    await self.outbox.publish(tx_session, OutboxMessage(
+                        uri="kafka://orders/order-%d" % i,
+                        payload={"type": "OrderCreated", "order": i},
+                        metadata={"event_id": "550e8400-e29b-41d4-a716-4466554407%02d" % i},
+                    ))
+
+        # The set must contain URIs with a negative hashtext(), otherwise the
+        # test would pass with a partition filter that ignores the sign.
+        async with self._session_pool.session() as session:
+            async with session.atomic():
+                async with session.connection.cursor() as cursor:
+                    await cursor.execute(
+                        "SELECT count(*) FROM %s WHERE hashtext(uri) < 0" % self._outbox_table
+                    )
+                    row = await cursor.fetchone()
+        self.assertGreater(row[0], 0)
+
+        for worker_id in range(num_workers):
+            while await self.outbox.dispatch(
+                self._publisher, "group", worker_id=worker_id, num_workers=num_workers
+            ):
+                pass
+
+        delivered_by_uri = {}
+        for message in self.published_messages:
+            delivered_by_uri[message.uri] = delivered_by_uri.get(message.uri, 0) + 1
+
+        self.assertEqual(len(delivered_by_uri), total)
+        self.assertEqual(set(delivered_by_uri.values()), {1})
+
 
 class OutboxConcurrencyTestCase(IsolatedAsyncioTestCase):
     """Tests for concurrent dispatcher behavior."""

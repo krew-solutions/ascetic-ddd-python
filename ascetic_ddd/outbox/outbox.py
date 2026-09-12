@@ -297,9 +297,11 @@ class Outbox(IOutbox):
         else:
             uri_filter = ""
 
-        # Build partition clause
+        # Build partition clause.
+        # hashtext() is signed and % keeps the sign of the dividend, so a
+        # negative hash would match no worker; the sign bit is cleared.
         if num_workers > 1:
-            partition_filter = "AND hashtext(uri) %% %(num_workers)s = %(worker_id)s"
+            partition_filter = "AND (hashtext(uri) & 2147483647) %% %(num_workers)s = %(worker_id)s"
         else:
             partition_filter = ""
 

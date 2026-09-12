@@ -309,6 +309,45 @@ class InboxIntegrationTestCase(IsolatedAsyncioTestCase):
         # Message should be processed exactly once
         self.assertEqual(len(self.handled_messages), 1)
 
+    async def test_workers_share_uris_without_gaps_or_overlap(self):
+        """Every keyed URI is processed by exactly one of several workers."""
+        total = 40
+        num_workers = 3
+
+        for i in range(total):
+            await self.inbox.publish(InboxMessage(
+                tenant_id="tenant1",
+                stream_type="Order",
+                stream_id={"id": "order-%d" % i},
+                stream_position=1,
+                uri="kafka://orders/order-%d" % i,
+                payload={"type": "OrderCreated", "order": i},
+            ))
+
+        # The set must contain URIs with a negative hashtext(), otherwise the
+        # test would pass with a partition filter that ignores the sign.
+        async with self.session_pool.session() as session:
+            async with session.atomic():
+                async with session.connection.cursor() as cursor:
+                    await cursor.execute(
+                        "SELECT count(*) FROM %s WHERE hashtext(uri) < 0" % self.inbox._table
+                    )
+                    row = await cursor.fetchone()
+        self.assertGreater(row[0], 0)
+
+        for worker_id in range(num_workers):
+            while await self.inbox.dispatch(
+                self._subscriber, worker_id=worker_id, num_workers=num_workers
+            ):
+                pass
+
+        handled_by_uri = {}
+        for message in self.handled_messages:
+            handled_by_uri[message.uri] = handled_by_uri.get(message.uri, 0) + 1
+
+        self.assertEqual(len(handled_by_uri), total)
+        self.assertEqual(set(handled_by_uri.values()), {1})
+
 
 if __name__ == '__main__':
     unittest.main()

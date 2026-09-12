@@ -245,10 +245,12 @@ class Inbox(IInbox):
             worker_id: This worker's ID (0 to num_workers-1).
             num_workers: Total number of workers for partitioning.
         """
-        # Build partition filter
+        # Build partition filter.
+        # hashtext() is signed and % keeps the sign of the dividend, so a
+        # negative hash would match no worker; the sign bit is cleared.
         if num_workers > 1:
             partition_expr = self._partition_key_strategy.get_sql_expression()
-            partition_filter = "AND hashtext(%s) %%%% %d = %d" % (
+            partition_filter = "AND (hashtext(%s) & 2147483647) %%%% %d = %d" % (
                 partition_expr, num_workers, worker_id
             )
         else:
