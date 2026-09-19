@@ -314,7 +314,7 @@ class TestPostgresqlVisitor(unittest.TestCase):
         visitor = PostgresqlVisitor()
         sql, params = expr.accept(visitor)
 
-        self.assertEqual("users.name", sql)
+        self.assertEqual('"users"."name"', sql)
         self.assertEqual([], params)
 
     def test_value_parameterization(self):
@@ -339,8 +339,8 @@ class TestPostgresqlVisitor(unittest.TestCase):
         sql, params = expr.accept(visitor)
 
         self.assertIn("AND", sql)
-        self.assertIn("t.a", sql)
-        self.assertIn("t.b", sql)
+        self.assertIn('"t"."a"', sql)
+        self.assertIn('"t"."b"', sql)
         self.assertEqual([1, 2], params)
 
     def test_prefix_not_operator(self):
@@ -353,7 +353,7 @@ class TestPostgresqlVisitor(unittest.TestCase):
         sql, params = expr.accept(visitor)
 
         self.assertIn("NOT", sql)
-        self.assertIn("t.active", sql)
+        self.assertIn('"t"."active"', sql)
         self.assertEqual([True], params)
 
 
@@ -374,7 +374,7 @@ class TestEndToEnd(unittest.TestCase):
 
         # Expected: something.tenant_id = $1 AND something.member_id = $2 AND something.something_id = $3
         self.assertEqual(
-            "something.tenant_id = $1 AND something.member_id = $2 AND something.something_id = $3",
+            '"something"."tenant_id" = $1 AND "something"."member_id" = $2 AND "something"."something_id" = $3',
             sql,
         )
         self.assertEqual([10, 3, 5], params)
@@ -414,7 +414,7 @@ class TestPostgresqlVisitorIsNull(unittest.TestCase):
         visitor = PostgresqlVisitor()
         sql, params = expr.accept(visitor)
 
-        self.assertEqual("deleted_at IS NULL", sql)
+        self.assertEqual('"deleted_at" IS NULL', sql)
         self.assertEqual([], params)
 
     def test_is_not_null(self):
@@ -424,7 +424,7 @@ class TestPostgresqlVisitorIsNull(unittest.TestCase):
         visitor = PostgresqlVisitor()
         sql, params = expr.accept(visitor)
 
-        self.assertEqual("created_at IS NOT NULL", sql)
+        self.assertEqual('"created_at" IS NOT NULL', sql)
         self.assertEqual([], params)
 
     def test_is_null_with_and(self):
@@ -459,7 +459,7 @@ class TestCompileToSQL(unittest.TestCase):
 
         sql, params = compile_to_sql(expr)
 
-        self.assertEqual("age >= $1", sql)
+        self.assertEqual('"age" >= $1', sql)
         self.assertEqual([18], params)
 
     def test_complex(self):
@@ -504,7 +504,7 @@ class TestCompileToSQL(unittest.TestCase):
 
         sql, params = compile_to_sql(expr)
 
-        self.assertEqual("user.profile.age >= $1", sql)
+        self.assertEqual('"user"."profile"."age" >= $1', sql)
         self.assertEqual([18], params)
 
     def test_arithmetic(self):
@@ -567,7 +567,7 @@ class TestCompileToSQL(unittest.TestCase):
 
         self.assertIn("EXISTS", sql)
         self.assertIn("items", sql)
-        self.assertIn("store_id = s.id", sql)
+        self.assertIn('"store_id" = "s"."id"', sql)
         self.assertNotIn("unnest", sql)
 
 
@@ -589,7 +589,7 @@ class TestPostgresqlVisitorWildcardEmbedded(unittest.TestCase):
         visitor = PostgresqlVisitor()
         sql, params = ast.accept(visitor)
 
-        expected_sql = "EXISTS (SELECT 1 FROM unnest(Items) AS item_1 WHERE item_1.Price > $1)"
+        expected_sql = 'EXISTS (SELECT 1 FROM unnest("Items") AS "item_1" WHERE "item_1"."Price" > $1)'
         self.assertEqual(expected_sql, sql)
         self.assertEqual([1000], params)
 
@@ -603,7 +603,7 @@ class TestPostgresqlVisitorWildcardEmbedded(unittest.TestCase):
         visitor = PostgresqlVisitor()
         sql, params = ast.accept(visitor)
 
-        expected_sql = "EXISTS (SELECT 1 FROM unnest(Items) AS item_1 WHERE item_1.Active)"
+        expected_sql = 'EXISTS (SELECT 1 FROM unnest("Items") AS "item_1" WHERE "item_1"."Active")'
         self.assertEqual(expected_sql, sql)
         self.assertEqual([], params)
 
@@ -623,7 +623,7 @@ class TestPostgresqlVisitorWildcardEmbedded(unittest.TestCase):
         visitor = PostgresqlVisitor()
         sql, params = ast.accept(visitor)
 
-        expected_sql = "EXISTS (SELECT 1 FROM unnest(Items) AS item_1 WHERE item_1.Price > $1 AND item_1.Active AND item_1.Stock > $2)"
+        expected_sql = 'EXISTS (SELECT 1 FROM unnest("Items") AS "item_1" WHERE "item_1"."Price" > $1 AND "item_1"."Active" AND "item_1"."Stock" > $2)'
         self.assertEqual(expected_sql, sql)
         self.assertEqual([1000, 0], params)
 
@@ -640,7 +640,7 @@ class TestPostgresqlVisitorWildcardEmbedded(unittest.TestCase):
         visitor = PostgresqlVisitor()
         sql, params = ast.accept(visitor)
 
-        expected_sql = "Active AND EXISTS (SELECT 1 FROM unnest(Items) AS item_1 WHERE item_1.Price > $1)"
+        expected_sql = '"Active" AND EXISTS (SELECT 1 FROM unnest("Items") AS "item_1" WHERE "item_1"."Price" > $1)'
         self.assertEqual(expected_sql, sql)
         self.assertEqual([1000], params)
 
@@ -656,7 +656,7 @@ class TestPostgresqlVisitorWildcardEmbedded(unittest.TestCase):
         visitor = PostgresqlVisitor()
         sql, params = ast.accept(visitor)
 
-        expected_sql = "NOT EXISTS (SELECT 1 FROM unnest(Items) AS item_1 WHERE item_1.Price > $1)"
+        expected_sql = 'NOT EXISTS (SELECT 1 FROM unnest("Items") AS "item_1" WHERE "item_1"."Price" > $1)'
         self.assertEqual(expected_sql, sql)
         self.assertEqual([5000], params)
 
@@ -673,7 +673,7 @@ class TestPostgresqlVisitorWildcardEmbedded(unittest.TestCase):
         visitor = PostgresqlVisitor()
         sql, params = ast.accept(visitor)
 
-        expected_sql = "EXISTS (SELECT 1 FROM unnest(Items) AS item_1 WHERE item_1.Price - $1 > $2)"
+        expected_sql = 'EXISTS (SELECT 1 FROM unnest("Items") AS "item_1" WHERE "item_1"."Price" - $1 > $2)'
         self.assertEqual(expected_sql, sql)
         self.assertEqual([100, 900], params)
 
@@ -697,8 +697,8 @@ class TestPostgresqlVisitorWildcardEmbedded(unittest.TestCase):
         sql, params = ast.accept(visitor)
 
         expected_sql = (
-            "Active AND EXISTS (SELECT 1 FROM unnest(Items) AS item_1 WHERE item_1.Price > $1) "
-            "AND EXISTS (SELECT 1 FROM unnest(Items) AS item_2 WHERE item_2.Price < $2)"
+            '"Active" AND EXISTS (SELECT 1 FROM unnest("Items") AS "item_1" WHERE "item_1"."Price" > $1) '
+            'AND EXISTS (SELECT 1 FROM unnest("Items") AS "item_2" WHERE "item_2"."Price" < $2)'
         )
         self.assertEqual(expected_sql, sql)
         self.assertEqual([1000, 100], params)
@@ -713,7 +713,7 @@ class TestPostgresqlVisitorWildcardEmbedded(unittest.TestCase):
         visitor = PostgresqlVisitor()
         sql, params = ast.accept(visitor)
 
-        expected_sql = "EXISTS (SELECT 1 FROM unnest(Items) AS item_1 WHERE item_1.Price < $1)"
+        expected_sql = 'EXISTS (SELECT 1 FROM unnest("Items") AS "item_1" WHERE "item_1"."Price" < $1)'
         self.assertEqual(expected_sql, sql)
         self.assertEqual([100], params)
 
@@ -737,8 +737,8 @@ class TestPostgresqlVisitorWildcardNested(unittest.TestCase):
         sql, params = outer_wildcard.accept(visitor)
 
         expected_sql = (
-            "EXISTS (SELECT 1 FROM unnest(Categories) AS category_1 WHERE "
-            "EXISTS (SELECT 1 FROM unnest(category_1.Items) AS item_2 WHERE item_2.Price > $1))"
+            'EXISTS (SELECT 1 FROM unnest("Categories") AS "category_1" WHERE '
+            'EXISTS (SELECT 1 FROM unnest("category_1"."Items") AS "item_2" WHERE "item_2"."Price" > $1))'
         )
         self.assertEqual(expected_sql, sql)
         self.assertEqual([1000], params)
@@ -762,8 +762,8 @@ class TestPostgresqlVisitorWildcardNested(unittest.TestCase):
         sql, params = outer_wildcard.accept(visitor)
 
         expected_sql = (
-            "EXISTS (SELECT 1 FROM unnest(Categories) AS category_1 WHERE "
-            "category_1.Active AND EXISTS (SELECT 1 FROM unnest(category_1.Items) AS item_2 WHERE item_2.Price > $1))"
+            'EXISTS (SELECT 1 FROM unnest("Categories") AS "category_1" WHERE '
+            '"category_1"."Active" AND EXISTS (SELECT 1 FROM unnest("category_1"."Items") AS "item_2" WHERE "item_2"."Price" > $1))'
         )
         self.assertEqual(expected_sql, sql)
         self.assertEqual([1000], params)
@@ -789,9 +789,9 @@ class TestPostgresqlVisitorWildcardNested(unittest.TestCase):
         sql, params = outer_wildcard.accept(visitor)
 
         expected_sql = (
-            "EXISTS (SELECT 1 FROM unnest(Regions) AS region_1 WHERE "
-            "EXISTS (SELECT 1 FROM unnest(region_1.Categories) AS category_2 WHERE "
-            "EXISTS (SELECT 1 FROM unnest(category_2.Items) AS item_3 WHERE item_3.Price > $1)))"
+            'EXISTS (SELECT 1 FROM unnest("Regions") AS "region_1" WHERE '
+            'EXISTS (SELECT 1 FROM unnest("region_1"."Categories") AS "category_2" WHERE '
+            'EXISTS (SELECT 1 FROM unnest("category_2"."Items") AS "item_3" WHERE "item_3"."Price" > $1)))'
         )
         self.assertEqual(expected_sql, sql)
         self.assertEqual([5000], params)
@@ -821,7 +821,7 @@ class TestSchemaRegistry(unittest.TestCase):
         visitor = PostgresqlVisitor(schema=schema)
         sql, params = ast.accept(visitor)
 
-        expected_sql = "EXISTS (SELECT 1 FROM items AS item_1 WHERE item_1.store_id = s.id AND item_1.Price > $1)"
+        expected_sql = 'EXISTS (SELECT 1 FROM "items" AS "item_1" WHERE "item_1"."store_id" = "s"."id" AND "item_1"."Price" > $1)'
         self.assertEqual(expected_sql, sql)
         self.assertEqual([1000], params)
 
@@ -848,7 +848,7 @@ class TestSchemaRegistry(unittest.TestCase):
         visitor = PostgresqlVisitor(schema=schema)
         sql, params = ast.accept(visitor)
 
-        expected_sql = "EXISTS (SELECT 1 FROM items AS item_1 WHERE item_1.tenant_id = s.tenant_id AND item_1.store_id = s.id AND item_1.Price > $1)"
+        expected_sql = 'EXISTS (SELECT 1 FROM "items" AS "item_1" WHERE "item_1"."tenant_id" = "s"."tenant_id" AND "item_1"."store_id" = "s"."id" AND "item_1"."Price" > $1)'
         self.assertEqual(expected_sql, sql)
         self.assertEqual([1000], params)
 
@@ -876,7 +876,7 @@ class TestSchemaRegistry(unittest.TestCase):
         visitor = PostgresqlVisitor(schema=schema)
         sql, params = ast.accept(visitor)
 
-        expected_sql = "EXISTS (SELECT 1 FROM items AS item_1 WHERE item_1.tenant_id = s.tenant_id AND item_1.region_id = s.region_id AND item_1.store_id = s.id AND item_1.Active = $1)"
+        expected_sql = 'EXISTS (SELECT 1 FROM "items" AS "item_1" WHERE "item_1"."tenant_id" = "s"."tenant_id" AND "item_1"."region_id" = "s"."region_id" AND "item_1"."store_id" = "s"."id" AND "item_1"."Active" = $1)'
         self.assertEqual(expected_sql, sql)
 
     def test_embedded_collection(self):
@@ -895,7 +895,7 @@ class TestSchemaRegistry(unittest.TestCase):
         visitor = PostgresqlVisitor(schema=schema)
         sql, params = ast.accept(visitor)
 
-        expected_sql = "EXISTS (SELECT 1 FROM unnest(Items) AS item_1 WHERE item_1.Price > $1)"
+        expected_sql = 'EXISTS (SELECT 1 FROM unnest("Items") AS "item_1" WHERE "item_1"."Price" > $1)'
         self.assertEqual(expected_sql, sql)
 
     def test_default_to_embedded(self):
@@ -910,7 +910,7 @@ class TestSchemaRegistry(unittest.TestCase):
         visitor = PostgresqlVisitor(schema=schema)
         sql, params = ast.accept(visitor)
 
-        expected_sql = "EXISTS (SELECT 1 FROM unnest(Items) AS item_1 WHERE item_1.Price > $1)"
+        expected_sql = 'EXISTS (SELECT 1 FROM unnest("Items") AS "item_1" WHERE "item_1"."Price" > $1)'
         self.assertEqual(expected_sql, sql)
 
     def test_no_schema(self):
@@ -923,7 +923,7 @@ class TestSchemaRegistry(unittest.TestCase):
         visitor = PostgresqlVisitor()  # No schema
         sql, params = ast.accept(visitor)
 
-        expected_sql = "EXISTS (SELECT 1 FROM unnest(Items) AS item_1 WHERE item_1.Price > $1)"
+        expected_sql = 'EXISTS (SELECT 1 FROM unnest("Items") AS "item_1" WHERE "item_1"."Price" > $1)'
         self.assertEqual(expected_sql, sql)
 
     def test_relational_with_complex_predicate(self):
@@ -945,7 +945,7 @@ class TestSchemaRegistry(unittest.TestCase):
         visitor = PostgresqlVisitor(schema=schema)
         sql, params = ast.accept(visitor)
 
-        expected_sql = "EXISTS (SELECT 1 FROM items AS item_1 WHERE item_1.store_id = s.id AND item_1.Price > $1 AND item_1.Active = $2)"
+        expected_sql = 'EXISTS (SELECT 1 FROM "items" AS "item_1" WHERE "item_1"."store_id" = "s"."id" AND "item_1"."Price" > $1 AND "item_1"."Active" = $2)'
         self.assertEqual(expected_sql, sql)
         self.assertEqual(2, len(params))
 
@@ -967,7 +967,7 @@ class TestSchemaRegistry(unittest.TestCase):
         sql1, _ = ast1.accept(PostgresqlVisitor(schema=schema))
 
         self.assertEqual(
-            "EXISTS (SELECT 1 FROM items AS item_1 WHERE item_1.store_id = s.id AND item_1.Price > $1)",
+            'EXISTS (SELECT 1 FROM "items" AS "item_1" WHERE "item_1"."store_id" = "s"."id" AND "item_1"."Price" > $1)',
             sql1,
         )
 
@@ -980,7 +980,7 @@ class TestSchemaRegistry(unittest.TestCase):
         sql2, _ = ast2.accept(PostgresqlVisitor(schema=schema))
 
         self.assertEqual(
-            "EXISTS (SELECT 1 FROM unnest(Tags) AS tag_1 WHERE tag_1.Name = $1)",
+            'EXISTS (SELECT 1 FROM unnest("Tags") AS "tag_1" WHERE "tag_1"."Name" = $1)',
             sql2,
         )
 
@@ -1007,8 +1007,8 @@ class TestSchemaRegistry(unittest.TestCase):
         sql, params = ast.accept(visitor)
 
         expected_sql = (
-            "EXISTS (SELECT 1 FROM categories AS category_1 WHERE category_1.store_id = s.id AND "
-            "EXISTS (SELECT 1 FROM items AS item_2 WHERE item_2.category_id = category_1.id AND item_2.Price > $1))"
+            'EXISTS (SELECT 1 FROM "categories" AS "category_1" WHERE "category_1"."store_id" = "s"."id" AND '
+            'EXISTS (SELECT 1 FROM "items" AS "item_2" WHERE "item_2"."category_id" = "category_1"."id" AND "item_2"."Price" > $1))'
         )
         self.assertEqual(expected_sql, sql)
         self.assertEqual([1000], params)
@@ -1048,10 +1048,10 @@ class TestSchemaRegistry(unittest.TestCase):
         sql, params = ast.accept(visitor)
 
         expected_sql = (
-            "EXISTS (SELECT 1 FROM categories AS category_1 WHERE "
-            "category_1.tenant_id = s.tenant_id AND category_1.store_id = s.id AND "
-            "EXISTS (SELECT 1 FROM items AS item_2 WHERE "
-            "item_2.tenant_id = category_1.tenant_id AND item_2.category_id = category_1.id AND item_2.Active = $1))"
+            'EXISTS (SELECT 1 FROM "categories" AS "category_1" WHERE '
+            '"category_1"."tenant_id" = "s"."tenant_id" AND "category_1"."store_id" = "s"."id" AND '
+            'EXISTS (SELECT 1 FROM "items" AS "item_2" WHERE '
+            '"item_2"."tenant_id" = "category_1"."tenant_id" AND "item_2"."category_id" = "category_1"."id" AND "item_2"."Active" = $1))'
         )
         self.assertEqual(expected_sql, sql)
 
@@ -1079,7 +1079,7 @@ class TestSchemaRegistry(unittest.TestCase):
         visitor = PostgresqlVisitor(schema=schema)
         sql, params = ast.accept(visitor)
 
-        expected_sql = "EXISTS (SELECT 1 FROM store_items AS si_1 WHERE si_1.store_id = s.id AND si_1.Price > $1)"
+        expected_sql = 'EXISTS (SELECT 1 FROM "store_items" AS "si_1" WHERE "si_1"."store_id" = "s"."id" AND "si_1"."Price" > $1)'
         self.assertEqual(expected_sql, sql)
 
 

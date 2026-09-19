@@ -294,7 +294,7 @@ class TestATemplateIsAFunctionOfItsParameters(unittest.TestCase):
         spec = jsonpath_parser.parse("$[?@.age > %d]")
         bound = spec.bind((25,))
         self.assertEqual(describe(bound), ("GT", ("field", "$", "age"), ("value", 25)))
-        self.assertEqual(compile_to_sql(bound), ("age > $1", [25]))
+        self.assertEqual(compile_to_sql(bound), ('"age" > $1', [25]))
         # The template is what it was: bound again, to something else.
         again = spec.bind((65,))
         self.assertEqual(describe(again), ("GT", ("field", "$", "age"), ("value", 65)))
@@ -306,8 +306,8 @@ class TestATemplateIsAFunctionOfItsParameters(unittest.TestCase):
         self.assertEqual(
             compile_to_sql(spec.bind({"price": 9.5, "owner": "ann"})),
             (
-                "EXISTS (SELECT 1 FROM unnest(items) AS item_1"
-                " WHERE item_1.price > $1 AND item_1.owner = $2)",
+                'EXISTS (SELECT 1 FROM unnest("items") AS "item_1"'
+                ' WHERE "item_1"."price" > $1 AND "item_1"."owner" = $2)',
                 [9.5, "ann"],
             ),
         )
@@ -315,8 +315,8 @@ class TestATemplateIsAFunctionOfItsParameters(unittest.TestCase):
         self.assertEqual(
             compile_to_sql(spec.bind({"price": 9.5, "owner": None})),
             (
-                "EXISTS (SELECT 1 FROM unnest(items) AS item_1"
-                " WHERE item_1.price > $1 AND item_1.owner IS NULL)",
+                'EXISTS (SELECT 1 FROM unnest("items") AS "item_1"'
+                ' WHERE "item_1"."price" > $1 AND "item_1"."owner" IS NULL)',
                 [9.5],
             ),
         )

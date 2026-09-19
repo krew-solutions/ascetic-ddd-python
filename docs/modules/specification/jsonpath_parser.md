@@ -97,11 +97,11 @@ spec = parse("$.items[*][?@.price > %(price)f && @.owner == %(owner)s]")
 spec.match(store, {"price": 9.5, "owner": "ann"})        # in memory
 
 compile_to_sql(spec.bind({"price": 9.5, "owner": "ann"}))
-# ('EXISTS (SELECT 1 FROM unnest(items) AS item_1
-#   WHERE item_1.price > $1 AND item_1.owner = $2)', [9.5, 'ann'])
+# ('EXISTS (SELECT 1 FROM unnest("items") AS "item_1"
+#   WHERE "item_1"."price" > $1 AND "item_1"."owner" = $2)', [9.5, 'ann'])
 
 compile_to_sql(spec.bind({"price": 9.5, "owner": None}))
-# ('EXISTS (... WHERE item_1.price > $1 AND item_1.owner IS NULL)', [9.5])
+# ('EXISTS (... WHERE "item_1"."price" > $1 AND "item_1"."owner" IS NULL)', [9.5])
 ```
 
 What a parameter is may decide what the tree is, as the last line shows, so a

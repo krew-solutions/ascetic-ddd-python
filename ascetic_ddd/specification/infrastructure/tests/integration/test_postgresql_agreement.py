@@ -215,6 +215,10 @@ class Store(typing.NamedTuple):
     def context(self) -> DictContext:
         return DictContext({
             "id": self.id, "a": self.a, "b": self.b, "flag": self.flag, "name": self.name,
+            # Members named as PostgreSQL names other things, under columns
+            # of those very names: `user` is the session's user if it is not
+            # quoted, `order` does not parse, `createdAt` folds to `createdat`.
+            "user": self.name, "order": self.a, "createdAt": self.b,
             "items": CollectionContext([
                 DictContext({"price": price, "active": active}) for price, active in self.items
             ]),
@@ -269,6 +273,10 @@ def specifications() -> list[Visitable]:
         every(GreaterThan(item("price"), Value(5))),
         Not(every(IsNotNull(item("price")))),
         And(field("flag"), some(dear())),
+        # A name is the column's, whatever else PostgreSQL knows by it.
+        Equal(field("user"), Value("one")),
+        GreaterThan(field("order"), Value(0)),
+        Equal(field("createdAt"), Value(2)),
     ]
 
 
@@ -351,15 +359,19 @@ class PostgresqlAgreementIntegrationTestCase(IsolatedAsyncioTestCase):
         await connection.execute(
             "CREATE TEMP TABLE spec_stores ("
             " id int8 PRIMARY KEY, a int8, b int8, flag bool, name text,"
-            " items pg_temp.spec_item[] NOT NULL)"
+            " items pg_temp.spec_item[] NOT NULL,"
+            ' "user" text, "order" int8, "createdAt" int8)'
         )
         await connection.execute(
             "CREATE TEMP TABLE spec_items (store_id int8 NOT NULL, price int8, active bool)"
         )
         for store in STORES:
             await connection.execute(
-                "INSERT INTO spec_stores VALUES (%s, %s, %s, %s, %s, '{}')",
-                (store.id, store.a, store.b, store.flag, store.name),
+                "INSERT INTO spec_stores VALUES (%s, %s, %s, %s, %s, '{}', %s, %s, %s)",
+                (
+                    store.id, store.a, store.b, store.flag, store.name,
+                    store.name, store.a, store.b,
+                ),
             )
             for price, active in store.items:
                 await connection.execute(

@@ -133,13 +133,32 @@ _SQL_SPELLING: dict[OPERATOR, str] = {
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
 
+def _quote(name: str) -> str:
+    """
+    Return the name between double quotes, a double quote of its own doubled.
+
+    A word PostgreSQL knows is read as what PostgreSQL knows: `user` without
+    quotes is the session's user, so `user = $1` parses and selects other
+    rows than were asked for, and `order` does not parse. Which words these
+    are depends on the server's version, which a library does not know; so
+    no name is looked up in a list, and every name is quoted.
+
+    Between quotes a name is the column's to the letter: `"createdAt"` is the
+    column created as `"createdAt"`, which `createdAt` without quotes is not -
+    PostgreSQL folds that to `createdat`. What a member of the domain is
+    called in the storage is for the transform context to say.
+    """
+    return '"%s"' % name.replace('"', '""')
+
+
 def _identifier(name: str) -> str:
     """
-    Return a name that can be written into a query as it is.
+    Return a name as the query has it: checked, then quoted part by part.
 
-    A name is refused rather than quoted, so that no tree, whatever it was
-    built from, can put SQL of its own into the query: only values are
-    parameters, and names used to be written as they were.
+    Two things keep SQL of a tree's own out of the text, and neither rests on
+    the other: a name outside the alphabet is refused, and a double quote
+    inside a name is doubled. Only values are parameters, and names used to
+    be written as they were.
 
     Args:
         name: A name, or names joined with dots: `public.items`
@@ -148,10 +167,11 @@ def _identifier(name: str) -> str:
         ValueError: If a part of the name is anything but letters, digits
             and "_", or starts with a digit
     """
-    for part in name.split("."):
+    parts = name.split(".")
+    for part in parts:
         if _IDENTIFIER.match(part) is None:
             raise ValueError("'%s' is not a valid identifier" % name)
-    return name
+    return ".".join(_quote(part) for part in parts)
 
 
 # The operators a run of which can be regrouped without a change of its
@@ -349,7 +369,9 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
 
         self._counters.wildcard_counter += 1
         alias = mapping.alias if mapping.alias else collection_name.lower()
-        alias = _identifier("%s_%d" % (alias, self._counters.wildcard_counter))
+        alias = "%s_%d" % (alias, self._counters.wildcard_counter)
+        # The alias goes on as it is: a name is quoted where it is written.
+        alias_ref = _identifier(alias)
 
         # Determine parent reference BEFORE entering new wildcard context
         parent_ref = _identifier(self._get_parent_ref_for_relational(node))
@@ -368,12 +390,12 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         for fk in mapping.foreign_keys:
             fk_parts.append(
                 "%s.%s = %s.%s"
-                % (alias, _identifier(fk.child_column), parent_ref, _identifier(fk.parent_column))
+                % (alias_ref, _identifier(fk.child_column), parent_ref, _identifier(fk.parent_column))
             )
         fk_conditions = " AND ".join(fk_parts)
 
         sql = "EXISTS (SELECT 1 FROM %s AS %s WHERE %s AND %s)" % (
-            _identifier(mapping.table), alias, fk_conditions, predicate_sql,
+            _identifier(mapping.table), alias_ref, fk_conditions, predicate_sql,
         )
         return sql, predicate_params
 
@@ -445,8 +467,8 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         # This handles nested wildcards: category_1.Items instead of just Items
         if self._in_wildcard and self._is_item_reference(parent):
             if parts:
-                return self._wildcard_alias + "." + _identifier(".".join(parts))
-            return self._wildcard_alias
+                return _identifier(self._wildcard_alias) + "." + _identifier(".".join(parts))
+            return _identifier(self._wildcard_alias)
 
         return _identifier(".".join(parts))
 
@@ -473,7 +495,7 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         """
         if self._in_wildcard and self._is_item_reference(node.object()):
             # This is a field of the current item: item.Price, item.Active, etc.
-            return "%s.%s" % (self._wildcard_alias, _identifier(node.name())), []
+            return "%s.%s" % (_identifier(self._wildcard_alias), _identifier(node.name())), []
 
         # Normal field access
         path = extract_field_path(node)

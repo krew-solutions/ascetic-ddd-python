@@ -19,6 +19,7 @@ from ascetic_ddd.specification.infrastructure.composite_expression_node import (
 )
 from ascetic_ddd.specification.domain.tests.describing import describe
 from ascetic_ddd.specification.infrastructure.postgresql_visitor import (
+    _quote,
     compile_specification,
     compile_to_sql,
 )
@@ -70,18 +71,18 @@ class TestParenthesesAreWritten(unittest.TestCase):
     def test_a_looser_operator_inside_a_tighter_one(self):
         a, b, c = field("a"), field("b"), field("c")
         cases = (
-            (And(Or(a, b), c), "(a OR b) AND c"),
-            (Or(And(a, b), c), "a AND b OR c"),
-            (Not(And(a, b)), "NOT (a AND b)"),
-            (Not(Equal(a, b)), "NOT a = b"),
-            (Mul(Add(a, b), c), "(a + b) * c"),
-            (Add(Mul(a, b), c), "a * b + c"),
-            (IsNull(Or(a, b)), "(a OR b) IS NULL"),
-            (IsNull(Equal(a, b)), "a = b IS NULL"),
-            (Neg(Add(a, b)), "-(a + b)"),
-            (LeftShift(Add(a, b), c), "a + b << c"),
-            (Add(a, LeftShift(b, c)), "a + (b << c)"),
-            (Equal(Is(a, b), c), "(a IS NOT DISTINCT FROM b) = c"),
+            (And(Or(a, b), c), '("a" OR "b") AND "c"'),
+            (Or(And(a, b), c), '"a" AND "b" OR "c"'),
+            (Not(And(a, b)), 'NOT ("a" AND "b")'),
+            (Not(Equal(a, b)), 'NOT "a" = "b"'),
+            (Mul(Add(a, b), c), '("a" + "b") * "c"'),
+            (Add(Mul(a, b), c), '"a" * "b" + "c"'),
+            (IsNull(Or(a, b)), '("a" OR "b") IS NULL'),
+            (IsNull(Equal(a, b)), '"a" = "b" IS NULL'),
+            (Neg(Add(a, b)), '-("a" + "b")'),
+            (LeftShift(Add(a, b), c), '"a" + "b" << "c"'),
+            (Add(a, LeftShift(b, c)), '"a" + ("b" << "c")'),
+            (Equal(Is(a, b), c), '("a" IS NOT DISTINCT FROM "b") = "c"'),
         )
         for node, expected in cases:
             with self.subTest(expected=expected):
@@ -98,11 +99,11 @@ class TestParenthesesFollowAssociativity(unittest.TestCase):
     def test_as_tight_by_the_side_the_operator_groups_to(self):
         a, b, c = field("a"), field("b"), field("c")
         cases = (
-            (Sub(Sub(a, b), c), "a - b - c"),
-            (Sub(a, Sub(b, c)), "a - (b - c)"),
-            (Sub(a, Add(b, c)), "a - (b + c)"),
-            (Div(a, Div(b, c)), "a / (b / c)"),
-            (Div(Mul(a, b), c), "a * b / c"),
+            (Sub(Sub(a, b), c), '"a" - "b" - "c"'),
+            (Sub(a, Sub(b, c)), '"a" - ("b" - "c")'),
+            (Sub(a, Add(b, c)), '"a" - ("b" + "c")'),
+            (Div(a, Div(b, c)), '"a" / ("b" / "c")'),
+            (Div(Mul(a, b), c), '"a" * "b" / "c"'),
         )
         for node, expected in cases:
             with self.subTest(expected=expected):
@@ -111,10 +112,10 @@ class TestParenthesesFollowAssociativity(unittest.TestCase):
     def test_a_comparison_groups_to_neither_side(self):
         a, b, c = field("a"), field("b"), field("c")
         cases = (
-            (Equal(Equal(a, b), c), "(a = b) = c"),
-            (Equal(a, Equal(b, c)), "a = (b = c)"),
-            (Equal(IsNull(a), c), "(a IS NULL) = c"),
-            (IsNull(IsNull(a)), "(a IS NULL) IS NULL"),
+            (Equal(Equal(a, b), c), '("a" = "b") = "c"'),
+            (Equal(a, Equal(b, c)), '"a" = ("b" = "c")'),
+            (Equal(IsNull(a), c), '("a" IS NULL) = "c"'),
+            (IsNull(IsNull(a)), '("a" IS NULL) IS NULL'),
         )
         for node, expected in cases:
             with self.subTest(expected=expected):
@@ -124,15 +125,15 @@ class TestParenthesesFollowAssociativity(unittest.TestCase):
         # AND and OR are associative, nulls included, so the parentheses of
         # a right-nested run would say nothing.
         a, b, c = field("a"), field("b"), field("c")
-        self.assertEqual(sql(And(a, And(b, c))), "a AND b AND c")
-        self.assertEqual(sql(Or(a, Or(b, c))), "a OR b OR c")
-        self.assertEqual(sql(And(a, b, c)), "a AND b AND c")
+        self.assertEqual(sql(And(a, And(b, c))), '"a" AND "b" AND "c"')
+        self.assertEqual(sql(Or(a, Or(b, c))), '"a" OR "b" OR "c"')
+        self.assertEqual(sql(And(a, b, c)), '"a" AND "b" AND "c"')
 
     def test_two_minus_signs_are_a_comment(self):
         a, b = field("a"), field("b")
-        self.assertEqual(sql(Neg(Neg(a))), "-(-a)")
-        self.assertEqual(sql(Sub(a, Neg(b))), "a - -b")
-        self.assertEqual(sql(Not(Not(a))), "NOT NOT a")
+        self.assertEqual(sql(Neg(Neg(a))), '-(-"a")')
+        self.assertEqual(sql(Sub(a, Neg(b))), '"a" - -"b"')
+        self.assertEqual(sql(Not(Not(a))), 'NOT NOT "a"')
         self.assertEqual(compile_to_sql(Neg(Value(5))), ("-$1", [5]))
 
 
@@ -145,11 +146,11 @@ class TestIsTakesAParameter(unittest.TestCase):
     def test_is(self):
         self.assertEqual(
             compile_to_sql(Is(field("active"), Value(True))),
-            ("active IS NOT DISTINCT FROM $1", [True]),
+            ('"active" IS NOT DISTINCT FROM $1', [True]),
         )
 
     def test_is_null_is_what_it_was(self):
-        self.assertEqual(sql(IsNull(field("deleted_at"))), "deleted_at IS NULL")
+        self.assertEqual(sql(IsNull(field("deleted_at"))), '"deleted_at" IS NULL')
 
 
 class TestCompositeInequality(unittest.TestCase):
@@ -167,13 +168,13 @@ class TestCompositeInequality(unittest.TestCase):
     def test_the_text(self):
         self.assertEqual(
             compile_to_sql(self.unequal_to(10, 3)),
-            ("NOT (tenant_id = $1 AND member_id = $2)", [10, 3]),
+            ('NOT ("tenant_id" = $1 AND "member_id" = $2)', [10, 3]),
         )
 
     def test_nested(self):
         left = CompositeExpression(CompositeExpression(field("a"), field("b")), field("c"))
         right = CompositeExpression(CompositeExpression(Value(1), Value(2)), Value(3))
-        self.assertEqual(sql(left != right), "NOT (a = $1 AND b = $2 AND c = $3)")
+        self.assertEqual(sql(left != right), 'NOT ("a" = $1 AND "b" = $2 AND "c" = $3)')
 
     def test_the_meaning(self):
         row = DictContext({"tenant_id": 10, "member_id": 3})
@@ -205,8 +206,8 @@ class TestThePredicateOfARelationalCollectionStaysInsideItsKeys(unittest.TestCas
         )
         self.assertEqual(
             sql(dear_or_active, schema),
-            "EXISTS (SELECT 1 FROM items AS item_1 WHERE item_1.store_id = s.id"
-            " AND (item_1.Active OR item_1.Price > $1))",
+            'EXISTS (SELECT 1 FROM "items" AS "item_1" WHERE "item_1"."store_id" = "s"."id"'
+            ' AND ("item_1"."Active" OR "item_1"."Price" > $1))',
         )
 
     def test_a_conjunction_is_not(self):
@@ -221,8 +222,8 @@ class TestThePredicateOfARelationalCollectionStaysInsideItsKeys(unittest.TestCas
         )
         self.assertEqual(
             sql(dear_and_active, schema),
-            "EXISTS (SELECT 1 FROM items AS item_1 WHERE item_1.store_id = s.id"
-            " AND item_1.Active AND item_1.Price > $1)",
+            'EXISTS (SELECT 1 FROM "items" AS "item_1" WHERE "item_1"."store_id" = "s"."id"'
+            ' AND "item_1"."Active" AND "item_1"."Price" > $1)',
         )
 
     def test_an_embedded_collection_needs_none(self):
@@ -232,8 +233,8 @@ class TestThePredicateOfARelationalCollectionStaysInsideItsKeys(unittest.TestCas
         )
         self.assertEqual(
             sql(dear_or_active),
-            "EXISTS (SELECT 1 FROM unnest(Items) AS item_1"
-            " WHERE item_1.Active OR item_1.Price > $1)",
+            'EXISTS (SELECT 1 FROM unnest("Items") AS "item_1"'
+            ' WHERE "item_1"."Active" OR "item_1"."Price" > $1)',
         )
 
 
@@ -259,14 +260,14 @@ class TestACollectionIsNamedByItsWholePath(unittest.TestCase):
         )
         self.assertEqual(
             sql(of_the_store, self.schema),
-            "EXISTS (SELECT 1 FROM store_items AS item_1"
-            " WHERE item_1.store_id = s.id AND item_1.Active)",
+            'EXISTS (SELECT 1 FROM "store_items" AS "item_1"'
+            ' WHERE "item_1"."store_id" = "s"."id" AND "item_1"."Active")',
         )
         self.assertEqual(
             sql(of_a_category, self.schema),
-            "EXISTS (SELECT 1 FROM categories AS category_1"
-            " WHERE category_1.store_id = s.id AND EXISTS (SELECT 1 FROM category_items AS item_2"
-            " WHERE item_2.category_id = category_1.id AND item_2.Active))",
+            'EXISTS (SELECT 1 FROM "categories" AS "category_1"'
+            ' WHERE "category_1"."store_id" = "s"."id" AND EXISTS (SELECT 1 FROM "category_items" AS "item_2"'
+            ' WHERE "item_2"."category_id" = "category_1"."id" AND "item_2"."Active"))',
         )
 
     def test_a_nested_collection_not_named_is_embedded(self):
@@ -282,9 +283,9 @@ class TestACollectionIsNamedByItsWholePath(unittest.TestCase):
         )
         self.assertEqual(
             sql(of_a_category, schema),
-            "EXISTS (SELECT 1 FROM categories AS category_1"
-            " WHERE category_1.store_id = s.id AND EXISTS (SELECT 1 FROM unnest(category_1.Items) AS item_2"
-            " WHERE item_2.Active))",
+            'EXISTS (SELECT 1 FROM "categories" AS "category_1"'
+            ' WHERE "category_1"."store_id" = "s"."id" AND EXISTS (SELECT 1 FROM unnest("category_1"."Items") AS "item_2"'
+            ' WHERE "item_2"."Active"))',
         )
 
     def test_the_objects_on_the_way_are_a_part_of_the_name(self):
@@ -298,8 +299,8 @@ class TestACollectionIsNamedByItsWholePath(unittest.TestCase):
         )
         self.assertEqual(
             sql(in_the_warehouse, schema),
-            "EXISTS (SELECT 1 FROM warehouse_items AS item_1"
-            " WHERE item_1.store_id = s.id AND item_1.Active)",
+            'EXISTS (SELECT 1 FROM "warehouse_items" AS "item_1"'
+            ' WHERE "item_1"."store_id" = "s"."id" AND "item_1"."Active")',
         )
 
 
@@ -327,22 +328,22 @@ class TestACollectionOfTheCandidateInsideAnotherJoinsToTheRoot(unittest.TestCase
         )
         self.assertEqual(
             sql(of_the_store, schema),
-            "EXISTS (SELECT 1 FROM items AS item_1 WHERE item_1.store_id = s.id"
-            " AND EXISTS (SELECT 1 FROM tags AS tag_2 WHERE tag_2.store_id = s.id"
-            " AND tag_2.Name = $1))",
+            'EXISTS (SELECT 1 FROM "items" AS "item_1" WHERE "item_1"."store_id" = "s"."id"'
+            ' AND EXISTS (SELECT 1 FROM "tags" AS "tag_2" WHERE "tag_2"."store_id" = "s"."id"'
+            ' AND "tag_2"."Name" = $1))',
         )
         self.assertEqual(
             sql(of_the_item, schema),
-            "EXISTS (SELECT 1 FROM items AS item_1 WHERE item_1.store_id = s.id"
-            " AND EXISTS (SELECT 1 FROM item_tags AS tag_2 WHERE tag_2.item_id = item_1.id"
-            " AND tag_2.Name = $1))",
+            'EXISTS (SELECT 1 FROM "items" AS "item_1" WHERE "item_1"."store_id" = "s"."id"'
+            ' AND EXISTS (SELECT 1 FROM "item_tags" AS "tag_2" WHERE "tag_2"."item_id" = "item_1"."id"'
+            ' AND "tag_2"."Name" = $1))',
         )
 
 
 class TestANameThatIsNotAnIdentifierIsRefused(unittest.TestCase):
     """A name was written into the query as it was, so a tree built of a text
     from outside could put SQL of its own there. A name is letters, digits
-    and "_", not starting with a digit; anything else is refused, not quoted.
+    and "_", not starting with a digit; anything else is refused.
     """
 
     def test_the_names_of_a_tree(self):
@@ -385,17 +386,41 @@ class TestANameThatIsNotAnIdentifierIsRefused(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     sql(any_item, registry)
 
-    def test_what_is_an_identifier_is_written_as_it_is(self):
-        self.assertEqual(sql(Field(Object(GlobalScope(), "users"), "_name1")), "users._name1")
-        self.assertEqual(sql(field("users.name")), "users.name")
+    def test_what_is_an_identifier_is_written_between_quotes(self):
+        self.assertEqual(sql(Field(Object(GlobalScope(), "users"), "_name1")), '"users"."_name1"')
+        self.assertEqual(sql(field("users.name")), '"users"."name"')
         schema = SchemaRegistry("stores").register_relational(
             "items", "public.items", "store_id", "id",
         )
         self.assertEqual(
             sql(Wildcard(Object(GlobalScope(), "items"), item("active")), schema),
-            "EXISTS (SELECT 1 FROM public.items AS item_1"
-            " WHERE item_1.store_id = stores.id AND item_1.active)",
+            'EXISTS (SELECT 1 FROM "public"."items" AS "item_1"'
+            ' WHERE "item_1"."store_id" = "stores"."id" AND "item_1"."active")',
         )
+
+
+class TestANameIsTheColumnsAndNothingElse(unittest.TestCase):
+    """A name was written into the query as it stood, and PostgreSQL reads a
+    word it knows as what it knows: ``user = $1`` compares the user of the
+    session and selects other rows than were asked for, ``order > $1`` does
+    not parse. Which words these are depends on the version of the server, so
+    every name is quoted, and between quotes it is the column's to the letter.
+    The rows are in ``test_postgresql_agreement``.
+    """
+
+    def test_a_word_postgresql_knows_is_a_name(self):
+        self.assertEqual(sql(Equal(field("user"), Value("ann"))), '"user" = $1')
+        self.assertEqual(sql(GreaterThan(field("order"), Value(0))), '"order" > $1')
+
+    def test_the_case_of_a_name_is_kept(self):
+        self.assertEqual(sql(IsNull(field("createdAt"))), '"createdAt" IS NULL')
+
+    def test_a_quote_inside_a_name_does_not_end_it(self):
+        self.assertEqual(_quote('a" OR "b'), '"a"" OR ""b"')
+        self.assertEqual(_quote('"'), '""""')
+        # Nor does it get there: the alphabet of names has no quote.
+        with self.assertRaises(ValueError):
+            sql(field('a" OR "b'))
 
 
 class Weight:
@@ -452,8 +477,8 @@ class TestThePredicateOfACollectionIsTransformed(unittest.TestCase):
         self.assertEqual(
             compile_specification(PartsContext(), self.heavy),
             (
-                "rank > $1 AND EXISTS (SELECT 1 FROM unnest(parts) AS part_1"
-                " WHERE part_1.weight_grams > $2)",
+                '"rank" > $1 AND EXISTS (SELECT 1 FROM unnest("parts") AS "part_1"'
+                ' WHERE "part_1"."weight_grams" > $2)',
                 [3, 100],
             ),
         )
@@ -532,8 +557,8 @@ class TestACollectionIsKeptWhereTheContextSays(unittest.TestCase):
         self.assertEqual(
             compile_specification(StoredPartsContext(), self.heavy),
             (
-                "EXISTS (SELECT 1 FROM unnest(something_parts) AS something_part_1"
-                " WHERE something_part_1.weight_grams > $1)",
+                'EXISTS (SELECT 1 FROM unnest("something_parts") AS "something_part_1"'
+                ' WHERE "something_part_1"."weight_grams" > $1)',
                 [100],
             ),
         )
@@ -608,8 +633,8 @@ class TestACollectionIsKeptWhereTheContextSays(unittest.TestCase):
         transformed = self.heavy.accept(TransformVisitor(StoredPartsContext()))
         self.assertEqual(
             sql(transformed, schema),
-            "EXISTS (SELECT 1 FROM parts AS something_part_1"
-            " WHERE something_part_1.thing_id = t.id AND something_part_1.weight_grams > $1)",
+            'EXISTS (SELECT 1 FROM "parts" AS "something_part_1"'
+            ' WHERE "something_part_1"."thing_id" = "t"."id" AND "something_part_1"."weight_grams" > $1)',
         )
 
 
@@ -664,11 +689,11 @@ class TestACompositeIsNotANode(unittest.TestCase):
         self.assertIsInstance(transformed, Visitable)
         self.assertEqual(
             compile_to_sql(transformed),
-            ("tenant_id = $1 AND member_id = $2", [10, 3]),
+            ('"tenant_id" = $1 AND "member_id" = $2', [10, 3]),
         )
         self.assertEqual(
             compile_specification(MembersContext(), by_id),
-            ("tenant_id = $1 AND member_id = $2", [10, 3]),
+            ('"tenant_id" = $1 AND "member_id" = $2', [10, 3]),
         )
 
     def test_inside_the_predicate_of_a_collection(self):
@@ -678,8 +703,8 @@ class TestACompositeIsNotANode(unittest.TestCase):
         self.assertEqual(
             compile_specification(MembersContext(), of_member),
             (
-                "EXISTS (SELECT 1 FROM unnest(members) AS member_1"
-                " WHERE member_1.tenant_id = $1 AND member_1.member_id = $2)",
+                'EXISTS (SELECT 1 FROM unnest("members") AS "member_1"'
+                ' WHERE "member_1"."tenant_id" = $1 AND "member_1"."member_id" = $2)',
                 [10, 3],
             ),
         )
@@ -714,9 +739,9 @@ class TestACompositeIsNotANode(unittest.TestCase):
         # It was an error of And, which takes two operands and more: "At
         # least one right operand is required", from inside the comparison.
         one = CompositeExpression(field("id")) == CompositeExpression(Value(1))
-        self.assertEqual(compile_to_sql(one), ("id = $1", [1]))
+        self.assertEqual(compile_to_sql(one), ('"id" = $1', [1]))
         other = CompositeExpression(field("id")) != CompositeExpression(Value(1))
-        self.assertEqual(compile_to_sql(other), ("NOT id = $1", [1]))
+        self.assertEqual(compile_to_sql(other), ('NOT "id" = $1', [1]))
 
     def test_a_composite_of_no_parts_is_refused_by_name(self):
         # It was an IndexError.
