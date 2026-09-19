@@ -66,11 +66,13 @@ class Nullable(Delegating, INullable):
 
 
 class Comparison(Delegating, IComparison):
+    # Equality with the null constant is the null test, as in a template and
+    # in a lambda: see nodes.equality_or_null_test.
     def __eq__(self, other: IComparison) -> ILogical:  # type: ignore[override]
-        return Logical(nodes.Equal(self.delegate(), other.delegate()))
+        return Logical(nodes.equality_or_null_test(nodes.Equal, self.delegate(), other.delegate()))
 
     def __ne__(self, other: IComparison) -> ILogical:  # type: ignore[override]
-        return Logical(nodes.NotEqual(self.delegate(), other.delegate()))
+        return Logical(nodes.equality_or_null_test(nodes.NotEqual, self.delegate(), other.delegate()))
 
     def __gt__(self, other: IComparison) -> ILogical:
         return Logical(nodes.GreaterThan(self.delegate(), other.delegate()))
@@ -83,12 +85,6 @@ class Comparison(Delegating, IComparison):
 
     def __le__(self, other: IComparison) -> ILogical:
         return Logical(nodes.LessThanEqual(self.delegate(), other.delegate()))
-
-    def __lshift__(self, other: IComparison) -> ILogical:
-        return Logical(nodes.LeftShift(self.delegate(), other.delegate()))
-
-    def __rshift__(self, other: IComparison) -> ILogical:
-        return Logical(nodes.RightShift(self.delegate(), other.delegate()))
 
 
 O = typing.TypeVar('O', bound=IMathematical)
@@ -104,11 +100,17 @@ class Mathematical(Delegating, IMathematical[T], typing.Generic[T]):
     def __mul__(self, other: IMathematical[numbers.Number]) -> typing.Self:
         return type(self)(nodes.Mul(self.delegate(), other.delegate()))
 
-    def __div__(self, other: IMathematical[numbers.Number]) -> typing.Self:
+    def __truediv__(self, other: IMathematical[numbers.Number]) -> typing.Self:
         return type(self)(nodes.Div(self.delegate(), other.delegate()))
 
     def __mod__(self, other: IMathematical[numbers.Number]) -> typing.Self:
         return type(self)(nodes.Mod(self.delegate(), other.delegate()))
+
+    def __lshift__(self, other: IMathematical[numbers.Number]) -> typing.Self:
+        return type(self)(nodes.LeftShift(self.delegate(), other.delegate()))
+
+    def __rshift__(self, other: IMathematical[numbers.Number]) -> typing.Self:
+        return type(self)(nodes.RightShift(self.delegate(), other.delegate()))
 
 
 def object_(name: str) -> nodes.Object:

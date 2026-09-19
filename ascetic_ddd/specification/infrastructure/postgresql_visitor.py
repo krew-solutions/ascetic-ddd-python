@@ -1,5 +1,6 @@
 """PostgreSQL visitor for generating SQL from specification AST."""
 import dataclasses
+import re
 
 import inflection
 from typing import Any, List, Optional, Tuple
@@ -13,6 +14,7 @@ from ascetic_ddd.specification.domain.nodes import (
     Item,
     Object,
     Operable,
+    Placeholder,
     Prefix,
     Postfix,
     Value,
@@ -20,9 +22,9 @@ from ascetic_ddd.specification.domain.nodes import (
     EmptiableObject,
     extract_field_path,
 )
-from ascetic_ddd.specification.domain.constants import OPERATOR
+from ascetic_ddd.specification.domain.constants import ASSOCIATIVITY, OPERATOR
 
-from ascetic_ddd.specification.infrastructure.transform_visitor import ITransformContext, TransformVisitor
+from ascetic_ddd.specification.infrastructure.transform_visitor import ITransformContext, transform
 from ascetic_ddd.specification.infrastructure.schema import SchemaRegistry
 
 
@@ -43,7 +45,7 @@ def compile_specification(
         Tuple of (sql_string, parameters)
     """
     # First, transform domain expression to infrastructure expression
-    infrastructure_expr = expression.accept(TransformVisitor(context))
+    infrastructure_expr = transform(context, expression)
 
     # Then, generate SQL from infrastructure expression
     return infrastructure_expr.accept(PostgresqlVisitor())
@@ -110,6 +112,56 @@ def _build_precedence_mapping() -> dict[str, int]:
     return mapping
 
 
+# How the table above spells the operators that OPERATOR names otherwise. The
+# rest are spelled in the table as their value is.
+_TABLE_SPELLING: dict[OPERATOR, str] = {
+    OPERATOR.NEG: "-",
+    OPERATOR.IS_NULL: "ISNULL",
+    OPERATOR.IS_NOT_NULL: "NOTNULL",
+}
+
+# How PostgreSQL spells the operators that OPERATOR names otherwise. The rest
+# are spelled in a query as their value is.
+#
+# ``IS`` takes a keyword - TRUE, NULL - and not a parameter: ``x IS $1`` is a
+# syntax error. ``IS NOT DISTINCT FROM`` is the same equality, in which null
+# is a value, takes any expression, and binds as ``IS`` does.
+_SQL_SPELLING: dict[OPERATOR, str] = {
+    OPERATOR.NEG: "-",
+    OPERATOR.IS: "IS NOT DISTINCT FROM",
+}
+
+_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+
+
+def _identifier(name: str) -> str:
+    """
+    Return a name that can be written into a query as it is.
+
+    A name is refused rather than quoted, so that no tree, whatever it was
+    built from, can put SQL of its own into the query: only values are
+    parameters, and names used to be written as they were.
+
+    Args:
+        name: A name, or names joined with dots: `public.items`
+
+    Raises:
+        ValueError: If a part of the name is anything but letters, digits
+            and "_", or starts with a digit
+    """
+    for part in name.split("."):
+        if _IDENTIFIER.match(part) is None:
+            raise ValueError("'%s' is not a valid identifier" % name)
+    return name
+
+
+# The operators a run of which can be regrouped without a change of its
+# value, nulls included, so that ``a AND (b AND c)`` needs no parentheses.
+# True of the logical connectives and of nothing else: ``a - (b - c)`` is not
+# ``a - b - c``, and even ``+`` overflows and rounds one way and not the other.
+_REGROUPING = frozenset((OPERATOR.AND, OPERATOR.OR))
+
+
 class PostgresqlVisitor(Visitor[SqlFragment]):
     """
     Visitor that generates PostgreSQL SQL from specification AST.
@@ -134,7 +186,8 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
 
     __slots__ = (
         '_counters', '_schema',
-        '_outer_precedence', '_in_wildcard', '_wildcard_alias',
+        '_outer_precedence', '_outer_apart',
+        '_in_wildcard', '_wildcard_alias', '_wildcard_path',
     )
 
     def __init__(
@@ -144,44 +197,78 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         *,
         _counters: Optional[_Counters] = None,
         _outer_precedence: int = 0,
+        _outer_apart: bool = False,
         _in_wildcard: bool = False,
         _wildcard_alias: str = "",
+        _wildcard_path: tuple[str, ...] = (),
     ):
         if _counters is None:
             _counters = _Counters(placeholder_index=placeholder_index)
         self._counters = _counters
         self._schema = schema
         self._outer_precedence = _outer_precedence
+        # Whether an operand as tight as the outer operator is parenthesised:
+        # it is on the side the operator does not group to.
+        self._outer_apart = _outer_apart
         self._in_wildcard = _in_wildcard
         self._wildcard_alias = _wildcard_alias
+        # The names from the aggregate to the collection of the current item,
+        # through the collections on the way: what a schema names it by.
+        self._wildcard_path = _wildcard_path
 
     # --- Sub-visitor builders ---
 
-    def _at_precedence(self, prec: int) -> 'PostgresqlVisitor':
-        """Return a sub-visitor with the given outer precedence."""
+    def _at_precedence(self, prec: int, apart: bool = False) -> 'PostgresqlVisitor':
+        """Return a sub-visitor with the given outer precedence.
+
+        Args:
+            prec: The precedence of the operator the operand is of
+            apart: Whether the operand is on the side the operator does not
+                group to, where one as tight as the operator is parenthesised
+        """
         return PostgresqlVisitor(
             schema=self._schema,
             _counters=self._counters,
             _outer_precedence=prec,
+            _outer_apart=apart,
             _in_wildcard=self._in_wildcard,
             _wildcard_alias=self._wildcard_alias,
+            _wildcard_path=self._wildcard_path,
         )
 
-    def _enter_wildcard(self, alias: str) -> 'PostgresqlVisitor':
-        """Return a sub-visitor scoped to a new wildcard context."""
+    def _enter_wildcard(
+        self, alias: str, path: tuple[str, ...], prec: int = 0
+    ) -> 'PostgresqlVisitor':
+        """Return a sub-visitor scoped to a new wildcard context.
+
+        Args:
+            alias: What the current item is called in the query
+            path: The names from the aggregate to the collection of the item
+            prec: The precedence of the operator the predicate is an operand
+                of: none in ``WHERE predicate``, AND in ``WHERE keys AND predicate``
+        """
         return PostgresqlVisitor(
             schema=self._schema,
             _counters=self._counters,
-            _outer_precedence=0,
+            _outer_precedence=prec,
             _in_wildcard=True,
             _wildcard_alias=alias,
+            _wildcard_path=path,
         )
 
     # --- Precedence helpers ---
 
     def _lookup_precedence(self, node: Operable) -> int:
         """Return the inner precedence for an operable node."""
-        key = "%s %s" % (node.operator(), node.associativity())
+        # The key is made of values. It used to be made of the members,
+        # "%s %s" % (node.operator(), node.associativity()), which for members
+        # of a str-and-Enum is "OPERATOR.AND ASSOCIATIVITY.LEFT_ASSOCIATIVE":
+        # in no row of the table, so every operator had the precedence of
+        # "any other operator" and no parenthesis was ever written.
+        key = "%s %s" % (
+            _TABLE_SPELLING.get(node.operator(), node.operator().value),
+            node.associativity().value,
+        )
         return self._PRECEDENCE_MAPPING.get(
             key,
             self._PRECEDENCE_MAPPING.get(
@@ -189,9 +276,16 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
             ),
         )
 
+    def _spell(self, operator: OPERATOR) -> str:
+        """Return the operator as PostgreSQL spells it."""
+        return _SQL_SPELLING.get(operator, operator.value)
+
     def _wrap_parens(self, inner_prec: int, sql: str) -> str:
-        """Add parentheses if inner precedence is lower than current outer."""
+        """Add parentheses if inner precedence is lower than current outer,
+        or is the same on the side the outer operator does not group to."""
         if inner_prec < self._outer_precedence:
+            return "(%s)" % sql
+        if inner_prec == self._outer_precedence and self._outer_apart:
             return "(%s)" % sql
         return sql
 
@@ -218,7 +312,7 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         2. Relational (separate table): EXISTS (SELECT 1 FROM table AS item WHERE fk_conditions AND predicate)
         """
         collection_name = self._extract_collection_name(node)
-        field_name = self._extract_field_name(node)
+        field_name = ".".join(self._extract_logical_path(node))
 
         if self._schema is not None and self._schema.is_relational(field_name):
             return self._visit_relational_collection(node, field_name, collection_name)
@@ -233,11 +327,11 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         self._counters.wildcard_counter += 1
         alias = "%s_%d" % (collection_name.lower(), self._counters.wildcard_counter)
 
-        sub = self._enter_wildcard(alias)
+        sub = self._enter_wildcard(alias, self._extract_logical_path(node))
         predicate_sql, predicate_params = node.predicate().accept(sub)
 
         sql = "EXISTS (SELECT 1 FROM unnest(%s) AS %s WHERE %s)" % (
-            collection_path, alias, predicate_sql,
+            collection_path, _identifier(alias), predicate_sql,
         )
         return sql, predicate_params
 
@@ -256,12 +350,18 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
 
         self._counters.wildcard_counter += 1
         alias = mapping.alias if mapping.alias else collection_name.lower()
-        alias = "%s_%d" % (alias, self._counters.wildcard_counter)
+        alias = _identifier("%s_%d" % (alias, self._counters.wildcard_counter))
 
         # Determine parent reference BEFORE entering new wildcard context
-        parent_ref = self._get_parent_ref_for_relational()
+        parent_ref = _identifier(self._get_parent_ref_for_relational(node))
 
-        sub = self._enter_wildcard(alias)
+        # The predicate is an operand of the AND after the keys: written as it
+        # is, `fk AND p OR q` selects through `q` the rows of other parents.
+        sub = self._enter_wildcard(
+            alias,
+            self._extract_logical_path(node),
+            self._PRECEDENCE_MAPPING["AND LEFT"],
+        )
         predicate_sql, predicate_params = node.predicate().accept(sub)
 
         # Generate FK conditions (supports composite keys)
@@ -269,23 +369,26 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         for fk in mapping.foreign_keys:
             fk_parts.append(
                 "%s.%s = %s.%s"
-                % (alias, fk.child_column, parent_ref, fk.parent_column)
+                % (alias, _identifier(fk.child_column), parent_ref, _identifier(fk.parent_column))
             )
         fk_conditions = " AND ".join(fk_parts)
 
         sql = "EXISTS (SELECT 1 FROM %s AS %s WHERE %s AND %s)" % (
-            mapping.table, alias, fk_conditions, predicate_sql,
+            _identifier(mapping.table), alias, fk_conditions, predicate_sql,
         )
         return sql, predicate_params
 
-    def _get_parent_ref_for_relational(self) -> str:
+    def _get_parent_ref_for_relational(self, node: Collection) -> str:
         """
-        Return parent reference based on current wildcard context.
+        Return parent reference based on what the path to the collection starts at.
 
         Called BEFORE entering a new wildcard context to get the correct outer reference.
         """
-        # If we are inside a nested wildcard, use the outer wildcard alias.
-        if self._in_wildcard and self._wildcard_alias:
+        # If the collection is one of the current item (a nested wildcard), use
+        # the outer wildcard alias. A collection of the candidate named inside
+        # the predicate of another is joined to the root row: it used to be
+        # joined to the enclosing item, whatever it was a collection of.
+        if self._in_wildcard and self._is_item_reference(self._extract_root(node)):
             return self._wildcard_alias
 
         # Otherwise, use schema's parent reference.
@@ -301,6 +404,34 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
             return parent.name()
         return ""
 
+    def _extract_root(self, node: Collection) -> EmptiableObject:
+        """Extract what the path to the collection starts at: GlobalScope or Item."""
+        parent = node.parent()
+        while not parent.is_root():
+            parent = parent.parent()
+        return parent
+
+    def _extract_logical_path(self, node: Collection) -> tuple[str, ...]:
+        """
+        Extract the names from the aggregate to the collection.
+
+        What a schema names the collection by: `("Categories", "Items")` for
+        the items of a category, `("Items",)` for the items of the store. The
+        last name alone, `_extract_field_name`, does not tell the two apart.
+        """
+        parts: List[str] = []
+
+        # Walk up the parent chain to collect path components
+        parent = node.parent()
+        while not parent.is_root():
+            parts.insert(0, parent.name())
+            parent = parent.parent()
+
+        # A path from the current item goes on from the path to its collection
+        if self._in_wildcard and self._is_item_reference(parent):
+            return self._wildcard_path + tuple(parts)
+        return tuple(parts)
+
     def _extract_collection_path(self, node: Collection) -> str:
         """Extract the SQL path to a collection from a CollectionNode."""
         parts: List[str] = []
@@ -315,10 +446,10 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         # This handles nested wildcards: category_1.Items instead of just Items
         if self._in_wildcard and self._is_item_reference(parent):
             if parts:
-                return self._wildcard_alias + "." + ".".join(parts)
+                return self._wildcard_alias + "." + _identifier(".".join(parts))
             return self._wildcard_alias
 
-        return ".".join(parts)
+        return _identifier(".".join(parts))
 
     def _extract_collection_name(self, node: Collection) -> str:
         """
@@ -343,11 +474,11 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         """
         if self._in_wildcard and self._is_item_reference(node.object()):
             # This is a field of the current item: item.Price, item.Active, etc.
-            return "%s.%s" % (self._wildcard_alias, node.name()), []
+            return "%s.%s" % (self._wildcard_alias, _identifier(node.name())), []
 
         # Normal field access
         path = extract_field_path(node)
-        return ".".join(path), []
+        return _identifier(".".join(path)), []
 
     def visit_value(self, node: Value) -> SqlFragment:
         """
@@ -356,21 +487,32 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         self._counters.placeholder_index += 1
         return "$%d" % self._counters.placeholder_index, [node.value()]
 
+    def visit_placeholder(self, node: Placeholder) -> SqlFragment:
+        """
+        Visit placeholder node - a template that is not bound has no parameters.
+
+        The marker a placeholder used to be went into the query as a parameter.
+        """
+        raise RuntimeError("Unbound placeholder: %s" % node.name())
+
     def visit_prefix(self, node: Prefix) -> SqlFragment:
         """
-        Visit prefix node (e.g., NOT, unary +/-).
+        Visit prefix node (e.g., NOT, unary -).
 
         Handles precedence and renders operator before operand.
         """
         inner_prec = self._lookup_precedence(node)
-        sub = self._at_precedence(inner_prec)
+        # `NOT NOT a` reads as it should; `--a` reads as a comment.
+        sub = self._at_precedence(
+            inner_prec, apart=node.operator() is OPERATOR.NEG,
+        )
         op_sql, op_params = node.operand().accept(sub)
 
-        # Unary +/- don't need space
-        if node.operator() in (OPERATOR.POS, OPERATOR.NEG):
-            sql = "%s%s" % (node.operator().value, op_sql)
+        # Unary - doesn't need space
+        if node.operator() is OPERATOR.NEG:
+            sql = "%s%s" % (self._spell(node.operator()), op_sql)
         else:
-            sql = "%s %s" % (node.operator().value, op_sql)
+            sql = "%s %s" % (self._spell(node.operator()), op_sql)
 
         return self._wrap_parens(inner_prec, sql), op_params
 
@@ -381,11 +523,21 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         Handles precedence and renders: left operator right
         """
         inner_prec = self._lookup_precedence(node)
-        sub = self._at_precedence(inner_prec)
-        left_sql, left_params = node.left().accept(sub)
-        right_sql, right_params = node.right().accept(sub)
+        # An operand as tight as the operator is parenthesised on the side the
+        # operator does not group to: `a - (b - c)`, `(a = b) = c`.
+        regroups = node.operator() in _REGROUPING
+        left_sub = self._at_precedence(
+            inner_prec,
+            apart=not regroups and node.associativity() != ASSOCIATIVITY.LEFT_ASSOCIATIVE,
+        )
+        right_sub = self._at_precedence(
+            inner_prec,
+            apart=not regroups and node.associativity() != ASSOCIATIVITY.RIGHT_ASSOCIATIVE,
+        )
+        left_sql, left_params = node.left().accept(left_sub)
+        right_sql, right_params = node.right().accept(right_sub)
 
-        sql = "%s %s %s" % (left_sql, node.operator().value, right_sql)
+        sql = "%s %s %s" % (left_sql, self._spell(node.operator()), right_sql)
         return self._wrap_parens(inner_prec, sql), left_params + right_params
 
     def visit_postfix(self, node: Postfix) -> SqlFragment:
@@ -395,8 +547,8 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         Handles precedence and renders operand before operator.
         """
         inner_prec = self._lookup_precedence(node)
-        sub = self._at_precedence(inner_prec)
+        sub = self._at_precedence(inner_prec, apart=True)
         op_sql, op_params = node.operand().accept(sub)
 
-        sql = "%s %s" % (op_sql, node.operator().value)
+        sql = "%s %s" % (op_sql, self._spell(node.operator()))
         return self._wrap_parens(inner_prec, sql), op_params

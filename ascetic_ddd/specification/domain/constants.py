@@ -2,6 +2,8 @@ import operator
 import typing
 from enum import Enum
 
+from ascetic_ddd.specification.domain import arithmetic, comparison
+
 __all__ = ('OPERATOR', 'ASSOCIATIVITY', 'OPERATOR_MAPPING',)
 
 
@@ -38,8 +40,15 @@ class OPERATOR(str, Enum):
     MOD = "%"
 
     # Unary mathematical
-    POS = "+"
-    NEG = "-"
+    # The values are names, not spellings: ``"+"`` and ``"-"`` are the values
+    # of ADD and SUB, and an Enum makes a member with a repeated value an
+    # alias of the first, so ``OPERATOR.NEG is OPERATOR.SUB`` was true. How an
+    # operator is spelled is for the notation that writes it to say.
+    #
+    # There is no unary plus, which was the other alias, of ADD: no node was
+    # made of it - a lambda's ``+x`` is ``x`` - and an operator that nothing
+    # writes is one more case in every reader of the tree.
+    NEG = "-neg"
 
     # Orderable
     ASC = "ASC"
@@ -58,13 +67,15 @@ class ASSOCIATIVITY(str, Enum):
 
 
 OPERATOR_MAPPING: dict[OPERATOR, typing.Callable[..., typing.Any]] = {
-    OPERATOR.EQ: operator.eq,
-    OPERATOR.NE: operator.ne,
-    OPERATOR.GT: operator.gt,
-    OPERATOR.LT: operator.lt,
-    OPERATOR.GTE: operator.ge,
-    OPERATOR.LTE: operator.le,
-    OPERATOR.IS: operator.eq,
+    # Comparisons are PostgreSQL's for the values PostgreSQL has, so that the
+    # evaluator and the query of the same tree agree; see ``comparison``.
+    OPERATOR.EQ: comparison.eq,
+    OPERATOR.NE: comparison.ne,
+    OPERATOR.GT: comparison.gt,
+    OPERATOR.LT: comparison.lt,
+    OPERATOR.GTE: comparison.ge,
+    OPERATOR.LTE: comparison.le,
+    OPERATOR.IS: comparison.eq,
     OPERATOR.IS_NULL: lambda operand: operand is None,
     OPERATOR.IS_NOT_NULL: lambda operand: operand is not None,
 
@@ -72,11 +83,15 @@ OPERATOR_MAPPING: dict[OPERATOR, typing.Callable[..., typing.Any]] = {
     OPERATOR.OR: operator.or_,
     OPERATOR.NOT: operator.not_,
 
-    OPERATOR.ADD: operator.add,
-    OPERATOR.SUB: operator.sub,
-    OPERATOR.MUL: operator.mul,
-    OPERATOR.DIV: operator.truediv,
-    OPERATOR.MOD: operator.mod,
-    OPERATOR.RSHIFT: operator.rshift,
-    OPERATOR.LSHIFT: operator.lshift,
+    # Arithmetic is PostgreSQL's for the values PostgreSQL has, so that the
+    # evaluator and the query of the same tree agree; see ``arithmetic``.
+    OPERATOR.NEG: arithmetic.neg,
+
+    OPERATOR.ADD: arithmetic.add,
+    OPERATOR.SUB: arithmetic.sub,
+    OPERATOR.MUL: arithmetic.mul,
+    OPERATOR.DIV: arithmetic.div,
+    OPERATOR.MOD: arithmetic.mod,
+    OPERATOR.RSHIFT: arithmetic.rshift,
+    OPERATOR.LSHIFT: arithmetic.lshift,
 }

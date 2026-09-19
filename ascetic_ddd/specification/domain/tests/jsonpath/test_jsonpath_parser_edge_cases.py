@@ -1,18 +1,17 @@
-"""Unit tests for JSONPath parser using jsonpath2 library."""
-import contextlib
-import io
+"""Unit tests of the native JSONPath parser: edge cases, reuse, concurrency.
+
+Written for a parser that converted the tree of the jsonpath2 library, which
+was removed: the template language has one parser. The tests of the language
+passed against the native parser as they stood and are kept; the tests of the
+library's own spelling of equality, `=`, went with it.
+"""
 import threading
 import unittest
 from typing import Any
 
-from jsonpath2.path import Path
-
-from ascetic_ddd.specification.domain.jsonpath.jsonpath2_parser import (
-    parse,
-    ParametrizedSpecificationJsonPath2,
-    _ConvertContext,
-)
 from ascetic_ddd.specification.domain.jsonpath.jsonpath_parser import (
+    parse,
+    JSONPathSyntaxError,
     JSONPathTypeError,
 )
 from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext
@@ -52,8 +51,8 @@ class NestedDictContext:
         return value
 
 
-class TestJsonPath2Parser(unittest.TestCase):
-    """Test JSONPath parser using jsonpath2."""
+class TestParser(unittest.TestCase):
+    """Test JSONPath parser."""
 
     def test_simple_comparison_greater_than(self):
         """Test simple greater-than comparison."""
@@ -70,14 +69,6 @@ class TestJsonPath2Parser(unittest.TestCase):
 
         self.assertTrue(spec.match(user, (30,)))
         self.assertFalse(spec.match(user, (20,)))
-
-    def test_simple_comparison_equal(self):
-        """Test simple equality comparison."""
-        spec = parse("$[?(@.name = %s)]")
-        user = DictContext({"name": "Alice"})
-
-        self.assertTrue(spec.match(user, ("Alice",)))
-        self.assertFalse(spec.match(user, ("Bob",)))
 
     def test_simple_comparison_not_equal(self):
         """Test simple not-equal comparison."""
@@ -112,14 +103,6 @@ class TestJsonPath2Parser(unittest.TestCase):
 
         self.assertTrue(spec.match(user, {"min_age": 25}))
         self.assertFalse(spec.match(user, {"min_age": 35}))
-
-    def test_string_placeholder(self):
-        """Test string placeholder."""
-        spec = parse("$[?(@.name = %(name)s)]")
-        user = DictContext({"name": "Alice"})
-
-        self.assertTrue(spec.match(user, {"name": "Alice"}))
-        self.assertFalse(spec.match(user, {"name": "Bob"}))
 
     def test_float_placeholder(self):
         """Test float placeholder."""
@@ -168,19 +151,6 @@ class TestJsonPath2Parser(unittest.TestCase):
 
         self.assertTrue(spec.match(root, {"min_age": 28}))
         self.assertFalse(spec.match(root, {"min_age": 35}))
-
-    def test_wildcard_string_comparison(self):
-        """Test wildcard with string comparison."""
-        spec = parse("$.users[*][?(@.role = %s)]")
-
-        user1 = DictContext({"name": "Alice", "role": "admin"})
-        user2 = DictContext({"name": "Bob", "role": "user"})
-
-        collection = CollectionContext([user1, user2])
-        root = DictContext({"users": collection})
-
-        self.assertTrue(spec.match(root, ("admin",)))
-        self.assertFalse(spec.match(root, ("guest",)))
 
     def test_error_on_non_context_data(self):
         """Test error when data doesn't implement Context protocol."""
@@ -236,12 +206,14 @@ class TestJsonPath2Parser(unittest.TestCase):
         self.assertFalse(spec.match(user, (25, 90.0)))
 
     def test_mixed_placeholders(self):
-        """Test mixing named and positional placeholders.
+        """Test that named and positional placeholders are not mixed.
 
-        Note: jsonpath2 has limitations with mixing named and positional placeholders.
-        This test verifies the basic case works.
+        A template that mixes them has no parameters it could be matched
+        with, and is refused when parsed; one style by itself works.
         """
-        # Use only named placeholders to avoid mixing issues
+        with self.assertRaises(JSONPathSyntaxError):
+            parse("$[?(@.age > %(min_age)d && @.score > %f)]")
+
         spec = parse("$[?(@.age > %(min_age)d)]")
 
         user = DictContext({"age": 30, "score": 85.5})
@@ -250,8 +222,8 @@ class TestJsonPath2Parser(unittest.TestCase):
         self.assertFalse(spec.match(user, {"min_age": 35}))
 
 
-class TestJsonPath2ParserEdgeCases(unittest.TestCase):
-    """Test edge cases for jsonpath2 parser."""
+class TestParserEdgeCases(unittest.TestCase):
+    """Test edge cases of the parser."""
 
     def test_integer_vs_float(self):
         """Test that integer and float comparisons work correctly."""
@@ -262,30 +234,6 @@ class TestJsonPath2ParserEdgeCases(unittest.TestCase):
 
         self.assertTrue(spec_int.match(obj, (99,)))
         self.assertTrue(spec_float.match(obj, (99.5,)))
-
-    def test_boolean_values(self):
-        """Test boolean value comparisons."""
-        spec = parse("$[?(@.active = %s)]")
-
-        obj_true = DictContext({"active": True})
-        obj_false = DictContext({"active": False})
-
-        self.assertTrue(spec.match(obj_true, (True,)))
-        self.assertFalse(spec.match(obj_true, (False,)))
-        self.assertTrue(spec.match(obj_false, (False,)))
-
-    def test_double_equals_normalized(self):
-        """Test that == is normalized to = for compatibility."""
-        spec_double = parse("$[?(@.name == %s)]")
-        spec_single = parse("$[?(@.name = %s)]")
-
-        obj = DictContext({"name": "Alice"})
-
-        # Both should work identically
-        self.assertTrue(spec_double.match(obj, ("Alice",)))
-        self.assertTrue(spec_single.match(obj, ("Alice",)))
-        self.assertFalse(spec_double.match(obj, ("Bob",)))
-        self.assertFalse(spec_single.match(obj, ("Bob",)))
 
     def test_double_equals_with_numbers(self):
         """Test == normalization with numeric comparisons."""
@@ -374,8 +322,8 @@ class TestJsonPath2ParserEdgeCases(unittest.TestCase):
         self.assertTrue(spec.match(obj_not, ("test!value",)))
 
 
-class TestJsonPath2NestedPaths(unittest.TestCase):
-    """Test nested paths functionality with jsonpath2."""
+class TestNestedPaths(unittest.TestCase):
+    """Test nested paths functionality."""
 
     def test_nested_path_simple(self):
         """Test simple nested path: $[?@.profile.age > 25]."""
@@ -517,8 +465,8 @@ class TestJsonPath2NestedPaths(unittest.TestCase):
         self.assertFalse(spec.match(data, {"min_age": 35}))
 
     def test_auto_parentheses(self):
-        """Test auto-adding parentheses (jsonpath2 requirement)."""
-        # Without parentheses - should be added automatically
+        """Test that a filter needs no parentheses around its condition."""
+        # Without parentheses - the same as with them
         spec = parse("$[?@.age > %d]")
         user = DictContext({"age": 30})
 
@@ -526,8 +474,8 @@ class TestJsonPath2NestedPaths(unittest.TestCase):
         self.assertFalse(spec.match(user, (35,)))
 
 
-class TestJsonPath2NestedWildcards(unittest.TestCase):
-    """Test nested wildcard functionality in jsonpath2 parser."""
+class TestNestedWildcards(unittest.TestCase):
+    """Test nested wildcard functionality."""
 
     def test_nested_wildcard_simple(self):
         """Test nested wildcard with simple filter."""
@@ -631,22 +579,14 @@ class TestOperatorAssociativity(unittest.TestCase):
     - a && b && c should produce And(And(a, b), c), not And(a, And(b, c))
     - a || b || c should produce Or(Or(a, b), c), not Or(a, Or(b, c))
 
-    Note: jsonpath2 uses AndVariadicOperatorExpression which can hold multiple
-    operands, but our converter builds a left-associative binary tree.
+    Note: the parser builds a left-associative binary tree.
     """
 
     def _get_ast(self, spec, data, params):
         """Helper to get the AST from a spec by triggering match()."""
 
 
-        path = Path.parse_str(spec._processed_template)
-        ctx = _ConvertContext(
-            params=params,
-            placeholder_info=spec._placeholder_info,
-            in_item_context=False,
-            placeholder_bind_index=0,
-        )
-        return spec._extract_filter_expression(path, ctx)
+        return spec._bind_values_in_ast(spec._ast, params)
 
     def test_and_left_associativity(self):
         """Test that && produces left-associative And tree."""
@@ -709,26 +649,17 @@ class TestOperatorPrecedence(unittest.TestCase):
     """
     Test operator precedence.
 
-    Note: jsonpath2 library uses variadic operators (AndVariadicOperatorExpression,
-    OrVariadicOperatorExpression) which don't follow standard RFC 9535 precedence
-    where && binds tighter than ||. Instead, jsonpath2 processes operators
-    left-to-right at the same precedence level.
-
-    These tests verify the behavior with explicit parentheses to control grouping.
+    && binds tighter than ||, as in RFC 9535. The jsonpath2 library these
+    tests were written for read the two left to right at one level, so they
+    controlled grouping with explicit parentheses and asserted nothing of a
+    template without them; `test_parentheses_change_semantics` now does.
     """
 
     def _get_ast(self, spec, params):
         """Helper to get the AST from a spec."""
 
 
-        path = Path.parse_str(spec._processed_template)
-        ctx = _ConvertContext(
-            params=params,
-            placeholder_info=spec._placeholder_info,
-            in_item_context=False,
-            placeholder_bind_index=0,
-        )
-        return spec._extract_filter_expression(path, ctx)
+        return spec._bind_values_in_ast(spec._ast, params)
 
     def test_explicit_grouping_and_in_or(self):
         """Test explicit grouping: a || (b && c)."""
@@ -808,7 +739,7 @@ class TestOperatorPrecedence(unittest.TestCase):
 
     def test_parentheses_change_semantics(self):
         """Test that parentheses change evaluation semantics."""
-        # Without grouping: a && b || c - jsonpath2 processes left-to-right
+        # Without grouping: a && b || c is (a && b) || c
         spec1 = parse("$[?(@.a == %d && @.b == %d || @.c == %d)]")
 
         # With explicit grouping: a && (b || c)
@@ -819,6 +750,15 @@ class TestOperatorPrecedence(unittest.TestCase):
 
         # spec2 should match: a && (b || c) = 1 && (0 || 3) = 1 && 1 = True
         self.assertTrue(spec2.match(data, (1, 2, 3)))
+        # spec1 should match too: (a && b) || c = (1 && 0) || 1 = True
+        self.assertTrue(spec1.match(data, (1, 2, 3)))
+
+        # Data where a=0, b=0, c=3: the two differ
+        data = DictContext({"a": 0, "b": 0, "c": 3})
+        # (a && b) || c = (0 && 0) || 1 = True
+        self.assertTrue(spec1.match(data, (1, 2, 3)))
+        # a && (b || c) = 0 && (0 || 1) = False
+        self.assertFalse(spec2.match(data, (1, 2, 3)))
 
 
 class TestErrorHandling(unittest.TestCase):
@@ -846,7 +786,7 @@ class TestErrorHandling(unittest.TestCase):
         spec = parse("$[?(@.age > %d && @.score > %d)]")
         user = DictContext({"age": 30, "score": 85})
 
-        with self.assertRaises((ValueError, IndexError)):
+        with self.assertRaises(JSONPathSyntaxError):
             spec.match(user, (25,))  # Missing second parameter
 
     def test_missing_named_parameter(self):
@@ -854,7 +794,7 @@ class TestErrorHandling(unittest.TestCase):
         spec = parse("$[?(@.age > %(min_age)d)]")
         user = DictContext({"age": 30})
 
-        with self.assertRaises((ValueError, KeyError)):
+        with self.assertRaises(JSONPathSyntaxError):
             spec.match(user, {"wrong_name": 25})
 
     def test_missing_field_in_data(self):
@@ -867,11 +807,9 @@ class TestErrorHandling(unittest.TestCase):
 
     def test_invalid_jsonpath_syntax(self):
         """Test error on invalid JSONPath syntax."""
-        # jsonpath2 library should raise an error for invalid syntax
-        with contextlib.redirect_stderr(io.StringIO()):
-            with self.assertRaises(Exception):
-                spec = parse("$[?(@.age >< %d)]")  # Invalid operator
-                spec.match(DictContext({"age": 30}), (25,))
+        # Refused when parsed, before there is anything to match
+        with self.assertRaises(JSONPathSyntaxError):
+            parse("$[?(@.age >< %d)]")  # Invalid operator
 
     def test_error_message_contains_type_info(self):
         """Test that type error contains useful type information."""
@@ -1108,12 +1046,8 @@ class TestBoundaryConditions(unittest.TestCase):
             )
 
     def test_deeply_nested_expression(self):
-        """Test deeply nested logical expression.
-
-        Note: jsonpath2 has limitations with complex nested expressions.
-        This test uses a simpler nesting pattern that jsonpath2 supports.
-        """
-        # (a && b) || (c && d) - simpler nesting
+        """Test nested logical expression."""
+        # (a && b) || (c && d)
         spec = parse("$[?((@.a == %d && @.b == %d) || (@.c == %d && @.d == %d))]")
 
         # First group matches (a && b)

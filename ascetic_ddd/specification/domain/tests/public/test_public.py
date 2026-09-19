@@ -143,25 +143,43 @@ class TestComparison(unittest.TestCase):
         delegate = result.delegate()
         self.assertIsInstance(delegate, nodes.LessThanEqual)
 
+    def test_a_null_is_tested_not_compared(self):
+        """`email == maybe`, of a value that may be None when the term is built.
+
+        In the tree a comparison with null is null, as in SQL, and is true of
+        nothing; a term means the null test by it, as a template and a lambda do.
+        """
+        email = NullText[str].make_field("email")
+        none = NullText[str].make_value(None)  # type: ignore[arg-type]
+
+        self.assertIsInstance((email == none).delegate(), nodes.IsNull)
+        self.assertIsInstance((email != none).delegate(), nodes.IsNotNull)
+        self.assertIsInstance((email == NullText[str].make_value("a@b")).delegate(), nodes.Equal)
+
     def test_lshift(self):
-        """Test left shift operation."""
-        left = Comparison(nodes.Value(5))
-        right = Comparison(nodes.Value(1))
+        """Test left shift operation: a computation, not a comparison."""
+        left = Mathematical(nodes.Value(5))
+        right = Mathematical(nodes.Value(1))
         result = left << right
 
-        self.assertIsInstance(result, Logical)
+        self.assertIsInstance(result, Mathematical)
         delegate = result.delegate()
         self.assertIsInstance(delegate, nodes.LeftShift)
 
     def test_rshift(self):
-        """Test right shift operation."""
-        left = Comparison(nodes.Value(5))
-        right = Comparison(nodes.Value(1))
+        """Test right shift operation: a computation, not a comparison."""
+        left = Mathematical(nodes.Value(5))
+        right = Mathematical(nodes.Value(1))
         result = left >> right
 
-        self.assertIsInstance(result, Logical)
+        self.assertIsInstance(result, Mathematical)
         delegate = result.delegate()
         self.assertIsInstance(delegate, nodes.RightShift)
+
+    def test_a_comparison_is_not_shifted(self):
+        """A text has comparisons and no shifts."""
+        with self.assertRaises(TypeError):
+            Comparison(nodes.Value("a")) << Comparison(nodes.Value(1))  # type: ignore[operator]
 
 
 class TestMathematical(unittest.TestCase):
@@ -201,7 +219,9 @@ class TestMathematical(unittest.TestCase):
         """Test division operation."""
         left = Mathematical[int](nodes.Value(6))
         right = Mathematical[int](nodes.Value(3))
-        result = left.__div__(right)
+        # Written as the operator: called by name, the method passed while
+        # `/` raised TypeError - it was `__div__`, which is Python 2's.
+        result = left / right
 
         self.assertIsInstance(result, Mathematical)
         delegate = result.delegate()
@@ -483,8 +503,10 @@ class TestIntegration(unittest.TestCase):
         left_shifted = value << shift_amount
         right_shifted = value >> shift_amount
 
-        self.assertIsInstance(left_shifted, Logical)
-        self.assertIsInstance(right_shifted, Logical)
+        # A shifted number is a number: it can be compared, and computed with.
+        self.assertIsInstance(left_shifted, Number)
+        self.assertIsInstance(right_shifted, Number)
+        self.assertIsInstance((left_shifted + shift_amount) > shift_amount, Logical)
 
     def test_modulo_operation(self):
         """Test modulo operation."""

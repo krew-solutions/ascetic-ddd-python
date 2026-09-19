@@ -37,6 +37,10 @@ class Visitor(Protocol[T_co]):
         """Visit a value node."""
         ...
 
+    def visit_placeholder(self, node: "Placeholder") -> T_co:
+        """Visit a placeholder node: a value that is not known yet."""
+        ...
+
     def visit_prefix(self, node: "Prefix") -> T_co:
         """Visit a prefix node."""
         ...
@@ -106,6 +110,40 @@ class Value(Visitable):
         return visitor.visit_value(self)
 
 
+class Placeholder(Visitable):
+    """Node standing where a value will: a placeholder of a template.
+
+    A template is parsed once and bound to parameters for each use, so its
+    tree has places where the values are not known yet. They used to be Value
+    nodes whose value was a marker, a tuple of a shape no value is supposed to
+    have, which every visitor took for a value. A node of its own is met by a
+    method of its own: binding puts a Value where it stands, and a visitor
+    that needs the value - the evaluator, the SQL compiler - refuses a tree
+    that still has one.
+    """
+
+    def __init__(self, name: str, format_type: str, positional: bool):
+        self._name = name
+        self._format_type = format_type
+        self._positional = positional
+
+    def name(self) -> str:
+        """Return the name of the parameter, or its position as text."""
+        return self._name
+
+    def format_type(self) -> str:
+        """Return what the placeholder asks of its parameter: "s", "d" or "f"."""
+        return self._format_type
+
+    def positional(self) -> bool:
+        """Return whether the parameter is given by position rather than by name."""
+        return self._positional
+
+    def accept(self, visitor: Visitor[T]) -> T:
+        """Accept a visitor."""
+        return visitor.visit_placeholder(self)
+
+
 class Prefix(Visitable):
     """Node representing a prefix operator (e.g., NOT)."""
 
@@ -139,6 +177,11 @@ class Prefix(Visitable):
 class Not(Prefix):
     def __init__(self, operand: Visitable):
         super().__init__(OPERATOR.NOT, operand, ASSOCIATIVITY.RIGHT_ASSOCIATIVE)
+
+
+class Neg(Prefix):
+    def __init__(self, operand: Visitable):
+        super().__init__(OPERATOR.NEG, operand, ASSOCIATIVITY.RIGHT_ASSOCIATIVE)
 
 
 class Infix(Visitable):
@@ -315,6 +358,38 @@ class IsNotNull(Postfix):
         super().__init__(operand, OPERATOR.IS_NOT_NULL, ASSOCIATIVITY.NON_ASSOCIATIVE)
 
 
+def equality_or_null_test(
+    node_class: Callable[[Visitable, Visitable], Infix],
+    left: Visitable,
+    right: Visitable,
+) -> Visitable:
+    """
+    Make a comparison, or the null test it stands for.
+
+    For the frontends that read a notation in which null is a value like any
+    other - ``@.deleted_at == null`` of JSONPath, ``u.deleted_at is None`` of
+    Python. In the tree a comparison with null is null, as in SQL, and is
+    true of nothing; what such a notation means by it is IS NULL.
+
+    Args:
+        node_class: The comparison: Equal, NotEqual, or any other
+        left: The left operand
+        right: The right operand
+
+    Returns:
+        ``IsNull``/``IsNotNull`` of the other operand if the comparison is
+        ``Equal``/``NotEqual`` and an operand is the constant null - spelled
+        out, or bound to a placeholder; the comparison itself otherwise.
+    """
+    if node_class is Equal or node_class is NotEqual:
+        null_test = IsNull if node_class is Equal else IsNotNull
+        if isinstance(right, Value) and right.value() is None:
+            return null_test(left)
+        if isinstance(left, Value) and left.value() is None:
+            return null_test(right)
+    return node_class(left, right)
+
+
 class GlobalScope(Visitable):
     """Node representing the global scope (root)."""
 
@@ -431,6 +506,27 @@ class Field(Visitable):
     def accept(self, visitor: Visitor[T]) -> T:
         """Accept a visitor."""
         return visitor.visit_field(self)
+
+
+def extract_object_root(obj: EmptiableObject) -> EmptiableObject:
+    """Extract what the path to an object starts at: GlobalScope or Item."""
+    while not obj.is_root():
+        obj = obj.parent()
+    return obj
+
+
+def extract_object_path(obj: EmptiableObject) -> list[str]:
+    """Extract the full path to an object as a list of names."""
+    path: list[str] = []
+    while not obj.is_root():
+        path.insert(0, obj.name())
+        obj = obj.parent()
+    return path
+
+
+def extract_field_root(node: Field) -> EmptiableObject:
+    """Extract what the path to a field starts at: GlobalScope or Item."""
+    return extract_object_root(node.object())
 
 
 def extract_field_path(node: Field) -> list[str]:

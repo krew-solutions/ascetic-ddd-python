@@ -29,7 +29,7 @@ Specification
 
 The :term:`Specification` pattern encapsulates query criteria. Supported flavors:
 
-- **JSONPath**: RFC 9535 and jsonpath2 implementations
+- **JSONPath**: a native parser of RFC 9535 filters with placeholders
 - **Lambda filter**: In-memory predicate-based filtering
 - **Query lookup**: MongoDB-like query operators (``$eq``, ``$gt``, ``$in``, ``$rel``, etc.)
 

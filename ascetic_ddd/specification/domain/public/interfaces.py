@@ -60,12 +60,6 @@ class IComparison(IDelegating, typing.Protocol):
     def __le__(self, other: 'IComparison') -> 'ILogical':
         ...
 
-    def __lshift__(self, other: 'IComparison') -> 'ILogical':
-        ...
-
-    def __rshift__(self, other: 'IComparison') -> 'ILogical':
-        ...
-
 
 O = typing.TypeVar('O', bound='IMathematical')
 
@@ -80,8 +74,19 @@ class IMathematical(IDelegating, typing.Protocol[T]):
     def __mul__(self, other: 'IMathematical[numbers.Number]') -> typing.Self:
         ...
 
-    def __div__(self, other: 'IMathematical[numbers.Number]') -> typing.Self:
+    # `/` is `__truediv__`: it used to be `__div__`, which is Python 2's, so
+    # `a / b` raised TypeError.
+    def __truediv__(self, other: 'IMathematical[numbers.Number]') -> typing.Self:
         ...
 
     def __mod__(self, other: 'IMathematical[numbers.Number]') -> typing.Self:
+        ...
+
+    # `<<` and `>>` shift the bits of an integer, as the evaluator and
+    # PostgreSQL have them: a computation. They used to be of IComparison,
+    # with a truth value for a result.
+    def __lshift__(self, other: 'IMathematical[numbers.Number]') -> typing.Self:
+        ...
+
+    def __rshift__(self, other: 'IMathematical[numbers.Number]') -> typing.Self:
         ...

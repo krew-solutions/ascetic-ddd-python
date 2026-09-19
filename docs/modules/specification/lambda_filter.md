@@ -182,9 +182,39 @@ print(visitor.result())  # True (there is an item with price > 100)
 ### Collections
 - `any(generator)` - Converts to `Wildcard`
 - `any([list comprehension])` - Converts to `Wildcard`
-- `all(generator)` - Converts to `Wildcard`
-- `all([list comprehension])` - Converts to `Wildcard`
+- `all(generator)` - Converts to `Not(Wildcard(..., Not(predicate)))`: no item fails the predicate
+- `all([list comprehension])` - The same
+- **The candidate inside a predicate** - `any(item.name == store.name for item in store.items)`
 - **Nested wildcards** - `any([any([...]) for ...])` - Supported
+
+### Unary Operators
+- `not x` - `Not`
+- `-x` - `Neg`; a negative literal, `-5`, is the value it looks like
+- `+x` - `x`: the tree has no unary plus, which would change nothing in either reader
+
+### None
+
+`u.email is None` and `u.email == None` are `IsNull(email)`; `is not` and
+`!=` are `IsNotNull`. So is a comparison with a variable from outside the
+lambda that is `None`. In the tree, as in SQL, a comparison with null is null
+and true of nothing; what the lambda means by it is the null test.
+
+### Values From Outside the Lambda
+
+A name that is not the lambda's argument, nor the target of a comprehension,
+is a variable the lambda sees from where it is written - of an enclosing
+function, or of the module. Its value at the time of parsing becomes a
+`Value`, so a specification can have parameters:
+
+```python
+def older_than(min_age: int):
+    return parse(lambda user: user.age > min_age)
+    # GreaterThan(Field(GlobalScope(), "age"), Value(min_age))
+
+parse(lambda item: item.price <= limits.max_price)   # attributes are followed
+```
+
+A name that is nowhere is a `ValueError`, as before.
 
 ### Literal Types
 ```python
@@ -398,6 +428,10 @@ The current version **does not support**:
 - Slice operations (e.g., `list[0:5]`)
 - Ternary operators (`x if condition else y`)
 - Bitwise operations (except `<<`, `>>`)
+- The item of an outer comprehension inside an inner one
+  (`any(any(i.price > c.limit for i in c.items) for c in s.categories)`):
+  the tree has one `Item()`, the nearest. It is a `ValueError`, whatever else
+  bears the same name.
 
 ## Inspiration
 

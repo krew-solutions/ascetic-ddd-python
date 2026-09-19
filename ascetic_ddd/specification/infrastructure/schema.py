@@ -30,10 +30,17 @@ class SchemaRegistry:
     """
     Holds collection mappings for a specific aggregate/repository.
 
+    A collection is named by its whole path from the aggregate: the objects
+    and the collections on the way, then its own name, joined with dots. It
+    used to be named by its last name alone, so the items of a store and the
+    items of a category were one collection with one table.
+
     Usage:
         schema = (SchemaRegistry("stores")
             .with_parent_alias("s")
-            .register_relational("Items", "items", "store_id", "id")
+            .register_relational("Items", "store_items", "store_id", "id")
+            .register_relational("Categories", "categories", "store_id", "id")
+            .register_relational("Categories.Items", "category_items", "category_id", "id")
             .register_embedded("Tags"))
     """
 

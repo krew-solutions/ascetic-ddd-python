@@ -17,7 +17,9 @@ A fully self-contained JSONPath expression parser that **requires no external li
 - **Easy to maintain** - all code in a single file
 - **Full functionality** - all logical operators including NOT
 - **Nested wildcards** - filtering by nested collections
-- **Nested paths** - access to nested fields (`$.a.b.c[?@.x > 1]`)
+- **Nested paths** - access to nested fields (`$[?@.a.b.c > 1]`) and to nested collections (`$.a.b.items[*][?@.x > 1]`)
+- **The candidate inside a filter** - `$` is the candidate in any filter (`$.items[*][?@.price < $.limit]`)
+- **A closed grammar** - what is not a template is refused where it stands, not read as something else
 
 ## Usage
 
@@ -115,6 +117,22 @@ parse("$[?@.age < %d || @.age > %d]")       # OR
 parse("$[?!(@.active == %s)]")              # NOT
 ```
 
+The letter of a placeholder says what it takes: `%d` an integer, `%f` a
+number (`int`, `float`, `Decimal`), `%s` a value of any type - a Value Object
+goes there; a `None` fits any. A parameter of another type is a
+`JSONPathTypeError`, so parameters given in the wrong order are told at once.
+
+`@.a == null` - spelled out, or a placeholder bound to `None` - is the null
+test, `IsNull(@.a)`, and `!=` is `IsNotNull`: in the tree, as in SQL, a
+comparison with null is null and true of nothing.
+
+Placeholders are bound in the order they stand; one inside a string literal
+(`'%s'`) is text. A template has placeholders of one style: `match()` takes a
+tuple or a mapping, as Python's `%` does, and neither can bind a template
+that mixes `%s` with `%(name)s`, so such a template is a `JSONPathSyntaxError`
+when parsed. A parameter that is missing is an error when matched, not a
+placeholder that silently equals nothing.
+
 ### Collections with Wildcard
 ```python
 spec = parse("$.items[*][?(@.price > %f)]")
@@ -156,7 +174,65 @@ The current implementation supports:
 - Negation: `$[?!(@.active == true)]`
 - Wildcard collections: `$.collection[*][?@.field op value]`
 - Nested wildcards: `$.categories[*][?@.items[*][?@.price > 100]]`
-- Nested paths: `$.a.b.c[?@.x > 1]`, `$[?@.a.b.c > 1]`
+- Nested paths: `$[?@.a.b.c > 1]`, `$.a.b.items[*][?@.x > 1]`
+- The candidate inside a filter: `$.items[*][?@.price < $.limit]`
+- Either side of a comparison is an operand: `$[?%d < @.age]`, `$[?@.a < @.b]`
+- A member as a test by itself: `$[?@.active]`, `$[?!@.active]`
+
+### Grammar
+
+```text
+template   = "$" ( filter | ( "." name )+ "[*]" filter )
+filter     = "[" "?" or "]"
+or         = and ( "||" and )*
+and        = primary ( "&&" primary )*
+primary    = "!" primary | comparison
+comparison = operand ( ( "==" | "!=" | "<" | "<=" | ">" | ">=" ) operand )?
+operand    = "(" or ")" | value | query
+query      = ( "@" | "$" ) ( "." name )+ ( "[*]" filter )?
+value      = number | string | "true" | "false" | "null" | placeholder
+number     = "-"? digit+ ( "." digit+ )? ( ( "e" | "E" ) ( "+" | "-" )? digit+ )?
+string     = "'" ( character | escape )* "'" | '"' ( character | escape )* '"'
+escape     = "\" ( "\" | "'" | '"' | "/" | "b" | "f" | "n" | "r" | "t" | "u" hex hex hex hex )
+placeholder = "%s" | "%d" | "%f" | "%(" ( letter | digit | "_" )+ ")" ( "s" | "d" | "f" )
+name       = ( letter | "_" ) ( letter | digit | "_" )*
+```
+
+Letters and digits are those of ASCII, in names, in placeholders and in numbers,
+as they are in the Rust port and in Go.
+
+Numbers and strings are RFC 9535's, and the same text is the same literal in
+the Rust port. A number with a fraction or an exponent is a `float` - `1e3` is
+`1000.0` - and any other an `int`. The evaluator computes an `int` as
+PostgreSQL does a `bigint` and a `float` as a `double precision`, so a literal
+that fits neither (`99999999999999999999`, `1e999`) is a `JSONPathSyntaxError`.
+
+In a string a backslash takes the next character along, so a quote of the kind
+the string is written in can stand inside it: `'it\'s'`, `"say \"hi\""`. A code
+point beyond the basic plane is a pair of `\u` escapes, a high surrogate and a
+low one; half a pair, and a backslash before anything the grammar does not
+list, is a `JSONPathSyntaxError` at the backslash, as a string left open is one
+at its quote. Earlier versions had no escapes: a string with quotes of both
+kinds could not be written, and `\n` was a backslash and an `n`. They had no
+exponent either: `1e3` was the number `1` and a name.
+
+`$[?p]` is `p` of the candidate, and `@` in it is the candidate.
+`$.a.items[*][?p]` is "some item of `a.items` satisfies `p`", and `@` in `p`
+is the item. A filter applies to the items of a collection, so a path needs
+its `[*]` before its filter.
+
+Every token the grammar asks for is required, and nothing may follow the
+template. Refused, where earlier versions read them as something else:
+
+- a bracket or a parenthesis left open, or closed twice - `$[?@.age > 1`,
+  `$[?(@.age > 1]`, `$[?@.age > 1]]`. A parenthesis used to be closed by the
+  first primary that met it, so `$[?(@.a > 1 || @.b > 2) && @.c > 3]` was read
+  as `a > 1 || (b > 2 && c > 3)`;
+- a filter on a path without `[*]` - `$.items[?@.price > 1]` - whose path was
+  dropped and the filter applied to the candidate;
+- a name without `@` or `$` - `$[?age > 1]`;
+- a comparison of a comparison - `$[?@.a == 1 == 2]`;
+- positional and named placeholders in one template.
 
 Not supported (yet):
 - JSONPath functions (len, min, max, etc.)
@@ -413,8 +489,8 @@ OR          # || (RFC 9535)
 NOT         # ! (RFC 9535)
 EQ          # == (RFC 9535: double sign)
 NE/GT/LT/GTE/LTE  # Comparison operators
-NUMBER      # 123, 45.67
-STRING      # "text", 'text'
+NUMBER      # 123, 45.67, 1e3, -2.5E-2
+STRING      # "text", 'text', 'it\'s'
 PLACEHOLDER # %d, %s, %(name)d
 IDENTIFIER  # age, name, status
 ```

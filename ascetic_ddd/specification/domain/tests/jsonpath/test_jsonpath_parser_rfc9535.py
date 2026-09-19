@@ -1,8 +1,14 @@
-"""Unit tests for JSONPath parser using jsonpath-rfc9535 library (RFC 9535 compliant)."""
+"""Unit tests of the native JSONPath parser: the operators and literals of RFC 9535.
+
+Written for a parser that converted the tree of the jsonpath-rfc9535 library,
+which was removed: the template language has one parser. Every test of it
+passed against the native parser as it stood, and is kept as a test of the
+language.
+"""
 import unittest
 from typing import Any
 
-from ascetic_ddd.specification.domain.jsonpath.jsonpath_rfc9535_parser import parse
+from ascetic_ddd.specification.domain.jsonpath.jsonpath_parser import parse
 from ascetic_ddd.specification.domain.jsonpath.jsonpath_parser import (
     JSONPathError,
     JSONPathSyntaxError,

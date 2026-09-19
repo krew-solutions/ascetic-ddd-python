@@ -10,8 +10,11 @@ RFC 9535 Compliance:
 - Uses || for logical OR (double pipe)
 - Uses ! for logical NOT (exclamation mark)
 """
+import decimal
+import math
 import re
-from dataclasses import dataclass, field
+import string
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict, Optional, Tuple, Union
 
 from ascetic_ddd.specification.domain.nodes import (
@@ -29,10 +32,14 @@ from ascetic_ddd.specification.domain.nodes import (
     NotEqual,
     Object,
     Or,
+    Placeholder,
+    Postfix,
     Value,
     Visitable,
     Wildcard,
+    equality_or_null_test,
 )
+from ascetic_ddd.specification.domain.arithmetic import BIGINT_MAX, BIGINT_MIN
 from ascetic_ddd.specification.domain.evaluate_visitor import Context, EvaluateVisitor
 
 
@@ -98,15 +105,210 @@ class JSONPathTypeError(JSONPathError):
         return "".join(parts)
 
 
-@dataclass
+# What the letter of a placeholder asks of its parameter. Not isinstance: bool
+# is a subclass of int, and True is not what `%d` asks for.
+_PARAMETER_TYPES: dict[str, tuple[type, ...]] = {
+    "d": (int,),
+    "f": (int, float, decimal.Decimal),
+}
+
+_PARAMETER_KINDS: dict[str, str] = {
+    "d": "an integer",
+    "f": "a number",
+}
+
+
+def require_parameter_of_kind(format_type: str, name: str, value: Any) -> Any:
+    """
+    Require a parameter to be what the letter of its placeholder asks for.
+
+    `%d` takes an integer, `%f` a number, `%s` a value of any type, as
+    Python's `%s` does - a Value Object goes there. A None fits any. The
+    letter used to be read and never used.
+
+    Args:
+        format_type: The letter of the placeholder: "s", "d" or "f"
+        name: The name of the placeholder, or its position
+        value: The parameter bound to it
+
+    Returns:
+        The parameter
+
+    Raises:
+        JSONPathTypeError: If the parameter is of another type
+    """
+    if format_type in _PARAMETER_TYPES and value is not None:
+        if type(value) not in _PARAMETER_TYPES[format_type]:
+            raise JSONPathTypeError(
+                "Placeholder %s does not take this parameter" % name,
+                expected=_PARAMETER_KINDS[format_type],
+                got=type(value).__name__,
+            )
+    return value
+
+
+_BACKSLASH = "\\"
+
+
+# What the character after a backslash stands for in a string (RFC 9535,
+# 2.3.5.1). The escape of a code point, a "u" and four hexadecimal digits, is
+# read apart: it is not one character long.
+_ESCAPES: dict[str, str] = {
+    _BACKSLASH: _BACKSLASH,
+    "'": "'",
+    '"': '"',
+    "/": "/",
+    "b": chr(0x08),
+    "f": chr(0x0C),
+    "n": chr(0x0A),
+    "r": chr(0x0D),
+    "t": chr(0x09),
+}
+
+
+def _hex4(text: str, at: int) -> Optional[int]:
+    """
+    Read four hexadecimal digits.
+
+    Not ``int(digits, 16)`` alone, which takes a sign, blanks and underscores.
+
+    Args:
+        text: The text the digits stand in
+        at: Where the first of them is
+
+    Returns:
+        The number they spell, None if they are not four hexadecimal digits
+    """
+    digits = text[at:at + 4]
+    if len(digits) == 4 and all(digit in string.hexdigits for digit in digits):
+        return int(digits, 16)
+    return None
+
+
+def _read_escape(text: str, at: int) -> Optional[Tuple[str, int]]:
+    """
+    Read the escape that starts with the backslash at ``at``.
+
+    Args:
+        text: The text the escape stands in
+        at: Where its backslash is
+
+    Returns:
+        (the character it stands for, where the text goes on), None if it is
+        not an escape of RFC 9535
+    """
+    letter = text[at + 1:at + 2]
+    if letter in _ESCAPES:
+        return _ESCAPES[letter], at + 2
+    if letter != "u":
+        return None
+    high = _hex4(text, at + 2)
+    if high is None:
+        return None
+    if 0xD800 <= high < 0xDC00:
+        # A code point beyond the basic plane is a pair of escapes.
+        low = _hex4(text, at + 8) if text[at + 6:at + 8] == _BACKSLASH + "u" else None
+        if low is None or not 0xDC00 <= low < 0xE000:
+            return None
+        return chr(0x10000 + ((high - 0xD800) << 10) + (low - 0xDC00)), at + 12
+    if 0xDC00 <= high < 0xE000:
+        # The second half of a pair, without the first.
+        return None
+    return chr(high), at + 6
+
+
+def read_string(spelling: str, position: int, expression: str) -> str:
+    """
+    Read the string a STRING token spells: its quotes off, its escapes read.
+
+    The token used to be read as ``spelling[1:-1]``: a backslash was a
+    backslash, so a quote of the kind the string is written in had no spelling.
+
+    Args:
+        spelling: The token as it stands in the template, quotes included
+        position: Where the token starts in the template
+        expression: The template, for an error to show
+
+    Returns:
+        The string
+
+    Raises:
+        JSONPathSyntaxError: If a backslash is followed by what is not an escape
+    """
+    characters: list[str] = []
+    at = 1
+    end = len(spelling) - 1
+    while at < end:
+        if spelling[at] != _BACKSLASH:
+            characters.append(spelling[at])
+            at += 1
+            continue
+        escape = _read_escape(spelling, at)
+        if escape is None:
+            raise JSONPathSyntaxError(
+                "Invalid escape",
+                position=position + at,
+                expression=expression,
+                context="expected %s" % ", ".join(
+                    [_BACKSLASH + letter for letter in _ESCAPES] + [_BACKSLASH + "uXXXX"]
+                ),
+            )
+        character, at = escape
+        characters.append(character)
+    return "".join(characters)
+
+
+def read_number(spelling: str, position: int, expression: str) -> Union[int, float]:
+    """
+    Read the number a NUMBER token spells.
+
+    An integer, or - with a fraction or an exponent - a float: ``1e3`` is a
+    float, as ``1000.0`` is. The evaluator computes an ``int`` as PostgreSQL
+    does a ``bigint`` and a ``float`` as a ``double precision``; a literal that
+    is neither is refused here and not computed with as if it were.
+
+    Args:
+        spelling: The token as it stands in the template
+        position: Where the token starts in the template
+        expression: The template, for an error to show
+
+    Returns:
+        The number
+
+    Raises:
+        JSONPathSyntaxError: If the number does not fit
+    """
+    out_of_range = JSONPathSyntaxError(
+        "Number out of range",
+        position=position,
+        expression=expression,
+        context="expected a number that fits",
+    )
+    if any(mark in spelling for mark in ".eE"):
+        # `1e999` parses, to infinity.
+        value = float(spelling)
+        if math.isinf(value):
+            raise out_of_range
+        return value
+    integer = int(spelling)
+    if not BIGINT_MIN <= integer <= BIGINT_MAX:
+        raise out_of_range
+    return integer
+
+
+@dataclass(frozen=True)
 class _ParseContext:
     """
-    Mutable parsing context passed through parser methods.
+    Parsing context passed through parser methods.
 
     Using a context object instead of instance variables makes the parser
     thread-safe and enables concurrent parsing of different templates.
+
+    Immutable: a filter on a collection is parsed with a context of its own,
+    made by ``replace``, so there is nothing to restore after it. Which
+    placeholder comes next is not kept here either: a placeholder's place is
+    a fact of its token (see ``_create_placeholder_value``).
     """
-    placeholder_bind_index: int = field(default=0)
     is_wildcard_context: bool = field(default=False)
 
 
@@ -146,9 +348,18 @@ class Lexer:
         ("GT", re.compile(r">")),
         ("LT", re.compile(r"<")),
         ("NOT", re.compile(r"!")),  # RFC 9535: exclamation mark (after !=)
-        ("NUMBER", re.compile(r"-?\d+\.?\d*")),
-        ("STRING", re.compile(r"'[^']*'|\"[^\"]*\"")),
-        ("PLACEHOLDER", re.compile(r"%\(\w+\)[sdf]|%[sdf]")),
+        # RFC 9535: a fraction has digits, so `1.` is a number and a dot;
+        # an exponent makes a float, `1e3`. Not `\d`, which in a pattern of
+        # `str` is any decimal digit of Unicode.
+        ("NUMBER", re.compile(r"-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?")),
+        # RFC 9535: a backslash takes the character after it along, so a quote
+        # of the kind the string is written in can stand inside it. Which
+        # escapes there are is `read_string`'s to say, with a position.
+        ("STRING", re.compile(
+            r"'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"", re.DOTALL
+        )),
+        # Not `\w`, which in a pattern of `str` is any letter or digit of Unicode.
+        ("PLACEHOLDER", re.compile(r"%\([A-Za-z0-9_]+\)[sdf]|%[sdf]")),
         ("IDENTIFIER", re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")),
         ("WHITESPACE", re.compile(r"\s+")),
     ]
@@ -176,6 +387,16 @@ class Lexer:
                     matched = True
                     break
 
+            if not matched and self.text[self.position] in "'\"":
+                # A quote starts a string or nothing: the pattern of a string
+                # did not match, so its closing quote is not there.
+                raise JSONPathSyntaxError(
+                    "Unterminated string",
+                    position=self.position,
+                    expression=self.text,
+                    context="expected closing quote",
+                )
+
             if not matched:
                 raise JSONPathSyntaxError(
                     f"Unexpected character '{self.text[self.position]}'",
@@ -202,48 +423,131 @@ class NativeParametrizedSpecification:
             template: JSONPath with %s, %d, %f or %(name)s placeholders
         """
         self.template = template
-        self._placeholder_info: list[dict] = []
-
-        # Extract placeholders before tokenization
-        self._extract_placeholders()
 
         # Parse AST once at initialization (cached for all match() calls)
         # Context is created locally - no mutable instance state
         lexer = Lexer(template)
         tokens = lexer.tokenize()
+
+        # Placeholders are those of the tokens, so one inside a string literal
+        # is text, and they are listed in the order they stand, which is the
+        # order they are bound in.
+        self._placeholder_info: list[dict] = self._extract_placeholders(tokens)
+
         ctx = _ParseContext()
         self._ast, self._is_wildcard = self._parse_path(tokens, ctx)
 
-    def _extract_placeholders(self):
-        """Extract placeholder information from template."""
-        # Find named placeholders: %(name)s, %(age)d, %(price)f
-        named_pattern = r"%\((\w+)\)([sdf])"
-        for match in re.finditer(named_pattern, self.template):
-            name = match.group(1)
-            format_type = match.group(2)
-            self._placeholder_info.append(
-                {
-                    "name": name,
-                    "format_type": format_type,
-                    "positional": False,
-                }
+    def _extract_placeholders(self, tokens: list[Token]) -> list[dict]:
+        """
+        Extract placeholder information from the tokens of the template.
+
+        Args:
+            tokens: List of tokens
+
+        Returns:
+            One entry per placeholder, in the order they stand. A positional
+            one is named by its place among the positional ones.
+
+        Raises:
+            JSONPathSyntaxError: If positional and named placeholders are
+                mixed. ``match()`` takes a tuple or a mapping, as Python's
+                ``%`` does, and neither can bind such a template.
+        """
+        placeholders = [token for token in tokens if token.type == "PLACEHOLDER"]
+        named = [token for token in placeholders if token.value.startswith("%(")]
+        positional = [token for token in placeholders if not token.value.startswith("%(")]
+
+        if named and positional:
+            raise JSONPathSyntaxError(
+                "Positional and named placeholders in one template",
+                position=max(named[0].position, positional[0].position),
+                expression=self.template,
+                context="expected placeholders of one style",
             )
 
-        # Find positional placeholders: %s, %d, %f
-        # Create a temp string without named placeholders
-        temp = re.sub(named_pattern, "", self.template)
-        positional_pattern = r"%([sdf])"
-        position = 0
-        for match in re.finditer(positional_pattern, temp):
-            format_type = match.group(1)
-            self._placeholder_info.append(
-                {
-                    "name": str(position),
-                    "format_type": format_type,
-                    "positional": True,
-                }
-            )
-            position += 1
+        # Named placeholders: %(name)s, %(age)d, %(price)f
+        # Positional placeholders: %s, %d, %f
+        return [
+            {
+                "name": token.value[2:-2],
+                "format_type": token.value[-1],
+                "positional": False,
+            }
+            if token.value.startswith("%(") else
+            {
+                "name": str(position),
+                "format_type": token.value[-1],
+                "positional": True,
+            }
+            for position, token in enumerate(placeholders)
+        ]
+
+    def _position(self, tokens: list[Token], i: int) -> int:
+        """Return the position in the template of the token at ``i``, or of its end."""
+        return tokens[i].position if i < len(tokens) else len(self.template)
+
+    def _expect(
+        self, tokens: list[Token], i: int, type_: str, message: str, context: str
+    ) -> int:
+        """
+        Require the token at ``i`` to be of ``type_``.
+
+        The grammar has no token that "may be present": a bracket the parser
+        stepped over where there was one, and did not miss where there was
+        none, let a template with a bracket left open, or one too many, be
+        read as if it were well formed.
+
+        Args:
+            tokens: List of tokens
+            i: Position of the token
+            type_: The type the token must be of
+            message: What to say if it is not
+            context: What was expected
+
+        Returns:
+            Next position
+
+        Raises:
+            JSONPathSyntaxError: If the token is of another type, or there is none
+        """
+        if i < len(tokens) and tokens[i].type == type_:
+            return i + 1
+        raise JSONPathSyntaxError(
+            message,
+            position=self._position(tokens, i),
+            expression=self.template,
+            context=context,
+        )
+
+    def _parse_filter(
+        self, tokens: list[Token], ctx: _ParseContext, start: int
+    ) -> tuple[Visitable, int]:
+        """
+        Parse a filter: "[" "?" expression "]".
+
+        Args:
+            tokens: List of tokens
+            ctx: Parse context; says what "@" is inside the filter
+            start: Starting position
+
+        Returns:
+            (Visitable node, next position)
+        """
+        message = "Expected filter expression '[?...]'"
+        i = self._expect(tokens, start, "LBRACKET", message, "expected '['")
+        i = self._expect(tokens, i, "QUESTION", message, "expected '?'")
+        node, i = self._parse_expression(tokens, ctx, i)
+        i = self._expect(tokens, i, "RBRACKET", "Expected ']'", "expected end of filter expression")
+        return node, i
+
+    _COMPARISONS = {
+        "EQ": Equal,
+        "NE": NotEqual,
+        "GT": GreaterThan,
+        "LT": LessThan,
+        "GTE": GreaterThanEqual,
+        "LTE": LessThanEqual,
+    }
 
     def _parse_primary(
         self, tokens: list[Token], ctx: _ParseContext, start: int = 0
@@ -254,9 +558,15 @@ class NativeParametrizedSpecification:
         Does NOT handle AND/OR operators - those are handled by _parse_expression
         to ensure left-associativity.
 
+        Grammar:
+            primary    = "!" primary | comparison
+            comparison = operand ( ( "==" | "!=" | "<" | "<=" | ">" | ">=" ) operand )?
+
+        A comparison has at most one operator: it does not associate.
+
         Args:
             tokens: List of tokens
-            ctx: Parse context (mutable state)
+            ctx: Parse context
             start: Starting position
 
         Returns:
@@ -264,79 +574,56 @@ class NativeParametrizedSpecification:
         """
         i = start
 
-        # Skip opening bracket if present
-        if i < len(tokens) and tokens[i].type == "LBRACKET":
-            i += 1
-
-        # Skip question mark if present
-        if i < len(tokens) and tokens[i].type == "QUESTION":
-            i += 1
-
         # Check for NOT operator (RFC 9535: !)
-        has_not = False
         if i < len(tokens) and tokens[i].type == "NOT":
-            has_not = True
-            i += 1
+            node, i = self._parse_primary(tokens, ctx, i + 1)
+            return Not(node), i
 
-        # Skip opening parenthesis if present
+        # Parse left side (field access, nested wildcard, value or parentheses)
+        left_node, i = self._parse_operand(tokens, ctx, i)
+
+        # Parse operator
+        if i >= len(tokens) or tokens[i].type not in self._COMPARISONS:
+            return left_node, i
+        node_class = self._COMPARISONS[tokens[i].type]
+
+        # Parse right side
+        right_node, i = self._parse_operand(tokens, ctx, i + 1)
+
+        # Create comparison node; `@.a == null` is the null test
+        return equality_or_null_test(node_class, left_node, right_node), i
+
+    def _parse_operand(
+        self, tokens: list[Token], ctx: _ParseContext, start: int
+    ) -> tuple[Visitable, int]:
+        """
+        Parse an operand: either side of a comparison, or a test by itself.
+
+        Grammar:
+            operand = "(" expression ")" | value | query
+
+        Args:
+            tokens: List of tokens
+            ctx: Parse context
+            start: Starting position
+
+        Returns:
+            (Visitable node, next position)
+        """
+        i = start
+
         if i < len(tokens) and tokens[i].type == "LPAREN":
-            i += 1
             # Recursively parse FULL expression inside parentheses (can have && and ||)
-            node, i = self._parse_expression(tokens, ctx, i)
-            # Skip closing parenthesis
-            if i < len(tokens) and tokens[i].type == "RPAREN":
-                i += 1
-        else:
-            # Parse left side (field access or nested wildcard)
-            left_node, i = self._parse_field_access(tokens, ctx, i)
+            node, i = self._parse_expression(tokens, ctx, i + 1)
+            # The parenthesis that closes this group: an inner primary used to
+            # take it for its own, and `(a || b) && c` was read `a || (b && c)`.
+            i = self._expect(tokens, i, "RPAREN", "Expected ')'", "expected closing parenthesis")
+            return node, i
 
-            # Check if left_node is a Wildcard (nested wildcard case)
-            if isinstance(left_node, Wildcard):
-                # This is a nested wildcard - return it directly
-                node = left_node
-            else:
-                # Parse operator
-                if i >= len(tokens):
-                    if has_not:
-                        return Not(left_node), i
-                    return left_node, i
+        if i < len(tokens) and tokens[i].type in ("AT", "DOLLAR"):
+            return self._parse_field_access(tokens, ctx, i)
 
-                op_token = tokens[i]
-                i += 1
-
-                # Parse right side (value)
-                right_node, i = self._parse_value(tokens, ctx, i)
-
-                # Create comparison node
-                if op_token.type == "EQ":
-                    node = Equal(left_node, right_node)
-                elif op_token.type == "NE":
-                    node = NotEqual(left_node, right_node)
-                elif op_token.type == "GT":
-                    node = GreaterThan(left_node, right_node)
-                elif op_token.type == "LT":
-                    node = LessThan(left_node, right_node)
-                elif op_token.type == "GTE":
-                    node = GreaterThanEqual(left_node, right_node)
-                elif op_token.type == "LTE":
-                    node = LessThanEqual(left_node, right_node)
-                else:
-                    raise JSONPathSyntaxError(
-                        f"Unexpected operator '{op_token.value}'",
-                        position=op_token.position,
-                        expression=self.template,
-                        context="expected comparison operator (==, !=, <, >, <=, >=)",
-                    )
-
-            # Skip closing parenthesis if present (from earlier opening)
-            if i < len(tokens) and tokens[i].type == "RPAREN":
-                i += 1
-
-        # Apply NOT if present
-        if has_not:
-            node = Not(node)
-
-        return node, i
+        return self._parse_value(tokens, ctx, i)
 
     def _parse_and_expression(
         self, tokens: list[Token], ctx: _ParseContext, start: int = 0
@@ -481,10 +768,14 @@ class NativeParametrizedSpecification:
         - Simple: @.field
         - Nested: @.a.b.c
         - Nested wildcard: @.items[*][?@.price > 100]
+        - From the candidate, inside a filter as well: $.limit
+
+        Grammar:
+            query = ( "@" | "$" ) ( "." name )+ ( "[*]" filter )?
 
         Args:
             tokens: List of tokens
-            ctx: Parse context (mutable state)
+            ctx: Parse context
             start: Starting position
 
         Returns:
@@ -498,26 +789,25 @@ class NativeParametrizedSpecification:
             # Use Item() only in wildcard context, otherwise GlobalScope()
             parent: EmptiableObject = Item() if ctx.is_wildcard_context else GlobalScope()
         else:
+            # $ (the candidate), whatever filter it stands in
+            i = self._expect(tokens, i, "DOLLAR", "Expected '@' or '$'", "expected field access")
             parent = GlobalScope()
 
-        # Skip dot
-        if i < len(tokens) and tokens[i].type == "DOT":
-            i += 1
-
         # Parse field path chain (e.g., a.b.c)
-        field_chain, i = self._parse_identifier_chain(tokens, i)
+        field_chain: list[str] = []
+        if i < len(tokens) and tokens[i].type == "DOT":
+            field_chain, i = self._parse_identifier_chain(tokens, i + 1)
 
         if not field_chain:
-            pos = tokens[i].position if i < len(tokens) else len(self.template)
             raise JSONPathSyntaxError(
                 "Expected field name",
-                position=pos,
+                position=self._position(tokens, i),
                 expression=self.template,
-                context="after '@.' or '.'",
+                context="after '@.' or '$.'",
             )
 
         # Check for nested wildcard on last field: field[*][?...]
-        if self._check_nested_wildcard(tokens, i):
+        if i < len(tokens) and tokens[i].type == "LBRACKET":
             # Build parent chain for all fields except the last
             parent = self._build_object_chain(parent, field_chain[:-1])
             collection_name = field_chain[-1]
@@ -527,26 +817,6 @@ class NativeParametrizedSpecification:
         parent = self._build_object_chain(parent, field_chain[:-1])
         return Field(parent, field_chain[-1]), i
 
-    def _check_nested_wildcard(self, tokens: list[Token], start: int) -> bool:
-        """
-        Check if tokens starting at position indicate a nested wildcard pattern.
-
-        Pattern: [*][?...]
-
-        Args:
-            tokens: List of tokens
-            start: Starting position
-
-        Returns:
-            True if nested wildcard pattern detected
-        """
-        # Check for [*] followed by [?...]
-        return (
-            self._is_wildcard_pattern(tokens, start)
-            and start + 3 < len(tokens)
-            and tokens[start + 3].type == "LBRACKET"
-        )
-
     def _parse_nested_wildcard(
         self, tokens: list[Token], ctx: _ParseContext, start: int,
         parent: EmptiableObject, collection_name: str
@@ -554,9 +824,13 @@ class NativeParametrizedSpecification:
         """
         Parse nested wildcard pattern: collection[*][?predicate]
 
+        A filter applies to the items of a collection, so the wildcard is
+        required: `collection[?predicate]` used to lose its path and have the
+        predicate applied to the candidate.
+
         Args:
             tokens: List of tokens
-            ctx: Parse context (mutable state)
+            ctx: Parse context
             start: Position after collection name
             parent: Parent node (Item or GlobalScope)
             collection_name: Name of the collection field
@@ -570,41 +844,25 @@ class NativeParametrizedSpecification:
         if self._is_wildcard_pattern(tokens, i):
             i += 3
         else:
-            pos = tokens[i].position if i < len(tokens) else len(self.template)
+            pos = tokens[i + 1].position if i + 1 < len(tokens) else len(self.template)
             raise JSONPathSyntaxError(
                 "Expected wildcard '[*]'",
                 position=pos,
                 expression=self.template,
-                context="in nested wildcard pattern",
+                context="a filter applies to the items of a collection",
             )
 
         # Parse filter expression [?...]
-        if i < len(tokens) and tokens[i].type == "LBRACKET":
-            # Save current wildcard context
-            old_context = ctx.is_wildcard_context
+        # Set wildcard context to True for nested predicate
+        predicate, i = self._parse_filter(tokens, replace(ctx, is_wildcard_context=True), i)
 
-            # Set wildcard context to True for nested predicate
-            ctx.is_wildcard_context = True
-            predicate, i = self._parse_expression(tokens, ctx, i)
-
-            # Restore previous context
-            ctx.is_wildcard_context = old_context
-
-            # Create Wildcard node
-            collection_obj = Object(parent, collection_name)
-            return Wildcard(collection_obj, predicate), i
-
-        pos = tokens[i].position if i < len(tokens) else len(self.template)
-        raise JSONPathSyntaxError(
-            "Expected filter expression '[?...]'",
-            position=pos,
-            expression=self.template,
-            context="after wildcard '[*]'",
-        )
+        # Create Wildcard node
+        collection_obj = Object(parent, collection_name)
+        return Wildcard(collection_obj, predicate), i
 
     def _parse_value(
         self, tokens: list[Token], ctx: _ParseContext, start: int
-    ) -> tuple[Value, int]:
+    ) -> tuple[Visitable, int]:
         """
         Parse a value (literal or placeholder).
 
@@ -630,18 +888,16 @@ class NativeParametrizedSpecification:
 
         if token.type == "NUMBER":
             # Parse number
-            value = float(token.value) if "." in token.value else int(token.value)
-            return Value(value), i + 1
+            return Value(read_number(token.value, token.position, self.template)), i + 1
 
         elif token.type == "STRING":
-            # Parse string (remove quotes)
-            value = token.value[1:-1]
-            return Value(value), i + 1
+            # Parse string (remove quotes, read escapes)
+            return Value(read_string(token.value, token.position, self.template)), i + 1
 
         elif token.type == "PLACEHOLDER":
             # This is a placeholder - will be bound later
-            # Return a special marker value
-            value_node = self._create_placeholder_value(ctx)
+            # Return a node of its own, which binding replaces with a Value
+            value_node = self._create_placeholder_value(tokens, i)
             return value_node, i + 1
 
         elif token.type == "IDENTIFIER":
@@ -660,20 +916,22 @@ class NativeParametrizedSpecification:
             context="expected value (number, string, boolean, or placeholder)",
         )
 
-    def _create_placeholder_value(self, ctx: _ParseContext) -> Value:
+    def _create_placeholder_value(self, tokens: list[Token], i: int) -> Placeholder:
         """
-        Create a placeholder value that will be bound later.
+        Create a placeholder node that will be bound later.
 
         Args:
-            ctx: Parse context (mutable state)
+            tokens: List of tokens
+            i: Position of the placeholder token
 
         Returns:
-            Value node with placeholder marker
+            Placeholder node: what its entry of ``_placeholder_info`` says,
+            which is found by the place of the token among the placeholders
+            of the template.
         """
-        # We'll store a special marker that we'll replace during match()
-        value = Value(("__PLACEHOLDER__", ctx.placeholder_bind_index))
-        ctx.placeholder_bind_index += 1
-        return value
+        index = sum(1 for token in tokens[:i] if token.type == "PLACEHOLDER")
+        info = self._placeholder_info[index]
+        return Placeholder(info["name"], info["format_type"], info["positional"])
 
     def _parse_path(
         self, tokens: list[Token], ctx: _ParseContext
@@ -682,112 +940,112 @@ class NativeParametrizedSpecification:
         Parse the full JSONPath expression (supports nested paths).
 
         Supports:
-        - Simple: $.items[?@.price > 100]
-        - Nested: $.store.items[?@.price > 100]
-        - Deep nested: $.a.b.c.items[?@.x > 1]
+        - Simple: $[?@.age > 25]
+        - Collection: $.items[*][?@.price > 100]
+        - Nested: $.store.items[*][?@.price > 100]
+        - Deep nested: $.a.b.c.items[*][?@.x > 1]
+
+        Grammar:
+            template = "$" ( filter | ( "." name )+ "[*]" filter )
+
+        and nothing after it.
 
         Args:
             tokens: List of tokens
-            ctx: Parse context (mutable state)
+            ctx: Parse context
 
         Returns:
             (Visitable node, is_wildcard)
         """
-        i = 0
-
-        # Skip $
-        if i < len(tokens) and tokens[i].type == "DOLLAR":
-            i += 1
-
-        # Skip .
-        if i < len(tokens) and tokens[i].type == "DOT":
-            i += 1
+        i = self._expect(tokens, 0, "DOLLAR", "Expected '$'", "a template starts at the root")
 
         # Parse path chain (e.g., a.b.c)
-        path_chain, i = self._parse_identifier_chain(tokens, i)
+        path_chain: list[str] = []
+        if i < len(tokens) and tokens[i].type == "DOT":
+            path_chain, i = self._parse_identifier_chain(tokens, i + 1)
+            if not path_chain:
+                raise JSONPathSyntaxError(
+                    "Expected field name",
+                    position=self._position(tokens, i),
+                    expression=self.template,
+                    context="after '$.'",
+                )
 
+        node: Visitable
         if not path_chain:
-            # No path found, check if it's just a filter without path
+            # No path found, it's just a filter without path
             # e.g., $[?@.age > 25]
-            if i < len(tokens) and tokens[i].type == "LBRACKET":
-                # Simple filter without path
-                ctx.is_wildcard_context = False
-                predicate, _ = self._parse_expression(tokens, ctx, i)
-                return predicate, False
-            pos = tokens[i].position if i < len(tokens) else len(self.template)
+            if i >= len(tokens) or tokens[i].type != "LBRACKET":
+                raise JSONPathSyntaxError(
+                    "Expected path or filter expression",
+                    position=self._position(tokens, i),
+                    expression=self.template,
+                    context="after '$'",
+                )
+            # Simple filter without path
+            node, i = self._parse_filter(tokens, replace(ctx, is_wildcard_context=False), i)
+            is_wildcard = False
+        else:
+            if i >= len(tokens) or tokens[i].type != "LBRACKET":
+                raise JSONPathSyntaxError(
+                    "Expected filter expression '[?...]'",
+                    position=self._position(tokens, i),
+                    expression=self.template,
+                    context="after path",
+                )
+            # Build parent chain and get collection name
+            parent = self._build_object_chain(GlobalScope(), path_chain[:-1])
+            collection_name = path_chain[-1]
+            # Wildcard with filter
+            node, i = self._parse_nested_wildcard(tokens, ctx, i, parent, collection_name)
+            is_wildcard = True
+
+        if i < len(tokens):
             raise JSONPathSyntaxError(
-                "Expected path or filter expression",
-                position=pos,
+                "Unexpected token '%s'" % tokens[i].value,
+                position=tokens[i].position,
                 expression=self.template,
-                context="after '$'",
+                context="expected end of expression",
             )
-
-        # Build parent chain and get collection name
-        parent = self._build_object_chain(GlobalScope(), path_chain[:-1])
-        collection_name = path_chain[-1]
-
-        # Check for wildcard [*]
-        is_wildcard = self._is_wildcard_pattern(tokens, i)
-        if is_wildcard:
-            i += 3
-
-        # Parse filter expression
-        if i < len(tokens) and tokens[i].type == "LBRACKET":
-            if is_wildcard:
-                # Wildcard with filter
-                ctx.is_wildcard_context = True
-                predicate, _ = self._parse_expression(tokens, ctx, i)
-                ctx.is_wildcard_context = False
-
-                # Create Wildcard node
-                collection_obj = Object(parent, collection_name)
-                return Wildcard(collection_obj, predicate), True
-            else:
-                # Simple filter without wildcard
-                ctx.is_wildcard_context = False
-                predicate, _ = self._parse_expression(tokens, ctx, i)
-                return predicate, False
-
-        pos = tokens[i].position if i < len(tokens) else len(self.template)
-        raise JSONPathSyntaxError(
-            "Expected filter expression '[?...]'",
-            position=pos,
-            expression=self.template,
-            context="after path",
-        )
+        return node, is_wildcard
 
     def _bind_placeholder(
-        self, value: Any, params: Union[Tuple[Any, ...], Dict[str, Any]]
+        self, node: Placeholder, params: Union[Tuple[Any, ...], Dict[str, Any]]
     ) -> Any:
         """
         Bind a placeholder to its actual value.
 
         Args:
-            value: Value (may contain placeholder marker)
+            node: Placeholder node
             params: Parameter values
 
         Returns:
             Actual value
         """
-        if isinstance(value, tuple) and len(value) == 2:
-            marker, idx = value
-            if marker == "__PLACEHOLDER__":
-                if idx < len(self._placeholder_info):
-                    ph_info = self._placeholder_info[idx]
-
-                    # Get actual value from params
-                    if ph_info["positional"]:
-                        param_idx = int(ph_info["name"])
-                        if param_idx < len(params):
-                            return params[param_idx]  # type: ignore[index]
-                    else:
-                        if ph_info["name"] in params:
-                            return params[ph_info["name"]]
-
-                    # If not found, return marker as-is
-                    return value
-
-        return value
+        # Get actual value from params.
+        # A parameter that is not found is an error: it used to
+        # leave the marker in the tree, where it compared unequal
+        # to everything, and the match was a silent False.
+        if node.positional():
+            param_idx = int(node.name())
+            if isinstance(params, (list, tuple)) and param_idx < len(params):
+                return require_parameter_of_kind(
+                    node.format_type(), node.name(), params[param_idx],
+                )
+            raise JSONPathSyntaxError(
+                "Missing positional parameter at index %d" % param_idx,
+                expression=self.template,
+                context="expected %d parameters" % len(self._placeholder_info),
+            )
+        else:
+            if isinstance(params, dict) and node.name() in params:
+                return require_parameter_of_kind(
+                    node.format_type(), node.name(), params[node.name()],
+                )
+            raise JSONPathSyntaxError(
+                "Missing named parameter: %s" % node.name(),
+                expression=self.template,
+            )
 
     def _bind_values_in_ast(
         self, node: Visitable, params: Union[Tuple[Any, ...], Dict[str, Any]]
@@ -802,16 +1060,17 @@ class NativeParametrizedSpecification:
         Returns:
             AST node with bound values
         """
-        if isinstance(node, Value):
-            # Bind the value if it's a placeholder
-            bound_value = self._bind_placeholder(node.value(), params)
+        if isinstance(node, Placeholder):
+            # Bind the placeholder: a Value stands where it stood
+            bound_value = self._bind_placeholder(node, params)
             return Value(bound_value)
 
         elif isinstance(node, (Equal, NotEqual, GreaterThan, LessThan, GreaterThanEqual, LessThanEqual)):
             # Recursively bind left and right
             left = self._bind_values_in_ast(node.left(), params)
             right = self._bind_values_in_ast(node.right(), params)
-            return type(node)(left, right)
+            # `@.a == %s` bound to None is the null test, as `@.a == null` is
+            return equality_or_null_test(type(node), left, right)
 
         elif isinstance(node, (And, Or)):
             left = self._bind_values_in_ast(node.left(), params)
@@ -821,6 +1080,11 @@ class NativeParametrizedSpecification:
         elif isinstance(node, Not):
             operand = self._bind_values_in_ast(node.operand(), params)
             return Not(operand)
+
+        elif isinstance(node, Postfix):
+            # `%s == null` is parsed into IS NULL of the placeholder
+            operand = self._bind_values_in_ast(node.operand(), params)
+            return Postfix(operand, node.operator(), node.associativity())
 
         elif isinstance(node, Wildcard):
             # Recursively bind predicate
@@ -863,6 +1127,11 @@ class NativeParametrizedSpecification:
         # Evaluate using EvaluateVisitor
         visitor = EvaluateVisitor(data)
         result = bound_ast.accept(visitor)
+
+        # A null is "not satisfied", as a row with a null condition is not
+        # selected.
+        if result is None:
+            return False
 
         if not isinstance(result, bool):
             raise JSONPathTypeError(

@@ -122,7 +122,7 @@ class SomethingScopeContext:
             raise ValueError(f'Unknown field: {path[0]}')
 
 
-class TestGlobalScopeContext:
+class TestGlobalScopeContext(ITransformContext):
     """Global scope context for tests."""
 
     def __init__(self):
@@ -990,7 +990,9 @@ class TestSchemaRegistry(unittest.TestCase):
             SchemaRegistry("stores")
             .with_parent_alias("s")
             .register_relational("Categories", "categories", "store_id", "id")
-            .register_relational("Items", "items", "category_id", "id")
+            # A collection is named by its whole path: "Items" alone would be
+            # the items of the store.
+            .register_relational("Categories.Items", "items", "category_id", "id")
         )
 
         ast = Wildcard(
@@ -1025,7 +1027,7 @@ class TestSchemaRegistry(unittest.TestCase):
                 ],
             )
             .register_relational_composite(
-                "Items",
+                "Categories.Items",
                 "items",
                 [
                     ForeignKeyPair("tenant_id", "tenant_id"),

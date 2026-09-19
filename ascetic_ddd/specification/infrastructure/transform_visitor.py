@@ -1,34 +1,149 @@
 """Transform visitor for converting domain specifications to infrastructure specifications."""
-from typing import Any, List, Protocol
+from abc import ABCMeta, abstractmethod
+from typing import Any, List
 
 from ascetic_ddd.specification.domain.nodes import (
-    Collection, Field, GlobalScope, Infix, Item, Object, Prefix, Value, Visitable,
-    Postfix, Visitor, extract_field_path,
+    Collection, EmptiableObject, Field, GlobalScope, Infix, Item, Object,
+    Placeholder, Prefix,
+    Value, Visitable, Postfix, Visitor, extract_field_path, extract_field_root,
+    extract_object_path, extract_object_root,
 )
-from ascetic_ddd.specification.domain.constants import OPERATOR, OPERATOR_MAPPING
 
-from ascetic_ddd.specification.infrastructure.composite_expression_node import CompositeExpression
+__all__ = (
+    'CompositeExpressionsDifferentLengthError',
+    'ITransformContext',
+    'TransformVisitor',
+    'transform',
+)
+from ascetic_ddd.specification.domain.constants import OPERATOR
 
-
-class CompositeExpressionsDifferentLengthError(Exception):
-    """Raised when composite expressions have different lengths."""
-
-    pass
-
-
-class ITransformContext(Protocol):
-    """Interface for transformation context."""
-
-    def attr_node(self, path: List[str]) -> Visitable:
-        """Transform domain field path to infrastructure node."""
-        ...
-
-    def value_node(self, val: Any) -> Visitable:
-        """Transform domain value to infrastructure node."""
-        ...
+from ascetic_ddd.specification.infrastructure.composite_expression_node import (
+    CompositeExpression,
+    CompositeExpressionsDifferentLengthError,
+    Mapped,
+)
 
 
-class TransformVisitor(Visitor[Visitable]):
+def _object_chain(root: EmptiableObject, names: List[str]) -> EmptiableObject:
+    """Build the object the names lead to from the root: the same place."""
+    result = root
+    for name in names:
+        result = Object(result, name)
+    return result
+
+
+class ITransformContext(metaclass=ABCMeta):
+    """
+    Interface for transformation context.
+
+    What a domain's fields and values are in the storage. To inherit: what
+    every mapping must say is abstract, so a mapping that does not say it
+    cannot be made; what a mapping may say has an answer here, which a
+    mapping that has nothing to add leaves alone.
+
+    It used to be a Protocol, which can have neither: what a mapping lacked
+    was found by the first specification that needed it, and what it may
+    leave out had to be asked about through interfaces of its own.
+
+    Mark what a mapping overrides with ``typing.override``: a misspelled
+    ``collection_node`` is then an error of the type checker, and not the
+    answer of the interface silently kept.
+    """
+
+    @abstractmethod
+    def attr_node(self, path: List[str]) -> Mapped:
+        """Transform domain field path to infrastructure node, or to a
+        composite of them."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def value_node(self, val: Any) -> Mapped:
+        """Transform domain value to infrastructure node, or to a composite
+        of them."""
+        raise NotImplementedError
+
+    def item_attr_node(self, path: List[str]) -> Mapped:
+        """Transform domain field path of the current item of a collection
+        to infrastructure node.
+
+        A path from Item() and a path from GlobalScope() can be of the same
+        names, and are not the same field: a mapping is asked about each by
+        a method of its own. Needed only by a context of specifications that
+        have collections, so it is not abstract; and it has no answer but
+        the mapping's: left as it is, the field would reach the query under
+        the domain's name.
+
+        Raises:
+            NotImplementedError: Unless the mapping says what the field is
+        """
+        raise NotImplementedError(
+            "%s does not map the fields of an item of a collection: %s"
+            % (type(self).__name__, ".".join(path))
+        )
+
+    def collection_node(self, path: List[str]) -> EmptiableObject:
+        """Transform domain path of a collection of the candidate to the
+        infrastructure object its items are of.
+
+        The same place, unless the mapping says otherwise.
+
+        Example:
+            ["parts"] -> Object(GlobalScope(), "something_parts")
+        """
+        return _object_chain(GlobalScope(), path)
+
+    def item_collection_node(self, path: List[str]) -> EmptiableObject:
+        """Transform domain path of a collection of the current item to the
+        infrastructure object its items are of.
+
+        The same place, unless the mapping says otherwise.
+
+        Example:
+            ["parts"] -> Object(Item(), "sub_parts")
+        """
+        return _object_chain(Item(), path)
+
+
+def _node(mapped: Mapped) -> Visitable:
+    """
+    Return a node, which a composite is not.
+
+    A composite stands for several expressions, and is given a meaning by
+    `=` and `!=` alone. Where one node is needed - under any other operator,
+    as a predicate, as the whole specification - it used to go into the tree,
+    and raised NotImplementedError from inside whatever visited the tree next.
+
+    Raises:
+        ValueError: If ``mapped`` is a composite
+    """
+    if isinstance(mapped, CompositeExpression):
+        raise ValueError(
+            "A composite expression where a single one is needed:"
+            " only = and != compare composites"
+        )
+    return mapped
+
+
+def transform(context: ITransformContext, expression: Visitable) -> Visitable:
+    """
+    Transform a domain specification to an infrastructure specification.
+
+    Args:
+        context: Transform context for mapping domain to infrastructure
+        expression: Domain specification expression
+
+    Returns:
+        Infrastructure specification expression: a node. ``accept`` of a
+        TransformVisitor returns what a part of the tree is mapped to, which
+        may be a composite; of the whole tree it may not.
+
+    Raises:
+        ValueError: If the specification as a whole is a composite
+    """
+    return _node(expression.accept(TransformVisitor(context)))
+
+
+class TransformVisitor(Visitor[Mapped]):
     """
     Visitor that transforms domain specification AST to infrastructure specification AST.
 
@@ -36,39 +151,64 @@ class TransformVisitor(Visitor[Visitable]):
     - Field path mapping (e.g., "id" -> ["tenant_id", "member_id"])
     - Value object decomposition (e.g., CompositeId -> individual values)
     - Composite expression support for composite keys
-    """
 
-    _OPERATOR_MAPPING = OPERATOR_MAPPING
+    Each ``visit_*`` returns what its node is mapped to: a node, or - for a
+    field or a value that the context maps so - a composite, which the
+    ``visit_infix`` above it turns into nodes.
+    """
 
     def __init__(self, context: ITransformContext):
         self._context = context
 
-    def visit_global_scope(self, node: GlobalScope) -> Visitable:
+    def visit_global_scope(self, node: GlobalScope) -> Mapped:
         """Visit global scope node — passthrough."""
         return node
 
-    def visit_object(self, node: Object) -> Visitable:
+    def visit_object(self, node: Object) -> Mapped:
         """Visit object node — passthrough."""
         return node
 
-    def visit_collection(self, node: Collection) -> Visitable:
-        """Visit collection node — passthrough."""
-        return node
+    def visit_collection(self, node: Collection) -> Mapped:
+        """
+        Visit collection node.
 
-    def visit_item(self, node: Item) -> Visitable:
+        Recursively transforms the predicate. It used to be a passthrough, so
+        the values of a predicate reached the query as the domain's objects,
+        and its fields under the domain's names.
+        """
+        return Collection(
+            self._transform_collection_parent(node.parent()),
+            node.name(),
+            _node(node.predicate().accept(self)),
+        )
+
+    def _transform_collection_parent(self, parent: EmptiableObject) -> EmptiableObject:
+        """
+        Transform the object a collection is of to where the context says it is kept.
+
+        It used to stay under the domain's name whatever the storage calls
+        it: `unnest(parts)` of a column that is `something_parts`.
+        """
+        if isinstance(extract_object_root(parent), Item):
+            return self._context.item_collection_node(extract_object_path(parent))
+        return self._context.collection_node(extract_object_path(parent))
+
+    def visit_item(self, node: Item) -> Mapped:
         """Visit item node — passthrough."""
         return node
 
-    def visit_field(self, node: Field) -> Visitable:
+    def visit_field(self, node: Field) -> Mapped:
         """
         Visit field node and transform to infrastructure field(s).
 
         Extracts the field path and uses context to map it to infrastructure.
         May return a composite expression for composite keys.
         """
+        if isinstance(extract_field_root(node), Item):
+            return self._context.item_attr_node(extract_field_path(node))
         return self._context.attr_node(extract_field_path(node))
 
-    def visit_value(self, node: Value) -> Visitable:
+    def visit_value(self, node: Value) -> Mapped:
         """
         Visit value node and transform to infrastructure value(s).
 
@@ -77,16 +217,20 @@ class TransformVisitor(Visitor[Visitable]):
         """
         return self._context.value_node(node.value())
 
-    def visit_prefix(self, node: Prefix) -> Visitable:
+    def visit_placeholder(self, node: Placeholder) -> Mapped:
+        """Visit placeholder node — passthrough: it has no value to transform yet."""
+        return node
+
+    def visit_prefix(self, node: Prefix) -> Mapped:
         """
         Visit prefix node (e.g., NOT).
 
         Recursively transforms the operand and wraps in prefix operator.
         """
-        operand = node.operand().accept(self)
+        operand = _node(node.operand().accept(self))
         return Prefix(node.operator(), operand, node.associativity())
 
-    def visit_infix(self, node: Infix) -> Visitable:
+    def visit_infix(self, node: Infix) -> Mapped:
         """
         Visit infix node (e.g., AND, OR, =, >).
 
@@ -96,29 +240,34 @@ class TransformVisitor(Visitor[Visitable]):
         left = node.left().accept(self)
         right = node.right().accept(self)
 
-        # Check if we have composite expressions
-        if isinstance(left, CompositeExpression):
-            if not isinstance(right, CompositeExpression):
+        # Check if we have composite expressions, on either side: one on the
+        # right alone used to go into the tree as it was
+        if isinstance(left, CompositeExpression) or isinstance(right, CompositeExpression):
+            if not isinstance(left, CompositeExpression) or not isinstance(right, CompositeExpression):
                 raise CompositeExpressionsDifferentLengthError(
                     "Not enough composite expressions"
                 )
 
-            # Handle composite expression operators
-            if node.operator() not in (OPERATOR.EQ, OPERATOR.NE):
-                raise ValueError(
-                    'Operator "%s" is not supported for composite expressions'
-                    % node.operator()
-                )
-            return self._OPERATOR_MAPPING[node.operator()](left, right)
+            # Handle composite expression operators. They are the composite's
+            # own, and not those of the evaluator's table of operators, which
+            # compute and compare values.
+            if node.operator() is OPERATOR.EQ:
+                return left == right
+            if node.operator() is OPERATOR.NE:
+                return left != right
+            raise ValueError(
+                'Operator "%s" is not supported for composite expressions'
+                % node.operator()
+            )
 
         # Regular infix operation
         return Infix(left, node.operator(), right, node.associativity())
 
-    def visit_postfix(self, node: Postfix) -> Visitable:
+    def visit_postfix(self, node: Postfix) -> Mapped:
         """
         Visit postfix node (e.g., IS NULL).
 
         Recursively transforms the operand and wraps in postfix operator.
         """
-        operand = node.operand().accept(self)
+        operand = _node(node.operand().accept(self))
         return Postfix(operand, node.operator(), node.associativity())
