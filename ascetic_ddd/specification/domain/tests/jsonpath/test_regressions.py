@@ -17,9 +17,9 @@ import decimal
 import unittest
 from typing import Any
 
+from ascetic_ddd.specification.domain import nodes
 from ascetic_ddd.specification.domain.evaluate_visitor import (
     CollectionContext,
-    EvaluateVisitor,
 )
 from ascetic_ddd.specification.domain.jsonpath import jsonpath_parser
 from ascetic_ddd.specification.domain.jsonpath.jsonpath_parser import (
@@ -125,7 +125,7 @@ class TestTheCandidateInsideAFilter(unittest.TestCase):
     def test_the_tree(self):
         spec = jsonpath_parser.parse("$.items[*][?@.price < $.limit]")
         self.assertEqual(
-            describe(spec._ast),
+            describe(spec.bind()),
             ("any", ("$", "items"), ("LT", ("field", "@", "price"), ("field", "$", "limit"))),
         )
 
@@ -262,44 +262,64 @@ class TestAPlaceholderSaysWhatItTakes(unittest.TestCase):
                         parser.parse(template).match(candidate, params)
 
 
-class TestAPlaceholderIsANodeOfItsOwn(unittest.TestCase):
+class TestATemplateIsAFunctionOfItsParameters(unittest.TestCase):
     """A placeholder was a Value whose value was a marker, the tuple
     ``("__PLACEHOLDER__", index)``: a value of a shape no value is supposed
     to have, which every reader of the tree took for a value. The tree of a
     template compiled to a query with the marker for a parameter, and
     evaluated to a comparison with a tuple: False, or a TypeError from inside.
+
+    Then it was a node of its own, ``Placeholder``, which the readers refused.
+    But a placeholder is a word of the template language and not of a
+    specification: a lambda and a tree built by hand have none, and every
+    reader of the tree, a user's own included, had to have a method whose one
+    purpose was to refuse it. A template is a translation that waits for its
+    parameters, and is kept as that: a function of them. The tree comes of
+    binding, with values in it, so there is no tree with a placeholder for a
+    reader to be handed by mistake.
     """
 
-    def test_the_tree_of_a_template(self):
-        self.assertEqual(
-            describe(jsonpath_parser.parse("$[?@.age > %d && @.price < %f]")._ast),
-            (
-                "AND",
-                ("GT", ("field", "$", "age"), ("placeholder", "0", "d")),
-                ("LT", ("field", "$", "price"), ("placeholder", "1", "f")),
-            ),
-        )
-        self.assertEqual(
-            describe(jsonpath_parser.parse("$[?@.name == %(name)s]")._ast),
-            ("EQ", ("field", "$", "name"), ("placeholder", "name", "s")),
-        )
+    def test_a_specification_has_no_word_for_a_placeholder(self):
+        self.assertFalse(hasattr(nodes, "Placeholder"))
+        self.assertFalse(hasattr(nodes.Visitor, "visit_placeholder"))
 
     def test_a_template_that_is_not_bound_is_read_by_no_one(self):
-        template = jsonpath_parser.parse("$[?@.age > %d]")._ast
-        with self.assertRaises(RuntimeError) as raised:
-            template.accept(EvaluateVisitor(Context({"age": 30})))
-        self.assertIn("placeholder", str(raised.exception).lower())
-        with self.assertRaises(RuntimeError):
-            compile_to_sql(template)
+        # The one way to a tree asks for the parameters.
+        spec = jsonpath_parser.parse("$[?@.age > %d]")
+        with self.assertRaises(JSONPathSyntaxError) as raised:
+            spec.bind()
+        self.assertIn("Missing positional parameter", raised.exception.message)
 
     def test_a_bound_template_has_values(self):
         spec = jsonpath_parser.parse("$[?@.age > %d]")
-        bound = spec._bind_values_in_ast(spec._ast, (25,))
+        bound = spec.bind((25,))
         self.assertEqual(describe(bound), ("GT", ("field", "$", "age"), ("value", 25)))
         self.assertEqual(compile_to_sql(bound), ("age > $1", [25]))
         # The template is what it was: bound again, to something else.
-        again = spec._bind_values_in_ast(spec._ast, (65,))
+        again = spec.bind((65,))
         self.assertEqual(describe(again), ("GT", ("field", "$", "age"), ("value", 65)))
+
+    def test_binding_is_the_way_to_a_query(self):
+        # The tree of a template could be had through a private attribute
+        # alone, and was not bound.
+        spec = jsonpath_parser.parse("$.items[*][?@.price > %(price)f && @.owner == %(owner)s]")
+        self.assertEqual(
+            compile_to_sql(spec.bind({"price": 9.5, "owner": "ann"})),
+            (
+                "EXISTS (SELECT 1 FROM unnest(items) AS item_1"
+                " WHERE item_1.price > $1 AND item_1.owner = $2)",
+                [9.5, "ann"],
+            ),
+        )
+        # What a parameter is decides what the query is: see the null test.
+        self.assertEqual(
+            compile_to_sql(spec.bind({"price": 9.5, "owner": None})),
+            (
+                "EXISTS (SELECT 1 FROM unnest(items) AS item_1"
+                " WHERE item_1.price > $1 AND item_1.owner IS NULL)",
+                [9.5],
+            ),
+        )
 
     def test_a_placeholder_under_any_operator_is_bound(self):
         # `%s == null` is parsed into IS NULL of the placeholder: a postfix
@@ -369,11 +389,11 @@ class TestNullIsTestedNotCompared(unittest.TestCase):
 
     def test_the_tree(self):
         self.assertEqual(
-            describe(jsonpath_parser.parse("$[?@.deleted_at == null]")._ast),
+            describe(jsonpath_parser.parse("$[?@.deleted_at == null]").bind()),
             ("IS_NULL", ("field", "$", "deleted_at")),
         )
         self.assertEqual(
-            describe(jsonpath_parser.parse("$[?null != @.deleted_at]")._ast),
+            describe(jsonpath_parser.parse("$[?null != @.deleted_at]").bind()),
             ("IS_NOT_NULL", ("field", "$", "deleted_at")),
         )
 
@@ -403,7 +423,7 @@ class TestLiteralsAreThoseOfRfc9535(unittest.TestCase):
     """ % BS
 
     def parsed(self, literal: str) -> Any:
-        tree = jsonpath_parser.parse("$[?@.a == %s]" % literal)._ast
+        tree = jsonpath_parser.parse("$[?@.a == %s]" % literal).bind()
         return tree.right().value()
 
     def test_escapes(self):
@@ -556,7 +576,7 @@ class TestTheGrammarIsClosed(unittest.TestCase):
         )
         for template, expected in cases:
             with self.subTest(template=template):
-                self.assertEqual(describe(jsonpath_parser.parse(template)._ast), expected)
+                self.assertEqual(describe(jsonpath_parser.parse(template).bind()), expected)
 
     def test_either_side_of_a_comparison_is_an_operand(self):
         spec = jsonpath_parser.parse("$[?%d < @.a]")

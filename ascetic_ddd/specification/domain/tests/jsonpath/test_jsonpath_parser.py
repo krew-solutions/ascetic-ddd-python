@@ -556,7 +556,7 @@ class TestOperatorAssociativity(unittest.TestCase):
         spec = parse("$[?@.a == 1 && @.b == 2 && @.c == 3]")
 
         # Check AST structure
-        ast = spec._ast
+        ast = spec.bind()
         # Top level should be And
         self.assertIsInstance(ast, And)
         # Left child should also be And (left-associative)
@@ -573,7 +573,7 @@ class TestOperatorAssociativity(unittest.TestCase):
         """Test that || is left-associative: a || b || c -> Or(Or(a, b), c)"""
         spec = parse("$[?@.a == 1 || @.b == 2 || @.c == 3]")
 
-        ast = spec._ast
+        ast = spec.bind()
         # Top level should be Or
         self.assertIsInstance(ast, Or)
         # Left child should also be Or (left-associative)
@@ -586,7 +586,7 @@ class TestOperatorAssociativity(unittest.TestCase):
         # a && b || c && d should be Or(And(a, b), And(c, d))
         spec = parse("$[?@.a == 1 && @.b == 2 || @.c == 3 && @.d == 4]")
 
-        ast = spec._ast
+        ast = spec.bind()
         # Top level should be Or (lowest precedence)
         self.assertIsInstance(ast, Or)
         # Both children should be And
@@ -609,7 +609,7 @@ class TestOperatorPrecedence(unittest.TestCase):
         """Test that && binds tighter than ||: a || b && c -> Or(a, And(b, c))"""
         spec = parse("$[?@.a == 1 || @.b == 2 && @.c == 3]")
 
-        ast = spec._ast
+        ast = spec.bind()
         # Top level should be Or
         self.assertIsInstance(ast, Or)
         # Left should be simple Equal
@@ -621,7 +621,7 @@ class TestOperatorPrecedence(unittest.TestCase):
         """Test precedence: a && b || c -> Or(And(a, b), c)"""
         spec = parse("$[?@.a == 1 && @.b == 2 || @.c == 3]")
 
-        ast = spec._ast
+        ast = spec.bind()
         # Top level should be Or
         self.assertIsInstance(ast, Or)
         # Left should be And
@@ -636,7 +636,7 @@ class TestOperatorPrecedence(unittest.TestCase):
         # because outer parens in [?(...)] are part of filter syntax
         spec = parse("$[?((@.a == 1 || @.b == 2)) && @.c == 3]")
 
-        ast = spec._ast
+        ast = spec.bind()
         # Top level should be And (due to parentheses)
         self.assertIsInstance(ast, And)
         # Left should be Or (grouped by parentheses)
@@ -649,7 +649,7 @@ class TestOperatorPrecedence(unittest.TestCase):
         # Should be: Or(Or(a, And(b, c)), And(d, e))
         spec = parse("$[?@.a == 1 || @.b == 2 && @.c == 3 || @.d == 4 && @.e == 5]")
 
-        ast = spec._ast
+        ast = spec.bind()
         # Top level Or
         self.assertIsInstance(ast, Or)
         # Left is Or
@@ -839,17 +839,18 @@ class TestASTCaching(unittest.TestCase):
     """
 
     def test_ast_is_cached(self):
-        """Test that AST is stored after parsing."""
+        """Test that what was parsed is stored after parsing."""
         spec = parse("$[?@.age > %d]")
 
-        # AST should be cached
-        self.assertTrue(hasattr(spec, "_ast"))
-        self.assertIsNotNone(spec._ast)
+        # AST should be cached: as a function of the parameters, which builds
+        # the tree they make of the template
+        self.assertTrue(hasattr(spec, "_builder"))
+        self.assertTrue(callable(spec._builder))
 
     def test_ast_not_reparsed_on_match(self):
         """Test that AST is not re-created on match()."""
         spec = parse("$[?@.age > %d]")
-        original_ast = spec._ast
+        original_ast = spec._builder
 
         # Multiple match calls
         data = DictContext({"age": 30})
@@ -858,12 +859,12 @@ class TestASTCaching(unittest.TestCase):
         spec.match(data, (20,))
 
         # AST should be the same object
-        self.assertIs(spec._ast, original_ast)
+        self.assertIs(spec._builder, original_ast)
 
     def test_different_params_same_ast(self):
         """Test that different parameters don't affect cached AST."""
         spec = parse("$[?@.value == %s]")
-        original_ast = spec._ast
+        original_ast = spec._builder
 
         data = DictContext({"value": "test"})
 
@@ -873,7 +874,7 @@ class TestASTCaching(unittest.TestCase):
         spec.match(data, ("third",))
 
         # AST should remain unchanged
-        self.assertIs(spec._ast, original_ast)
+        self.assertIs(spec._builder, original_ast)
 
 
 class TestHelperMethods(unittest.TestCase):

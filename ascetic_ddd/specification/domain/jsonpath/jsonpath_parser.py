@@ -15,7 +15,7 @@ import math
 import re
 import string
 from dataclasses import dataclass, field, replace
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 from ascetic_ddd.specification.domain.nodes import (
     And,
@@ -32,8 +32,6 @@ from ascetic_ddd.specification.domain.nodes import (
     NotEqual,
     Object,
     Or,
-    Placeholder,
-    Postfix,
     Value,
     Visitable,
     Wildcard,
@@ -312,6 +310,105 @@ class _ParseContext:
     is_wildcard_context: bool = field(default=False)
 
 
+# What a template is bound to: a tuple for positional placeholders, a mapping
+# for named ones, as Python's `%` takes them.
+Params = Union[Tuple[Any, ...], Dict[str, Any]]
+
+# What a rule of the parser returns: not a node, but the function that builds
+# the node once the parameters are there.
+#
+# A template is a translation that waits for its parameters. Kept as a tree,
+# it needs a word for "a value comes here later", and a specification has no
+# such word: a lambda and a tree built by hand have no placeholders. That word
+# was a marker inside a Value, which every reader of the tree took for a
+# value, and then a node of its own, which every reader, a user's own
+# included, had to have a method to refuse. Kept as a function, it needs
+# neither, and a tree comes of it with values in it or does not come at all.
+_Builder = Callable[[Params], Visitable]
+
+
+def _constant(node: Visitable) -> _Builder:
+    """
+    Build the same node whatever the parameters: there is no placeholder in it.
+
+    For nodes such as Field, Item, GlobalScope, Object and a literal Value,
+    return as-is.
+
+    Args:
+        node: The node
+
+    Returns:
+        The builder of the node
+    """
+    return lambda params: node
+
+
+def _negation(operand: _Builder) -> _Builder:
+    """
+    Build the negation of what ``operand`` builds.
+
+    Args:
+        operand: The builder of the operand
+
+    Returns:
+        The builder of the Not node
+    """
+    return lambda params: Not(operand(params))
+
+
+def _comparison(node_class: type, left: _Builder, right: _Builder) -> _Builder:
+    """
+    Build the comparison of what ``left`` and ``right`` build.
+
+    `@.a == %s` bound to None is the null test, as `@.a == null` is, and so is
+    `%s == null`. The rule used to be applied twice, to a literal when the
+    template was parsed and to a parameter when it was bound, by a second
+    walk of the tree that had to know every kind of node and returned as it
+    was a kind it did not. Here both operands are values by the time the
+    comparison is made, and the rule is applied once.
+
+    Args:
+        node_class: The class of the comparison node
+        left: The builder of the left operand
+        right: The builder of the right operand
+
+    Returns:
+        The builder of the comparison, or of the null test
+    """
+    return lambda params: equality_or_null_test(node_class, left(params), right(params))
+
+
+def _connective(
+    node_class: Callable[[Visitable, Visitable], Visitable], left: _Builder, right: _Builder
+) -> _Builder:
+    """
+    Build the conjunction or the disjunction of what ``left`` and ``right`` build.
+
+    Args:
+        node_class: And or Or
+        left: The builder of the left operand
+        right: The builder of the right operand
+
+    Returns:
+        The builder of the node
+    """
+    return lambda params: node_class(left(params), right(params))
+
+
+def _some_item(collection: Object, predicate: _Builder) -> _Builder:
+    """
+    Build "some item of ``collection`` satisfies what ``predicate`` builds".
+
+    Args:
+        collection: The collection
+        predicate: The builder of the predicate, bound with the rest
+
+    Returns:
+        The builder of the Wildcard node
+    """
+    return lambda params: Wildcard(collection, predicate(params))
+
+
 class Token:
     """Represents a token in the JSONPath expression."""
 
@@ -413,6 +510,10 @@ class NativeParametrizedSpecification:
     Native JSONPath specification parser without external dependencies.
 
     Parses template once, binds different values at execution time.
+
+    What is kept of the template is not a tree but a function of the
+    parameters (see ``_Builder``): ``bind()`` calls it and returns the
+    specification, ``match()`` evaluates that.
     """
 
     def __init__(self, template: str):
@@ -424,7 +525,8 @@ class NativeParametrizedSpecification:
         """
         self.template = template
 
-        # Parse AST once at initialization (cached for all match() calls)
+        # Parse AST once at initialization (cached for all match() calls),
+        # into the function that builds it of the parameters
         # Context is created locally - no mutable instance state
         lexer = Lexer(template)
         tokens = lexer.tokenize()
@@ -435,7 +537,7 @@ class NativeParametrizedSpecification:
         self._placeholder_info: list[dict] = self._extract_placeholders(tokens)
 
         ctx = _ParseContext()
-        self._ast, self._is_wildcard = self._parse_path(tokens, ctx)
+        self._builder, self._is_wildcard = self._parse_path(tokens, ctx)
 
     def _extract_placeholders(self, tokens: list[Token]) -> list[dict]:
         """
@@ -521,7 +623,7 @@ class NativeParametrizedSpecification:
 
     def _parse_filter(
         self, tokens: list[Token], ctx: _ParseContext, start: int
-    ) -> tuple[Visitable, int]:
+    ) -> tuple[_Builder, int]:
         """
         Parse a filter: "[" "?" expression "]".
 
@@ -531,7 +633,7 @@ class NativeParametrizedSpecification:
             start: Starting position
 
         Returns:
-            (Visitable node, next position)
+            (builder of the node, next position)
         """
         message = "Expected filter expression '[?...]'"
         i = self._expect(tokens, start, "LBRACKET", message, "expected '['")
@@ -551,7 +653,7 @@ class NativeParametrizedSpecification:
 
     def _parse_primary(
         self, tokens: list[Token], ctx: _ParseContext, start: int = 0
-    ) -> tuple[Visitable, int]:
+    ) -> tuple[_Builder, int]:
         """
         Parse a primary expression (comparison, NOT, or parenthesized expression).
 
@@ -570,14 +672,14 @@ class NativeParametrizedSpecification:
             start: Starting position
 
         Returns:
-            (Visitable node, next position)
+            (builder of the node, next position)
         """
         i = start
 
         # Check for NOT operator (RFC 9535: !)
         if i < len(tokens) and tokens[i].type == "NOT":
             node, i = self._parse_primary(tokens, ctx, i + 1)
-            return Not(node), i
+            return _negation(node), i
 
         # Parse left side (field access, nested wildcard, value or parentheses)
         left_node, i = self._parse_operand(tokens, ctx, i)
@@ -591,11 +693,11 @@ class NativeParametrizedSpecification:
         right_node, i = self._parse_operand(tokens, ctx, i + 1)
 
         # Create comparison node; `@.a == null` is the null test
-        return equality_or_null_test(node_class, left_node, right_node), i
+        return _comparison(node_class, left_node, right_node), i
 
     def _parse_operand(
         self, tokens: list[Token], ctx: _ParseContext, start: int
-    ) -> tuple[Visitable, int]:
+    ) -> tuple[_Builder, int]:
         """
         Parse an operand: either side of a comparison, or a test by itself.
 
@@ -608,7 +710,7 @@ class NativeParametrizedSpecification:
             start: Starting position
 
         Returns:
-            (Visitable node, next position)
+            (builder of the node, next position)
         """
         i = start
 
@@ -627,7 +729,7 @@ class NativeParametrizedSpecification:
 
     def _parse_and_expression(
         self, tokens: list[Token], ctx: _ParseContext, start: int = 0
-    ) -> tuple[Visitable, int]:
+    ) -> tuple[_Builder, int]:
         """
         Parse AND expressions with left-associativity.
 
@@ -640,7 +742,7 @@ class NativeParametrizedSpecification:
             start: Starting position
 
         Returns:
-            (Visitable node, next position)
+            (builder of the node, next position)
         """
         # Parse first primary expression
         node, i = self._parse_primary(tokens, ctx, start)
@@ -649,13 +751,13 @@ class NativeParametrizedSpecification:
         while i < len(tokens) and tokens[i].type == "AND":
             i += 1
             right_node, i = self._parse_primary(tokens, ctx, i)
-            node = And(node, right_node)
+            node = _connective(And, node, right_node)
 
         return node, i
 
     def _parse_expression(
         self, tokens: list[Token], ctx: _ParseContext, start: int = 0
-    ) -> tuple[Visitable, int]:
+    ) -> tuple[_Builder, int]:
         """
         Parse OR expressions with left-associativity (lowest precedence).
 
@@ -673,7 +775,7 @@ class NativeParametrizedSpecification:
             start: Starting position
 
         Returns:
-            (Visitable node, next position)
+            (builder of the node, next position)
         """
         # Parse first AND expression (higher precedence)
         node, i = self._parse_and_expression(tokens, ctx, start)
@@ -682,7 +784,7 @@ class NativeParametrizedSpecification:
         while i < len(tokens) and tokens[i].type == "OR":
             i += 1
             right_node, i = self._parse_and_expression(tokens, ctx, i)
-            node = Or(node, right_node)
+            node = _connective(Or, node, right_node)
 
         return node, i
 
@@ -760,7 +862,7 @@ class NativeParametrizedSpecification:
 
     def _parse_field_access(
         self, tokens: list[Token], ctx: _ParseContext, start: int
-    ) -> tuple[Visitable, int]:
+    ) -> tuple[_Builder, int]:
         """
         Parse field access expression (including nested paths and wildcards).
 
@@ -779,7 +881,7 @@ class NativeParametrizedSpecification:
             start: Starting position
 
         Returns:
-            (Field node or Wildcard node, next position)
+            (builder of the Field node or of the Wildcard node, next position)
         """
         i = start
 
@@ -815,12 +917,12 @@ class NativeParametrizedSpecification:
 
         # Build nested Field structure: a.b.c -> Field(Object(Object(parent, "a"), "b"), "c")
         parent = self._build_object_chain(parent, field_chain[:-1])
-        return Field(parent, field_chain[-1]), i
+        return _constant(Field(parent, field_chain[-1])), i
 
     def _parse_nested_wildcard(
         self, tokens: list[Token], ctx: _ParseContext, start: int,
         parent: EmptiableObject, collection_name: str
-    ) -> tuple[Wildcard, int]:
+    ) -> tuple[_Builder, int]:
         """
         Parse nested wildcard pattern: collection[*][?predicate]
 
@@ -836,7 +938,7 @@ class NativeParametrizedSpecification:
             collection_name: Name of the collection field
 
         Returns:
-            (Wildcard node, next position)
+            (builder of the Wildcard node, next position)
         """
         i = start
 
@@ -858,11 +960,11 @@ class NativeParametrizedSpecification:
 
         # Create Wildcard node
         collection_obj = Object(parent, collection_name)
-        return Wildcard(collection_obj, predicate), i
+        return _some_item(collection_obj, predicate), i
 
     def _parse_value(
         self, tokens: list[Token], ctx: _ParseContext, start: int
-    ) -> tuple[Visitable, int]:
+    ) -> tuple[_Builder, int]:
         """
         Parse a value (literal or placeholder).
 
@@ -872,7 +974,7 @@ class NativeParametrizedSpecification:
             start: Starting position
 
         Returns:
-            (Value node, next position)
+            (builder of the Value node, next position)
         """
         i = start
 
@@ -888,26 +990,26 @@ class NativeParametrizedSpecification:
 
         if token.type == "NUMBER":
             # Parse number
-            return Value(read_number(token.value, token.position, self.template)), i + 1
+            return _constant(Value(read_number(token.value, token.position, self.template))), i + 1
 
         elif token.type == "STRING":
             # Parse string (remove quotes, read escapes)
-            return Value(read_string(token.value, token.position, self.template)), i + 1
+            return _constant(Value(read_string(token.value, token.position, self.template))), i + 1
 
         elif token.type == "PLACEHOLDER":
             # This is a placeholder - will be bound later
-            # Return a node of its own, which binding replaces with a Value
+            # Return the builder of the Value it is bound to
             value_node = self._create_placeholder_value(tokens, i)
             return value_node, i + 1
 
         elif token.type == "IDENTIFIER":
             # Could be a boolean literal
             if token.value.lower() == "true":
-                return Value(True), i + 1
+                return _constant(Value(True)), i + 1
             elif token.value.lower() == "false":
-                return Value(False), i + 1
+                return _constant(Value(False)), i + 1
             elif token.value.lower() == "null":
-                return Value(None), i + 1
+                return _constant(Value(None)), i + 1
 
         raise JSONPathSyntaxError(
             f"Unexpected token '{token.value}'",
@@ -916,26 +1018,27 @@ class NativeParametrizedSpecification:
             context="expected value (number, string, boolean, or placeholder)",
         )
 
-    def _create_placeholder_value(self, tokens: list[Token], i: int) -> Placeholder:
+    def _create_placeholder_value(self, tokens: list[Token], i: int) -> _Builder:
         """
-        Create a placeholder node that will be bound later.
+        Create the builder of a value that will be bound later.
 
         Args:
             tokens: List of tokens
             i: Position of the placeholder token
 
         Returns:
-            Placeholder node: what its entry of ``_placeholder_info`` says,
-            which is found by the place of the token among the placeholders
-            of the template.
+            Builder of the Value node the placeholder is bound to: by what
+            its entry of ``_placeholder_info`` says, which is found by the
+            place of the token among the placeholders of the template.
         """
         index = sum(1 for token in tokens[:i] if token.type == "PLACEHOLDER")
         info = self._placeholder_info[index]
-        return Placeholder(info["name"], info["format_type"], info["positional"])
+        # Bind the placeholder: a Value stands where it stood
+        return lambda params: Value(self._bind_placeholder(info, params))
 
     def _parse_path(
         self, tokens: list[Token], ctx: _ParseContext
-    ) -> tuple[Visitable, bool]:
+    ) -> tuple[_Builder, bool]:
         """
         Parse the full JSONPath expression (supports nested paths).
 
@@ -955,7 +1058,7 @@ class NativeParametrizedSpecification:
             ctx: Parse context
 
         Returns:
-            (Visitable node, is_wildcard)
+            (builder of the node, is_wildcard)
         """
         i = self._expect(tokens, 0, "DOLLAR", "Expected '$'", "a template starts at the root")
 
@@ -971,7 +1074,7 @@ class NativeParametrizedSpecification:
                     context="after '$.'",
                 )
 
-        node: Visitable
+        node: _Builder
         if not path_chain:
             # No path found, it's just a filter without path
             # e.g., $[?@.age > 25]
@@ -1009,14 +1112,12 @@ class NativeParametrizedSpecification:
             )
         return node, is_wildcard
 
-    def _bind_placeholder(
-        self, node: Placeholder, params: Union[Tuple[Any, ...], Dict[str, Any]]
-    ) -> Any:
+    def _bind_placeholder(self, info: dict, params: Params) -> Any:
         """
         Bind a placeholder to its actual value.
 
         Args:
-            node: Placeholder node
+            info: The placeholder's entry of ``_placeholder_info``
             params: Parameter values
 
         Returns:
@@ -1026,11 +1127,11 @@ class NativeParametrizedSpecification:
         # A parameter that is not found is an error: it used to
         # leave the marker in the tree, where it compared unequal
         # to everything, and the match was a silent False.
-        if node.positional():
-            param_idx = int(node.name())
+        if info["positional"]:
+            param_idx = int(info["name"])
             if isinstance(params, (list, tuple)) and param_idx < len(params):
                 return require_parameter_of_kind(
-                    node.format_type(), node.name(), params[param_idx],
+                    info["format_type"], info["name"], params[param_idx],
                 )
             raise JSONPathSyntaxError(
                 "Missing positional parameter at index %d" % param_idx,
@@ -1038,65 +1139,42 @@ class NativeParametrizedSpecification:
                 context="expected %d parameters" % len(self._placeholder_info),
             )
         else:
-            if isinstance(params, dict) and node.name() in params:
+            if isinstance(params, dict) and info["name"] in params:
                 return require_parameter_of_kind(
-                    node.format_type(), node.name(), params[node.name()],
+                    info["format_type"], info["name"], params[info["name"]],
                 )
             raise JSONPathSyntaxError(
-                "Missing named parameter: %s" % node.name(),
+                "Missing named parameter: %s" % info["name"],
                 expression=self.template,
             )
 
-    def _bind_values_in_ast(
-        self, node: Visitable, params: Union[Tuple[Any, ...], Dict[str, Any]]
-    ) -> Visitable:
+    def bind(self, params: Params = ()) -> Visitable:
         """
-        Recursively bind placeholder values in the AST.
+        Build the specification the template is of these parameters.
+
+        The tree to evaluate, to transform, to compile to SQL. It has values
+        where the template has placeholders; what a parameter is may decide
+        what the tree is - a None makes a null test of an equality - so a
+        query is compiled of a bound template, and not once for all.
 
         Args:
-            node: AST node
-            params: Parameter values
+            params: Parameter values (tuple for positional, dict for named)
 
         Returns:
-            AST node with bound values
+            Specification AST
+
+        Raises:
+            JSONPathSyntaxError: If a parameter is missing
+            JSONPathTypeError: If a parameter is not what its placeholder takes
+
+        Examples:
+            >>> spec = parse("$[?@.age > %d]")
+            >>> spec.bind((25,))  # GreaterThan(Field(GlobalScope(), "age"), Value(25))
+            >>> spec.bind((None,))  # raises nothing: a None fits any placeholder
         """
-        if isinstance(node, Placeholder):
-            # Bind the placeholder: a Value stands where it stood
-            bound_value = self._bind_placeholder(node, params)
-            return Value(bound_value)
+        return self._builder(params)
 
-        elif isinstance(node, (Equal, NotEqual, GreaterThan, LessThan, GreaterThanEqual, LessThanEqual)):
-            # Recursively bind left and right
-            left = self._bind_values_in_ast(node.left(), params)
-            right = self._bind_values_in_ast(node.right(), params)
-            # `@.a == %s` bound to None is the null test, as `@.a == null` is
-            return equality_or_null_test(type(node), left, right)
-
-        elif isinstance(node, (And, Or)):
-            left = self._bind_values_in_ast(node.left(), params)
-            right = self._bind_values_in_ast(node.right(), params)
-            return type(node)(left, right)
-
-        elif isinstance(node, Not):
-            operand = self._bind_values_in_ast(node.operand(), params)
-            return Not(operand)
-
-        elif isinstance(node, Postfix):
-            # `%s == null` is parsed into IS NULL of the placeholder
-            operand = self._bind_values_in_ast(node.operand(), params)
-            return Postfix(operand, node.operator(), node.associativity())
-
-        elif isinstance(node, Wildcard):
-            # Recursively bind predicate
-            predicate = self._bind_values_in_ast(node.predicate(), params)
-            return Wildcard(node.parent(), predicate)
-
-        # For other nodes (Field, Item, GlobalScope, Object), return as-is
-        return node
-
-    def match(
-        self, data: Any, params: Union[Tuple[Any, ...], Dict[str, Any]] = ()
-    ) -> bool:
+    def match(self, data: Any, params: Params = ()) -> bool:
         """
         Check if data matches the specification with given parameters.
 
@@ -1122,7 +1200,7 @@ class NativeParametrizedSpecification:
             )
 
         # Bind placeholder values to cached AST
-        bound_ast = self._bind_values_in_ast(self._ast, params)
+        bound_ast = self.bind(params)
 
         # Evaluate using EvaluateVisitor
         visitor = EvaluateVisitor(data)

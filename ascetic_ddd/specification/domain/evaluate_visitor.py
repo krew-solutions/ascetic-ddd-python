@@ -3,7 +3,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from ascetic_ddd.specification.domain.constants import OPERATOR, OPERATOR_MAPPING
 from ascetic_ddd.specification.domain.nodes import (
-    Collection, Field, GlobalScope, Infix, Item, Object, Placeholder, Prefix,
+    Collection, Field, GlobalScope, Infix, Item, Object, Prefix,
     Value, Postfix, Visitor,
 )
 
@@ -106,10 +106,6 @@ class EvaluateVisitor(Visitor[Any]):
     def visit_value(self, node: Value) -> Any:
         """Visit value node — return the literal."""
         return node.value()
-
-    def visit_placeholder(self, node: Placeholder) -> Any:
-        """Visit placeholder node - a template that is not bound has no value."""
-        raise RuntimeError("Unbound placeholder: %s" % node.name())
 
     def visit_prefix(self, node: Prefix) -> Any:
         """Visit prefix operator node."""

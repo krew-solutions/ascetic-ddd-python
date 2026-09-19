@@ -55,11 +55,13 @@ result = spec.match(user, (25,))  # True
 
 2. **Parser** - Token to AST conversion
    - Recursive expression parser
-   - Direct creation of Specification nodes
+   - Direct creation of Specification nodes, deferred: a rule returns the
+     function that builds its node once the parameters are there
 
 3. **Placeholder Binding** - Parameter binding
    - Support for positional and named parameters
    - Typed placeholders (%s, %d, %f)
+   - `bind(params)` calls the function the parser returned
 
 ### Parsing Process
 
@@ -72,16 +74,38 @@ Token Stream
       ↓
 [Parser] Expression Parsing
       ↓
-Specification AST
+Function of the parameters            (kept; parsed once)
       ↓
-[Binding] Placeholder Values
+[Binding] bind(params)
       ↓
-Bound AST
+Specification AST, with values
       ↓
-[Evaluation] EvaluateVisitor
+[Evaluation] EvaluateVisitor          or transform(), or compile_to_sql()
       ↓
 Boolean Result
 ```
+
+A template is a translation that waits for its parameters. Kept as a tree, it
+would need a node for "a value comes here later", and a specification has no
+such word: a lambda and a tree built by hand have no placeholders, and every
+reader of the tree would need a method to refuse it. Kept as a function, the
+tree comes of it with values in it, or does not come at all:
+
+```python
+spec = parse("$.items[*][?@.price > %(price)f && @.owner == %(owner)s]")
+
+spec.match(store, {"price": 9.5, "owner": "ann"})        # in memory
+
+compile_to_sql(spec.bind({"price": 9.5, "owner": "ann"}))
+# ('EXISTS (SELECT 1 FROM unnest(items) AS item_1
+#   WHERE item_1.price > $1 AND item_1.owner = $2)', [9.5, 'ann'])
+
+compile_to_sql(spec.bind({"price": 9.5, "owner": None}))
+# ('EXISTS (... WHERE item_1.price > $1 AND item_1.owner IS NULL)', [9.5])
+```
+
+What a parameter is may decide what the tree is, as the last line shows, so a
+query is compiled of a bound template, and not once for all parameters.
 
 ## RFC 9535 Compliance
 

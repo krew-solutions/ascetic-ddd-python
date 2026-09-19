@@ -586,7 +586,7 @@ class TestOperatorAssociativity(unittest.TestCase):
         """Helper to get the AST from a spec by triggering match()."""
 
 
-        return spec._bind_values_in_ast(spec._ast, params)
+        return spec.bind(params)
 
     def test_and_left_associativity(self):
         """Test that && produces left-associative And tree."""
@@ -659,7 +659,7 @@ class TestOperatorPrecedence(unittest.TestCase):
         """Helper to get the AST from a spec."""
 
 
-        return spec._bind_values_in_ast(spec._ast, params)
+        return spec.bind(params)
 
     def test_explicit_grouping_and_in_or(self):
         """Test explicit grouping: a || (b && c)."""

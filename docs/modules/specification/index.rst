@@ -55,12 +55,15 @@ specification over rows with nulls, embedded and relational.
 * **A collection is named in a schema by its whole path**,
   ``"Categories.Items"``; a relational collection is joined to what its path
   starts at - the enclosing item, or the root row.
-* **A placeholder is a node of its own**, ``Placeholder``, met by
-  ``visit_placeholder``: binding a template puts a ``Value`` where it stands,
-  and a visitor that needs the value - the evaluator, the SQL compiler -
-  refuses a tree that still has one (``RuntimeError``). It used to be a
-  ``Value`` whose value was a marker tuple, which went into a query as a
-  parameter.
+* **A template is a function of its parameters**, and a specification has no
+  word for a placeholder. ``parse()`` keeps what it parsed as the function
+  that builds the tree once the parameters are there; ``bind(params)`` calls
+  it and returns the specification, with a ``Value`` where a placeholder
+  stood, to evaluate, to transform or to compile to SQL; ``match()`` is
+  ``bind()`` and the evaluator. So there is no tree with a placeholder in it
+  for a reader to be handed by mistake, and a ``Visitor`` has no method for
+  one. A placeholder used to be a ``Value`` whose value was a marker tuple,
+  which went into a query as a parameter.
 * **A composite is not a node.** ``CompositeExpression`` is what a transform
   context may return instead of a node, ``Mapped``, for a field or a value
   that is several columns; ``=`` and ``!=`` of two composites become nodes,

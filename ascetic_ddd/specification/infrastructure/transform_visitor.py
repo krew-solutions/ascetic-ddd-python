@@ -4,7 +4,7 @@ from typing import Any, List
 
 from ascetic_ddd.specification.domain.nodes import (
     Collection, EmptiableObject, Field, GlobalScope, Infix, Item, Object,
-    Placeholder, Prefix,
+    Prefix,
     Value, Visitable, Postfix, Visitor, extract_field_path, extract_field_root,
     extract_object_path, extract_object_root,
 )
@@ -216,10 +216,6 @@ class TransformVisitor(Visitor[Mapped]):
         May return a composite expression for composite value objects.
         """
         return self._context.value_node(node.value())
-
-    def visit_placeholder(self, node: Placeholder) -> Mapped:
-        """Visit placeholder node — passthrough: it has no value to transform yet."""
-        return node
 
     def visit_prefix(self, node: Prefix) -> Mapped:
         """

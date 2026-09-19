@@ -37,10 +37,6 @@ class Visitor(Protocol[T_co]):
         """Visit a value node."""
         ...
 
-    def visit_placeholder(self, node: "Placeholder") -> T_co:
-        """Visit a placeholder node: a value that is not known yet."""
-        ...
-
     def visit_prefix(self, node: "Prefix") -> T_co:
         """Visit a prefix node."""
         ...
@@ -109,39 +105,6 @@ class Value(Visitable):
         """Accept a visitor."""
         return visitor.visit_value(self)
 
-
-class Placeholder(Visitable):
-    """Node standing where a value will: a placeholder of a template.
-
-    A template is parsed once and bound to parameters for each use, so its
-    tree has places where the values are not known yet. They used to be Value
-    nodes whose value was a marker, a tuple of a shape no value is supposed to
-    have, which every visitor took for a value. A node of its own is met by a
-    method of its own: binding puts a Value where it stands, and a visitor
-    that needs the value - the evaluator, the SQL compiler - refuses a tree
-    that still has one.
-    """
-
-    def __init__(self, name: str, format_type: str, positional: bool):
-        self._name = name
-        self._format_type = format_type
-        self._positional = positional
-
-    def name(self) -> str:
-        """Return the name of the parameter, or its position as text."""
-        return self._name
-
-    def format_type(self) -> str:
-        """Return what the placeholder asks of its parameter: "s", "d" or "f"."""
-        return self._format_type
-
-    def positional(self) -> bool:
-        """Return whether the parameter is given by position rather than by name."""
-        return self._positional
-
-    def accept(self, visitor: Visitor[T]) -> T:
-        """Accept a visitor."""
-        return visitor.visit_placeholder(self)
 
 
 class Prefix(Visitable):

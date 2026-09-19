@@ -7,7 +7,7 @@ structurally and print readably when an assertion fails.
 from typing import Any
 
 from ascetic_ddd.specification.domain.nodes import (
-    Collection, Field, GlobalScope, Infix, Item, Object, Placeholder, Postfix,
+    Collection, Field, GlobalScope, Infix, Item, Object, Postfix,
     Prefix, Value, Visitable, Visitor,
 )
 
@@ -31,9 +31,6 @@ class _DescribeVisitor(Visitor[Any]):
 
     def visit_value(self, node: Value) -> Any:
         return ("value", node.value())
-
-    def visit_placeholder(self, node: Placeholder) -> Any:
-        return ("placeholder", node.name(), node.format_type())
 
     def visit_collection(self, node: Collection) -> Any:
         return ("any", node.parent().accept(self), node.predicate().accept(self))

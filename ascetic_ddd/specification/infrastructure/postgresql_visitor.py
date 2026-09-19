@@ -14,7 +14,6 @@ from ascetic_ddd.specification.domain.nodes import (
     Item,
     Object,
     Operable,
-    Placeholder,
     Prefix,
     Postfix,
     Value,
@@ -486,14 +485,6 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         """
         self._counters.placeholder_index += 1
         return "$%d" % self._counters.placeholder_index, [node.value()]
-
-    def visit_placeholder(self, node: Placeholder) -> SqlFragment:
-        """
-        Visit placeholder node - a template that is not bound has no parameters.
-
-        The marker a placeholder used to be went into the query as a parameter.
-        """
-        raise RuntimeError("Unbound placeholder: %s" % node.name())
 
     def visit_prefix(self, node: Prefix) -> SqlFragment:
         """
