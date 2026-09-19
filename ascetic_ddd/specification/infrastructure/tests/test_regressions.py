@@ -15,6 +15,7 @@ from ascetic_ddd.specification.domain.nodes import (
 )
 from ascetic_ddd.specification.infrastructure.composite_expression_node import (
     CompositeExpression,
+    CompositeExpressionIsEmptyError,
 )
 from ascetic_ddd.specification.domain.tests.describing import describe
 from ascetic_ddd.specification.infrastructure.postgresql_visitor import (
@@ -708,6 +709,21 @@ class TestACompositeIsNotANode(unittest.TestCase):
             with self.subTest(operator=node.operator().name, left=type(node.left()).__name__):
                 with self.assertRaises(CompositeExpressionsDifferentLengthError):
                     transform(MembersContext(), node)
+
+    def test_a_composite_of_one_part_is_that_part(self):
+        # It was an error of And, which takes two operands and more: "At
+        # least one right operand is required", from inside the comparison.
+        one = CompositeExpression(field("id")) == CompositeExpression(Value(1))
+        self.assertEqual(compile_to_sql(one), ("id = $1", [1]))
+        other = CompositeExpression(field("id")) != CompositeExpression(Value(1))
+        self.assertEqual(compile_to_sql(other), ("NOT id = $1", [1]))
+
+    def test_a_composite_of_no_parts_is_refused_by_name(self):
+        # It was an IndexError.
+        with self.assertRaises(CompositeExpressionIsEmptyError):
+            CompositeExpression() == CompositeExpression()
+        with self.assertRaises(CompositeExpressionIsEmptyError):
+            CompositeExpression() != CompositeExpression()
 
     def test_parts_of_different_shapes_do_not_compare(self):
         flat = CompositeExpression(Value(1), Value(2))

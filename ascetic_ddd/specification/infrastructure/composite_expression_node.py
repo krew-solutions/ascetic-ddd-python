@@ -16,6 +16,7 @@ from ascetic_ddd.specification.domain.nodes import (
 
 __all__ = (
     'CompositeExpression',
+    'CompositeExpressionIsEmptyError',
     'CompositeExpressionsDifferentLengthError',
     'ICompositeExpression',
     'Mapped',
@@ -25,6 +26,13 @@ __all__ = (
 
 class CompositeExpressionsDifferentLengthError(Exception):
     """Raised when composite expressions have different lengths."""
+
+    pass
+
+
+class CompositeExpressionIsEmptyError(Exception):
+    """Raised when a composite expression has no parts: it stands for nothing
+    to compare. It used to be an IndexError from inside the comparison."""
 
     pass
 
@@ -67,6 +75,8 @@ class CompositeExpression:
             raise CompositeExpressionsDifferentLengthError(
                 "Composite expressions have different length"
             )
+        if not self._nodes:
+            raise CompositeExpressionIsEmptyError("A composite expression has no parts")
 
         operands = []
         for i in range(len(self._nodes)):
@@ -84,6 +94,10 @@ class CompositeExpression:
             else:
                 operands.append(Equal(left, right))
 
+        # A composite of one part is that part: And takes two operands and
+        # more, and used to refuse it from inside the comparison.
+        if len(operands) == 1:
+            return operands[0]
         return And(operands[0], *operands[1:])
 
     def __ne__(self, other: "CompositeExpression") -> Visitable:  # type: ignore[override]
