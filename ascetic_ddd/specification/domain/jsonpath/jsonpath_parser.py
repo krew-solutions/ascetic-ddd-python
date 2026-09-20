@@ -15,7 +15,7 @@ import math
 import re
 import string
 from dataclasses import dataclass, field, replace
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, NamedTuple, Optional, Tuple, Union
 
 from ascetic_ddd.specification.domain.nodes import (
     And,
@@ -308,6 +308,28 @@ class _ParseContext:
     a fact of its token (see ``_create_placeholder_value``).
     """
     is_wildcard_context: bool = field(default=False)
+    # How deep the parser is: it grows where the parser recurses - at a group,
+    # a `!`, the filter of a collection - and nowhere else.
+    depth: int = field(default=0)
+
+
+# How tall the tree of a template may be - the levels of the longest way down
+# it - and how deep the parser may go to read one.
+#
+# Every reader of a tree recurses, so a tree from a text that is not trusted
+# was as tall as the text made it, and the parser or a reader ended in a
+# RecursionError: not the error of a template, and not caught as one. There
+# was no bound at all.
+#
+# The two are counted apart, for they are not one number. How deep the parser
+# is comes down to a rule from the rule that called it. How tall a tree is
+# comes up from the trees below it, and grows wherever a node is made - in the
+# loop of a chain as well, where the parser does not recurse, and above a left
+# operand, which was read before anything knew it would have an operator over
+# it. The numbers are those of the Rust port, where they are measured against
+# a stack that does not grow: a template is one in every port, or in none.
+_MAX_HEIGHT = 128
+_MAX_NESTING = 32
 
 
 # What a template is bound to: a tuple for positional placeholders, a mapping
@@ -324,7 +346,12 @@ Params = Union[Tuple[Any, ...], Dict[str, Any]]
 # value, and then a node of its own, which every reader, a user's own
 # included, had to have a method to refuse. Kept as a function, it needs
 # neither, and a tree comes of it with values in it or does not come at all.
-_Builder = Callable[[Params], Visitable]
+#
+# With the function comes how tall the tree it builds is: known when the
+# template is parsed, which is when a tree too tall is refused.
+class _Builder(NamedTuple):
+    build: Callable[[Params], Visitable]
+    height: int
 
 
 def _constant(node: Visitable) -> _Builder:
@@ -340,7 +367,7 @@ def _constant(node: Visitable) -> _Builder:
     Returns:
         The builder of the node
     """
-    return lambda params: node
+    return _Builder(lambda params: node, 1)
 
 
 def _negation(operand: _Builder) -> _Builder:
@@ -353,7 +380,7 @@ def _negation(operand: _Builder) -> _Builder:
     Returns:
         The builder of the Not node
     """
-    return lambda params: Not(operand(params))
+    return _Builder(lambda params: Not(operand.build(params)), operand.height + 1)
 
 
 def _comparison(node_class: type, left: _Builder, right: _Builder) -> _Builder:
@@ -375,7 +402,10 @@ def _comparison(node_class: type, left: _Builder, right: _Builder) -> _Builder:
     Returns:
         The builder of the comparison, or of the null test
     """
-    return lambda params: equality_or_null_test(node_class, left(params), right(params))
+    return _Builder(
+        lambda params: equality_or_null_test(node_class, left.build(params), right.build(params)),
+        max(left.height, right.height) + 1,
+    )
 
 
 def _connective(
@@ -392,7 +422,10 @@ def _connective(
     Returns:
         The builder of the node
     """
-    return lambda params: node_class(left(params), right(params))
+    return _Builder(
+        lambda params: node_class(left.build(params), right.build(params)),
+        max(left.height, right.height) + 1,
+    )
 
 
 def _some_item(collection: Object, predicate: _Builder) -> _Builder:
@@ -406,7 +439,9 @@ def _some_item(collection: Object, predicate: _Builder) -> _Builder:
     Returns:
         The builder of the Wildcard node
     """
-    return lambda params: Wildcard(collection, predicate(params))
+    return _Builder(
+        lambda params: Wildcard(collection, predicate.build(params)), predicate.height + 1,
+    )
 
 
 class Token:
@@ -627,6 +662,55 @@ class NativeParametrizedSpecification:
             context=context,
         )
 
+    def _too_deep(self, tokens: list[Token], at: int) -> JSONPathSyntaxError:
+        """
+        Return the refusal of a template beyond either bound.
+
+        Args:
+            tokens: List of tokens
+            at: Position of the token that asks for one level more
+        """
+        return JSONPathSyntaxError(
+            "Expression is nested too deep",
+            position=self._position(tokens, at),
+            expression=self.template,
+            context="expected a simpler expression",
+        )
+
+    def _deeper(self, tokens: list[Token], at: int, ctx: _ParseContext) -> _ParseContext:
+        """
+        Return the context a level below, if the parser may go that deep.
+
+        Args:
+            tokens: List of tokens
+            at: Position of the token where the parser recurses
+            ctx: Parse context
+
+        Raises:
+            JSONPathSyntaxError: If the parser is as deep as it may go
+        """
+        if ctx.depth >= _MAX_NESTING:
+            raise self._too_deep(tokens, at)
+        return replace(ctx, depth=ctx.depth + 1)
+
+    def _bounded(self, tokens: list[Token], at: int, node: _Builder) -> _Builder:
+        """
+        Return the builder of a node, if the tree it builds may be that tall.
+
+        Every node a rule makes goes through it.
+
+        Args:
+            tokens: List of tokens
+            at: Position of the token that asks for the node
+            node: The builder of the node
+
+        Raises:
+            JSONPathSyntaxError: If the tree is taller than it may be
+        """
+        if node.height > _MAX_HEIGHT:
+            raise self._too_deep(tokens, at)
+        return node
+
     def _parse_filter(
         self, tokens: list[Token], ctx: _ParseContext, start: int
     ) -> tuple[_Builder, int]:
@@ -684,8 +768,8 @@ class NativeParametrizedSpecification:
 
         # Check for NOT operator (RFC 9535: !)
         if i < len(tokens) and tokens[i].type == "NOT":
-            node, i = self._parse_primary(tokens, ctx, i + 1)
-            return _negation(node), i
+            node, after = self._parse_primary(tokens, self._deeper(tokens, i, ctx), i + 1)
+            return self._bounded(tokens, i, _negation(node)), after
 
         # Parse left side (field access, nested wildcard, value or parentheses)
         left_node, i = self._parse_operand(tokens, ctx, i)
@@ -696,10 +780,10 @@ class NativeParametrizedSpecification:
         node_class = self._COMPARISONS[tokens[i].type]
 
         # Parse right side
-        right_node, i = self._parse_operand(tokens, ctx, i + 1)
+        right_node, after = self._parse_operand(tokens, ctx, i + 1)
 
         # Create comparison node; `@.a == null` is the null test
-        return _comparison(node_class, left_node, right_node), i
+        return self._bounded(tokens, i, _comparison(node_class, left_node, right_node)), after
 
     def _parse_operand(
         self, tokens: list[Token], ctx: _ParseContext, start: int
@@ -722,7 +806,7 @@ class NativeParametrizedSpecification:
 
         if i < len(tokens) and tokens[i].type == "LPAREN":
             # Recursively parse FULL expression inside parentheses (can have && and ||)
-            node, i = self._parse_expression(tokens, ctx, i + 1)
+            node, i = self._parse_expression(tokens, self._deeper(tokens, i, ctx), i + 1)
             # The parenthesis that closes this group: an inner primary used to
             # take it for its own, and `(a || b) && c` was read `a || (b && c)`.
             i = self._expect(tokens, i, "RPAREN", "Expected ')'", "expected closing parenthesis")
@@ -755,9 +839,9 @@ class NativeParametrizedSpecification:
 
         # Handle && with left associativity
         while i < len(tokens) and tokens[i].type == "AND":
-            i += 1
-            right_node, i = self._parse_primary(tokens, ctx, i)
-            node = _connective(And, node, right_node)
+            separator = i
+            right_node, i = self._parse_primary(tokens, ctx, i + 1)
+            node = self._bounded(tokens, separator, _connective(And, node, right_node))
 
         return node, i
 
@@ -788,9 +872,9 @@ class NativeParametrizedSpecification:
 
         # Handle || with left associativity
         while i < len(tokens) and tokens[i].type == "OR":
-            i += 1
-            right_node, i = self._parse_and_expression(tokens, ctx, i)
-            node = _connective(Or, node, right_node)
+            separator = i
+            right_node, i = self._parse_and_expression(tokens, ctx, i + 1)
+            node = self._bounded(tokens, separator, _connective(Or, node, right_node))
 
         return node, i
 
@@ -962,11 +1046,13 @@ class NativeParametrizedSpecification:
 
         # Parse filter expression [?...]
         # Set wildcard context to True for nested predicate
-        predicate, i = self._parse_filter(tokens, replace(ctx, is_wildcard_context=True), i)
+        # The predicate is read a level below where the collection stands
+        inner = replace(self._deeper(tokens, start, ctx), is_wildcard_context=True)
+        predicate, i = self._parse_filter(tokens, inner, i)
 
         # Create Wildcard node
         collection_obj = Object(parent, collection_name)
-        return _some_item(collection_obj, predicate), i
+        return self._bounded(tokens, start, _some_item(collection_obj, predicate)), i
 
     def _parse_value(
         self, tokens: list[Token], ctx: _ParseContext, start: int
@@ -1039,7 +1125,7 @@ class NativeParametrizedSpecification:
         """
         info = self._placeholder_info[self._placeholder_at[i]]
         # Bind the placeholder: a Value stands where it stood
-        return lambda params: Value(self._bind_placeholder(info, params))
+        return _Builder(lambda params: Value(self._bind_placeholder(info, params)), 1)
 
     def _parse_path(
         self, tokens: list[Token], ctx: _ParseContext
@@ -1177,7 +1263,7 @@ class NativeParametrizedSpecification:
             >>> spec.bind((25,))  # GreaterThan(Field(GlobalScope(), "age"), Value(25))
             >>> spec.bind((None,))  # raises nothing: a None fits any placeholder
         """
-        return self._builder(params)
+        return self._builder.build(params)
 
     def match(self, data: Any, params: Params = ()) -> bool:
         """

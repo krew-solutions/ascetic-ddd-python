@@ -258,6 +258,15 @@ template. Refused, where earlier versions read them as something else:
 - a comparison of a comparison - `$[?@.a == 1 == 2]`;
 - positional and named placeholders in one template.
 
+A template's tree has at most 128 levels, and a template nests at most 32
+deep - groups, `!`, the filters of collections; beyond either it is refused,
+"Expression is nested too deep". Every reader of a tree recurses, and a text
+that is not trusted used to end in a `RecursionError`, which is not the error
+of a template and is not caught as one. A chain of `&&` or `||` nests to the
+left, so it has at most 128 operands. Within the bounds a template is parsed,
+and its tree read by everything that reads one, in under 500 frames of
+recursion, and in a time that grows as the length of the text.
+
 Not supported (yet):
 - JSONPath functions (len, min, max, etc.)
 - Array indices: `$.items[0]`, `$.items[1:5]`

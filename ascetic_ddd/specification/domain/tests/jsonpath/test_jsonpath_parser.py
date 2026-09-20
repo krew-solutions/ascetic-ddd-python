@@ -845,7 +845,7 @@ class TestASTCaching(unittest.TestCase):
         # AST should be cached: as a function of the parameters, which builds
         # the tree they make of the template
         self.assertTrue(hasattr(spec, "_builder"))
-        self.assertTrue(callable(spec._builder))
+        self.assertTrue(callable(spec._builder.build))
 
     def test_ast_not_reparsed_on_match(self):
         """Test that AST is not re-created on match()."""
