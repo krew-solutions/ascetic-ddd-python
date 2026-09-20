@@ -555,7 +555,13 @@ class NativeParametrizedSpecification:
                 mixed. ``match()`` takes a tuple or a mapping, as Python's
                 ``%`` does, and neither can bind such a template.
         """
-        placeholders = [token for token in tokens if token.type == "PLACEHOLDER"]
+        # A template is of one style, so its placeholders are listed in the
+        # order they stand: the place of a token among them is its entry.
+        # Counted here, once - it used to be counted over the tokens before
+        # each placeholder, and the time grew as the square of their number.
+        at = [i for i, token in enumerate(tokens) if token.type == "PLACEHOLDER"]
+        self._placeholder_at: Dict[int, int] = {i: place for place, i in enumerate(at)}
+        placeholders = [tokens[i] for i in at]
         named = [token for token in placeholders if token.value.startswith("%(")]
         positional = [token for token in placeholders if not token.value.startswith("%(")]
 
@@ -1031,8 +1037,7 @@ class NativeParametrizedSpecification:
             its entry of ``_placeholder_info`` says, which is found by the
             place of the token among the placeholders of the template.
         """
-        index = sum(1 for token in tokens[:i] if token.type == "PLACEHOLDER")
-        info = self._placeholder_info[index]
+        info = self._placeholder_info[self._placeholder_at[i]]
         # Bind the placeholder: a Value stands where it stood
         return lambda params: Value(self._bind_placeholder(info, params))
 
