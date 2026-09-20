@@ -447,6 +447,50 @@ class PartsContext(ITransformContext):
         return Value(val.grams if isinstance(val, Weight) else val)
 
 
+class StoreItemsContext(ITransformContext):
+    """The members of a store by the names the storage has for them."""
+
+    def attr_node(self, path: list[str]) -> Visitable:
+        raise ValueError("No such member of a store: %s" % ".".join(path))
+
+    def item_attr_node(self, path: list[str]) -> Visitable:
+        if path == ["Price"]:
+            return item("price_cents")
+        raise ValueError("No such member of an item: %s" % ".".join(path))
+
+    @override
+    def collection_node(self, path: list[str]) -> EmptiableObject:
+        if path == ["Items"]:
+            return Object(GlobalScope(), "store_items")
+        raise ValueError("No such collection of a store: %s" % ".".join(path))
+
+    def value_node(self, val: Any) -> Visitable:
+        return Value(val)
+
+
+class TestAMappingAndASchemaAreGivenTogether(unittest.TestCase):
+    """A mapping and a schema could not be given together:
+    ``compile_specification`` took a context and no schema,
+    ``compile_to_sql`` a schema and no context. Both are the repository's to
+    know - a query cannot be written without knowing the table - and it
+    gives both.
+    """
+
+    def test_a_mapped_collection_in_a_table_of_its_own(self):
+        schema = SchemaRegistry("stores").with_parent_alias("s").register_relational(
+            "store_items", "items", "store_id", "id",
+        )
+        dear = Wildcard(Object(GlobalScope(), "Items"), GreaterThan(item("Price"), Value(500)))
+        self.assertEqual(
+            compile_specification(StoreItemsContext(), dear, schema),
+            (
+                'EXISTS (SELECT 1 FROM "items" AS "store_item_1"'
+                ' WHERE "store_item_1"."store_id" = "s"."id" AND "store_item_1"."price_cents" > $1)',
+                [500],
+            ),
+        )
+
+
 class TestThePredicateOfACollectionIsTransformed(unittest.TestCase):
     """The transformer returned a collection as it was, so the values of its
     predicate reached the query as the domain's objects, and its fields under

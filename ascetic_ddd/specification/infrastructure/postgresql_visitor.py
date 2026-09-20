@@ -31,14 +31,23 @@ SqlFragment = Tuple[str, List[Any]]
 
 
 def compile_specification(
-    context: ITransformContext, expression: Visitable
+    context: ITransformContext,
+    expression: Visitable,
+    schema: Optional[SchemaRegistry] = None,
 ) -> SqlFragment:
     """
-    Compile a domain specification to SQL.
+    Compile a domain specification to SQL: what a repository does with one.
+
+    The context says what the members and the values of the domain are in
+    the storage, the schema how the storage is laid out, and both are the
+    repository's to know: a query cannot be written without knowing the
+    table. The schema used not to be taken, so a mapping and a schema could
+    not be given together.
 
     Args:
         context: Transform context for mapping domain to infrastructure
         expression: Domain specification expression
+        schema: Optional schema registry for relational collection support
 
     Returns:
         Tuple of (sql_string, parameters)
@@ -47,7 +56,7 @@ def compile_specification(
     infrastructure_expr = transform(context, expression)
 
     # Then, generate SQL from infrastructure expression
-    return infrastructure_expr.accept(PostgresqlVisitor())
+    return infrastructure_expr.accept(PostgresqlVisitor(schema=schema))
 
 
 def compile_to_sql(
@@ -57,7 +66,9 @@ def compile_to_sql(
     """
     Compile AST directly to SQL without context transformation.
 
-    Useful for generated code where AST is already in the right form.
+    For a tree that is in the storage's names already. A tree parsed of a
+    predicate over the domain's objects is not: it goes through
+    ``compile_specification``.
 
     Args:
         expression: Specification expression AST
