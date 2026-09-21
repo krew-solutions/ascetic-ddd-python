@@ -220,9 +220,31 @@ class Store(typing.NamedTuple):
             # quoted, `order` does not parse, `createdAt` folds to `createdat`.
             "user": self.name, "order": self.a, "createdAt": self.b,
             "items": CollectionContext([
-                DictContext({"price": price, "active": active}) for price, active in self.items
+                DictContext({
+                    "price": price, "active": active,
+                    # A Value Object inside the item, which the storage keeps
+                    # as a composite inside the item's row
+                    "maker": DictContext({"name": maker_name(price)}),
+                    # An object of its own, which the storage keeps in a table
+                    # of its own and the item refers to by a key
+                    "owner": DictContext({"name": owner_of(active)[1]}),
+                }) for price, active in self.items
             ]),
+            # The store's owner, kept as the owners of items are
+            "owner": DictContext({"name": owner_of(self.flag)[1]}),
         })
+
+
+def maker_name(price: int | None) -> str | None:
+    """The name of the maker of an item of this price."""
+    if price is None:
+        return None
+    return "dear" if price > 500 else "cheap"
+
+
+def owner_of(known: bool | None) -> tuple[int, str | None]:
+    """The key and the name of an owner. The third owner has no name."""
+    return {True: (1, "ann"), False: (2, "bob"), None: (3, None)}[known]
 
 
 STORES = [
@@ -244,6 +266,12 @@ def specifications() -> list[Visitable]:
 
     def every(predicate: Visitable) -> Visitable:
         return Not(some(Not(predicate)))
+
+    def maker_name_of_item() -> Visitable:
+        return Field(Object(Item(), "maker"), "name")
+
+    def owner_name_of_item() -> Visitable:
+        return Field(Object(Item(), "owner"), "name")
 
     return [
         Equal(field("a"), field("b")),
@@ -273,6 +301,21 @@ def specifications() -> list[Visitable]:
         every(GreaterThan(item("price"), Value(5))),
         Not(every(IsNotNull(item("price")))),
         And(field("flag"), some(dear())),
+        # A member of a Value Object inside the item: a composite inside the
+        # item's row, in the array and in the table alike.
+        some(Equal(maker_name_of_item(), Value("dear"))),
+        some(And(IsNull(maker_name_of_item()), item("active"))),
+        every(NotEqual(maker_name_of_item(), Value("cheap"))),
+        # A member of an object referred to by a key: the schema says
+        # `items.owner`, and `owner`, are kept in a table of their own.
+        some(Equal(owner_name_of_item(), Value("ann"))),
+        some(And(IsNull(owner_name_of_item()), dear())),
+        every(NotEqual(owner_name_of_item(), Value("bob"))),
+        some(Equal(owner_name_of_item(), maker_name_of_item())),
+        # The same of the candidate itself, and both in one predicate.
+        Equal(Field(Object(GlobalScope(), "owner"), "name"), Value("bob")),
+        And(IsNull(Field(Object(GlobalScope(), "owner"), "name")), IsNotNull(field("a"))),
+        some(Equal(owner_name_of_item(), Field(Object(GlobalScope(), "owner"), "name"))),
         # A name is the column's, whatever else PostgreSQL knows by it.
         Equal(field("user"), Value("one")),
         GreaterThan(field("order"), Value(0)),
@@ -329,9 +372,17 @@ class PostgresqlAgreementIntegrationTestCase(IsolatedAsyncioTestCase):
             self.assertEqual(evaluated, answered)
 
     async def test_a_specification_selects_the_rows_it_is_satisfied_by(self):
-        relational = SchemaRegistry("spec_stores").register_relational(
+        # The owner of an item, and of the store, is in a table of its own in
+        # either storage of the items.
+        def with_owners(schema: SchemaRegistry) -> SchemaRegistry:
+            return schema.register_relational(
+                "items.owner", "spec_owners", "id", "owner_id",
+            ).register_relational("owner", "spec_owners", "id", "owner_id")
+
+        embedded = with_owners(SchemaRegistry("spec_stores"))
+        relational = with_owners(SchemaRegistry("spec_stores").register_relational(
             "items", "spec_items", "store_id", "id",
-        )
+        ))
         async with self._session_pool.session() as session:
             # Rolled back whatever happens: the tables are of this test alone.
             async with session.connection.transaction(force_rollback=True):
@@ -341,7 +392,7 @@ class PostgresqlAgreementIntegrationTestCase(IsolatedAsyncioTestCase):
                         store.id for store in STORES
                         if specification.accept(EvaluateVisitor(store.context())) is True
                     ]
-                    for storage, schema in (("embedded", None), ("relational", relational)):
+                    for storage, schema in (("embedded", embedded), ("relational", relational)):
                         sql, params = compile_to_sql(specification, schema)
                         with self.subTest(storage=storage, sql=sql):
                             cursor = await session.connection.execute(
@@ -354,33 +405,48 @@ class PostgresqlAgreementIntegrationTestCase(IsolatedAsyncioTestCase):
 
     async def _make_tables(self, connection: typing.Any) -> None:
         await connection.execute(
-            "CREATE TYPE pg_temp.spec_item AS (price int8, active bool)"
+            "CREATE TYPE pg_temp.spec_maker AS (name text)"
+        )
+        await connection.execute(
+            "CREATE TYPE pg_temp.spec_item AS"
+            " (price int8, active bool, maker pg_temp.spec_maker, owner_id int8)"
+        )
+        await connection.execute(
+            "CREATE TEMP TABLE spec_owners (id int8 PRIMARY KEY, name text)"
+        )
+        await connection.execute(
+            "INSERT INTO spec_owners VALUES (1, 'ann'), (2, 'bob'), (3, NULL)"
         )
         await connection.execute(
             "CREATE TEMP TABLE spec_stores ("
             " id int8 PRIMARY KEY, a int8, b int8, flag bool, name text,"
             " items pg_temp.spec_item[] NOT NULL,"
-            ' "user" text, "order" int8, "createdAt" int8)'
+            ' "user" text, "order" int8, "createdAt" int8, owner_id int8)'
         )
         await connection.execute(
-            "CREATE TEMP TABLE spec_items (store_id int8 NOT NULL, price int8, active bool)"
+            "CREATE TEMP TABLE spec_items ("
+            " store_id int8 NOT NULL, price int8, active bool, maker pg_temp.spec_maker,"
+            " owner_id int8 REFERENCES spec_owners)"
         )
         for store in STORES:
             await connection.execute(
-                "INSERT INTO spec_stores VALUES (%s, %s, %s, %s, %s, '{}', %s, %s, %s)",
+                "INSERT INTO spec_stores VALUES (%s, %s, %s, %s, %s, '{}', %s, %s, %s, %s)",
                 (
                     store.id, store.a, store.b, store.flag, store.name,
-                    store.name, store.a, store.b,
+                    store.name, store.a, store.b, owner_of(store.flag)[0],
                 ),
             )
             for price, active in store.items:
                 await connection.execute(
                     "UPDATE spec_stores SET items = items"
-                    " || ROW(%s::int8, %s::bool)::pg_temp.spec_item WHERE id = %s",
-                    (price, active, store.id),
+                    " || ROW(%s::int8, %s::bool, ROW(%s::text), %s::int8)::pg_temp.spec_item"
+                    " WHERE id = %s",
+                    (price, active, maker_name(price), owner_of(active)[0], store.id),
                 )
                 await connection.execute(
-                    "INSERT INTO spec_items VALUES (%s, %s, %s)", (store.id, price, active),
+                    "INSERT INTO spec_items VALUES"
+                    " (%s, %s, %s, ROW(%s::text)::pg_temp.spec_maker, %s)",
+                    (store.id, price, active, maker_name(price), owner_of(active)[0]),
                 )
 
 

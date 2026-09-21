@@ -399,6 +399,141 @@ class TestANameThatIsNotAnIdentifierIsRefused(unittest.TestCase):
         )
 
 
+class TestAMemberOfAnObjectInsideAnItemIsAMemberOfAComposite(unittest.TestCase):
+    """The visitor asked whether the field's immediate parent was the item,
+    not what its path started at: the parent of ``name`` in ``@.maker.name``
+    is the object ``maker``, so the item's alias was dropped and
+    ``"maker"."name"`` written - to PostgreSQL a table and a column, an error
+    if there is no such table and the column of another table if the query
+    has one of that name. A member of a Value Object inside an item is a
+    member of a composite kept in the item's row. The rows are in
+    ``test_postgresql_agreement``.
+    """
+
+    def maker(self, *names: str) -> Visitable:
+        obj: EmptiableObject = Object(Item(), "maker")
+        for name in names[:-1]:
+            obj = Object(obj, name)
+        return Equal(Field(obj, names[-1]), Value("x"))
+
+    def test_in_an_array_and_in_a_table_of_its_own(self):
+        items = Object(GlobalScope(), "items")
+        self.assertEqual(
+            sql(Wildcard(items, self.maker("name"))),
+            'EXISTS (SELECT 1 FROM unnest("items") AS "item_1"'
+            ' WHERE ("item_1"."maker")."name" = $1)',
+        )
+        self.assertEqual(
+            sql(Wildcard(items, self.maker("country", "code"))),
+            'EXISTS (SELECT 1 FROM unnest("items") AS "item_1"'
+            ' WHERE (("item_1"."maker")."country")."code" = $1)',
+        )
+        schema = SchemaRegistry("stores").with_parent_alias("s").register_relational(
+            "items", "store_items", "store_id", "id",
+        )
+        self.assertEqual(
+            sql(Wildcard(items, self.maker("name")), schema),
+            'EXISTS (SELECT 1 FROM "store_items" AS "item_1"'
+            ' WHERE "item_1"."store_id" = "s"."id" AND ("item_1"."maker")."name" = $1)',
+        )
+
+    def test_the_item_of_an_inner_collection(self):
+        inner = Wildcard(Object(Item(), "parts"), self.maker("name"))
+        self.assertEqual(
+            sql(Wildcard(Object(GlobalScope(), "items"), inner)),
+            'EXISTS (SELECT 1 FROM unnest("items") AS "item_1" WHERE EXISTS'
+            ' (SELECT 1 FROM unnest("item_1"."parts") AS "part_2"'
+            ' WHERE ("part_2"."maker")."name" = $1))',
+        )
+
+    def test_from_the_candidate_the_dots_stay(self):
+        # A qualified name: the column `maker` of `s`
+        self.assertEqual(sql(Equal(field("s.maker"), Value("x"))), '"s"."maker" = $1')
+
+
+class TestAMemberOfAnObjectKeptInATableOfItsOwnIsReadThroughTheKey(unittest.TestCase):
+    """An object on the way to a member is looked up in the schema, as a
+    collection is. Kept in a table of its own it is read through its key, by
+    a subquery in the column's place: at most the one row the key names, and
+    null if there is none. There was no way to say so: the dots were written
+    as they stood, which PostgreSQL reads as a table and a column.
+    """
+
+    ITEMS = Object(GlobalScope(), "items")
+    OWNER_NAME = Field(Object(Item(), "owner"), "name")
+
+    def stores(self) -> SchemaRegistry:
+        return SchemaRegistry("stores").with_parent_alias("s")
+
+    def test_whether_the_items_are_an_array_or_a_table(self):
+        named = Wildcard(self.ITEMS, Equal(self.OWNER_NAME, Value("ann")))
+        embedded = self.stores().register_relational("items.owner", "owners", "id", "owner_id")
+        self.assertEqual(
+            sql(named, embedded),
+            'EXISTS (SELECT 1 FROM unnest("items") AS "item_1" WHERE'
+            ' (SELECT "owner_2"."name" FROM "owners" AS "owner_2"'
+            ' WHERE "owner_2"."id" = "item_1"."owner_id") = $1)',
+        )
+        relational = self.stores().register_relational(
+            "items", "store_items", "store_id", "id",
+        ).register(
+            "items.owner",
+            CollectionMapping(
+                storage=StorageType.RELATIONAL,
+                table="owners",
+                foreign_keys=[ForeignKeyPair("id", "owner_id")],
+                alias="o",
+            ),
+        )
+        self.assertEqual(
+            sql(named, relational),
+            'EXISTS (SELECT 1 FROM "store_items" AS "item_1"'
+            ' WHERE "item_1"."store_id" = "s"."id" AND'
+            ' (SELECT "o_2"."name" FROM "owners" AS "o_2"'
+            ' WHERE "o_2"."id" = "item_1"."owner_id") = $1)',
+        )
+
+    def test_a_key_of_two_columns_and_a_composite_inside_the_row(self):
+        schema = self.stores().register(
+            "items.owner",
+            CollectionMapping(
+                storage=StorageType.RELATIONAL,
+                table="public.owners",
+                foreign_keys=[ForeignKeyPair("tenant_id", "tenant_id"), ForeignKeyPair("id", "owner_id")],
+            ),
+        )
+        city = Field(Object(Object(Item(), "owner"), "address"), "city")
+        self.assertEqual(
+            sql(Wildcard(self.ITEMS, IsNull(city)), schema),
+            'EXISTS (SELECT 1 FROM unnest("items") AS "item_1" WHERE'
+            ' (SELECT ("owner_2"."address")."city" FROM "public"."owners" AS "owner_2"'
+            ' WHERE "owner_2"."tenant_id" = "item_1"."tenant_id"'
+            ' AND "owner_2"."id" = "item_1"."owner_id") IS NULL)',
+        )
+
+    def test_of_the_candidate_itself_and_each_with_an_alias_of_its_own(self):
+        schema = self.stores().register_relational(
+            "owner", "owners", "id", "owner_id",
+        ).register_relational("items.owner", "owners", "id", "owner_id")
+        of_the_store = Field(Object(GlobalScope(), "owner"), "name")
+        self.assertEqual(
+            sql(Wildcard(self.ITEMS, Equal(self.OWNER_NAME, of_the_store)), schema),
+            'EXISTS (SELECT 1 FROM unnest("items") AS "item_1" WHERE'
+            ' (SELECT "owner_2"."name" FROM "owners" AS "owner_2"'
+            ' WHERE "owner_2"."id" = "item_1"."owner_id") ='
+            ' (SELECT "owner_3"."name" FROM "owners" AS "owner_3"'
+            ' WHERE "owner_3"."id" = "s"."owner_id"))',
+        )
+        # What the schema does not mention stays what the dots have meant.
+        self.assertEqual(sql(Equal(field("s.name"), Value("x")), schema), '"s"."name" = $1')
+        maker = Field(Object(Item(), "maker"), "name")
+        self.assertEqual(
+            sql(Wildcard(self.ITEMS, Equal(maker, Value("x"))), schema),
+            'EXISTS (SELECT 1 FROM unnest("items") AS "item_1"'
+            ' WHERE ("item_1"."maker")."name" = $1)',
+        )
+
+
 class TestANameIsTheColumnsAndNothingElse(unittest.TestCase):
     """A name was written into the query as it stood, and PostgreSQL reads a
     word it knows as what it knows: ``user = $1`` compares the user of the

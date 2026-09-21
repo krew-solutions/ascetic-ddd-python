@@ -20,6 +20,7 @@ from ascetic_ddd.specification.domain.nodes import (
     Visitable,
     EmptiableObject,
     extract_field_path,
+    extract_field_root,
 )
 from ascetic_ddd.specification.domain.constants import ASSOCIATIVITY, OPERATOR
 
@@ -338,7 +339,7 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         Visit collection node (Wildcard).
 
         Two modes:
-        1. Embedded (JSONB/array): EXISTS (SELECT 1 FROM unnest(collection) AS item WHERE predicate)
+        1. Embedded (an array of a composite type): EXISTS (SELECT 1 FROM unnest(collection) AS item WHERE predicate)
         2. Relational (separate table): EXISTS (SELECT 1 FROM table AS item WHERE fk_conditions AND predicate)
         """
         collection_name = self._extract_collection_name(node)
@@ -351,7 +352,7 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
     def _visit_embedded_collection(
         self, node: Collection, collection_name: str
     ) -> SqlFragment:
-        """Generate SQL for JSONB/array collections using unnest."""
+        """Generate SQL for collections kept as an array of a composite type, using unnest."""
         collection_path = self._extract_collection_path(node)
 
         self._counters.wildcard_counter += 1
@@ -504,13 +505,68 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
 
         Handles both normal field access and item references in wildcard context.
         """
-        if self._in_wildcard and self._is_item_reference(node.object()):
-            # This is a field of the current item: item.Price, item.Active, etc.
-            return "%s.%s" % (_identifier(self._wildcard_alias), _identifier(node.name())), []
-
-        # Normal field access
         path = extract_field_path(node)
+
+        # What the path starts at, not what the field's immediate parent is:
+        # the parent of `name` in `@.maker.name` is the object `maker`, so
+        # the item's alias was dropped and `"maker"."name"` written - the
+        # column of another table, if the query had one of that name.
+        if self._in_wildcard and self._is_item_reference(extract_field_root(node)):
+            # This is a field of the current item: item.Price, item.Active, etc.
+            row = _identifier(self._wildcard_alias)
+            return self._member_of_row(row, self._wildcard_path, path), []
+
+        # An object of the candidate kept in a table of its own
+        if len(path) > 1 and self._schema is not None and self._schema.is_relational(path[0]):
+            row = _identifier(self._schema.get_parent_ref())
+            return self._member_of_row(row, (), path), []
+
+        # Normal field access: from the candidate the dots stay, a qualified
+        # name - `"s"."price"` is the column `price` of `s`.
         return _identifier(".".join(path)), []
+
+    def _member_of_row(self, row: str, logical: tuple[str, ...], names: list[str]) -> str:
+        """
+        Return the member at ``names`` of the row written ``row``.
+
+        An object on the way to the member is looked up in the schema, as a
+        collection is, by the names that lead to it. Kept in a table of its
+        own, it is read through its key, by a subquery in the column's place:
+        it has at most the one row the key names, and is null if there is
+        none, as a member of a composite that is null is. Not mentioned, it
+        is a composite kept in its row - a Value Object - and the parentheses
+        are what makes it that: with dots alone PostgreSQL reads a schema, a
+        table and a column, and there is no such table.
+
+        Args:
+            row: The row, as the query has it: an alias, or a composite
+            logical: The names that lead to the row's object in the schema
+            names: The names from the row to the member
+        """
+        if len(names) == 1:
+            return "%s.%s" % (row, _identifier(names[0]))
+
+        logical = logical + (names[0],)
+        field_name = ".".join(logical)
+        mapping = None
+        if self._schema is not None and self._schema.is_relational(field_name):
+            mapping = self._schema.get(field_name)
+        if mapping is None:
+            composite = "(%s.%s)" % (row, _identifier(names[0]))
+            return self._member_of_row(composite, logical, names[1:])
+
+        self._counters.wildcard_counter += 1
+        alias = mapping.alias if mapping.alias else names[0].lower()
+        alias_ref = _identifier("%s_%d" % (alias, self._counters.wildcard_counter))
+        keys = " AND ".join(
+            "%s.%s = %s.%s"
+            % (alias_ref, _identifier(fk.child_column), row, _identifier(fk.parent_column))
+            for fk in mapping.foreign_keys
+        )
+        member = self._member_of_row(alias_ref, logical, names[1:])
+        return "(SELECT %s FROM %s AS %s WHERE %s)" % (
+            member, _identifier(mapping.table), alias_ref, keys,
+        )
 
     def visit_value(self, node: Value) -> SqlFragment:
         """

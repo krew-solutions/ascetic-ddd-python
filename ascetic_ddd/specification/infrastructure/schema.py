@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 
 class StorageType(Enum):
     """Defines how a collection is stored."""
-    EMBEDDED = "embedded"      # Collection stored as JSONB/array in parent table
+    EMBEDDED = "embedded"      # Collection stored as an array of a composite type in parent table
     RELATIONAL = "relational"  # Collection stored in a separate table
 
 
@@ -63,7 +63,7 @@ class SchemaRegistry:
         return self
 
     def register_embedded(self, field_name: str) -> "SchemaRegistry":
-        """Register a collection stored as embedded JSONB/array."""
+        """Register a collection stored as an embedded array of a composite type."""
         self._collections[field_name] = CollectionMapping(
             storage=StorageType.EMBEDDED
         )
@@ -108,7 +108,7 @@ class SchemaRegistry:
         return self._collections.get(field_name)
 
     def is_embedded(self, field_name: str) -> bool:
-        """Return True if collection is stored as embedded JSONB/array."""
+        """Return True if collection is stored as an embedded array of a composite type."""
         mapping = self._collections.get(field_name)
         if mapping is None:
             # Default to embedded if not registered
