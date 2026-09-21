@@ -9,6 +9,7 @@ NaN, ``IS``, and parentheses that keep the shape of the tree - and no test of
 one reader alone can hold them. The Rust port has the same test,
 ``crates/specification/tests/pg.rs``.
 """
+import datetime
 import re
 import typing
 import unittest
@@ -64,143 +65,113 @@ def null() -> Value:
     return Value(None)
 
 
-def type_of(value: typing.Any, null_type: str) -> str:
-    """Return the type the server is told a parameter has.
-
-    A constant expression gives it nothing to infer one from. They are the
-    types the evaluator takes Python's to be; a null takes the type of the case.
-    """
-    if value is None:
-        return null_type
-    return {bool: "bool", int: "bigint", float: "float8", str: "text"}[type(value)]
-
-
-def to_psycopg(sql: str, types: list[str] | None = None) -> str:
+def to_psycopg(sql: str) -> str:
     """Return the query with psycopg's placeholders for PostgreSQL's.
 
     ``$1``, ``$2`` stand in the order of their numbers, so ``%s`` for each
-    keeps the parameters in place; ``%`` of the modulo is escaped.
+    keeps the parameters in place; ``%`` of the modulo is escaped. Nothing is
+    said of their types: this test used to write one after every parameter
+    itself, and so did not see what the server made of a constant with
+    nothing but constants beside it.
     """
-    casts = iter(types or [])
-    return re.sub(
-        r"\$\d+",
-        lambda match: "%s" + ("::" + next(casts) if types else ""),
-        sql.replace("%", "%%"),
-    )
+    return re.sub(r"\$\d+", "%s", sql.replace("%", "%%"))
 
 
-class Constant(typing.NamedTuple):
-    node: Visitable
-    # The type of the nulls of the case
-    null_type: str = "bigint"
-    # The types of the parameters, where they are not what the values say:
-    # PostgreSQL shifts a bigint by an integer.
-    types: list[str] | None = None
-
-
-def shift(node: Visitable) -> Constant:
-    return Constant(node, types=["bigint", "integer"])
-
-
-def boolean(node: Visitable) -> Constant:
-    return Constant(node, null_type="bool")
-
-
-def constants() -> list[Constant]:
+def constants() -> list[Visitable]:
     t, f = (lambda: Value(True)), (lambda: Value(False))
     return [
         # Arithmetic, and the parentheses that keep its shape
-        Constant(Sub(Value(10), Sub(Value(4), Value(3)))),
-        Constant(Sub(Sub(Value(10), Value(4)), Value(3))),
-        Constant(Sub(Value(10), Add(Value(4), Value(3)))),
-        Constant(Div(Value(100), Div(Value(10), Value(5)))),
-        Constant(Div(Mul(Value(7), Value(3)), Value(2))),
-        Constant(Mul(Add(Value(1), Value(2)), Value(3))),
-        Constant(Add(Value(1), Mul(Value(2), Value(3)))),
-        Constant(Div(Value(7), Value(2))),
-        Constant(Div(Value(-7), Value(2))),
-        Constant(Mod(Value(-7), Value(2))),
-        Constant(Mod(Value(7), Value(-2))),
-        Constant(Mod(Value(BIGINT_MIN), Value(-1))),
-        Constant(Neg(Neg(Value(5)))),
-        Constant(Sub(Value(5), Neg(Value(3)))),
-        Constant(Neg(Add(Value(1), Value(2)))),
-        Constant(Div(Value(7.0), Value(2))),
-        Constant(Add(Value(1), Value(0.5))),
-        Constant(Mul(Value(2.5), Value(4))),
-        shift(LeftShift(Value(1), Value(3))),
-        shift(LeftShift(Value(1), Value(64))),
-        shift(LeftShift(Value(1), Value(-1))),
-        shift(LeftShift(Value(1), Value(63))),
-        shift(RightShift(Value(8), Value(65))),
-        shift(RightShift(Value(-8), Value(1))),
+        Sub(Value(10), Sub(Value(4), Value(3))),
+        Sub(Sub(Value(10), Value(4)), Value(3)),
+        Sub(Value(10), Add(Value(4), Value(3))),
+        Div(Value(100), Div(Value(10), Value(5))),
+        Div(Mul(Value(7), Value(3)), Value(2)),
+        Mul(Add(Value(1), Value(2)), Value(3)),
+        Add(Value(1), Mul(Value(2), Value(3))),
+        Div(Value(7), Value(2)),
+        Div(Value(-7), Value(2)),
+        Mod(Value(-7), Value(2)),
+        Mod(Value(7), Value(-2)),
+        Mod(Value(BIGINT_MIN), Value(-1)),
+        Neg(Neg(Value(5))),
+        Sub(Value(5), Neg(Value(3))),
+        Neg(Add(Value(1), Value(2))),
+        Div(Value(7.0), Value(2)),
+        Add(Value(1), Value(0.5)),
+        Mul(Value(2.5), Value(4)),
+        LeftShift(Value(1), Value(3)),
+        LeftShift(Value(1), Value(64)),
+        LeftShift(Value(1), Value(-1)),
+        LeftShift(Value(1), Value(63)),
+        RightShift(Value(8), Value(65)),
+        RightShift(Value(-8), Value(1)),
         # Where it fails
-        Constant(Div(Value(1), Value(0))),
-        Constant(Mod(Value(1), Value(0))),
-        Constant(Div(Value(1.0), Value(0.0))),
-        Constant(Add(Value(BIGINT_MAX), Value(1))),
-        Constant(Sub(Value(BIGINT_MIN), Value(1))),
-        Constant(Mul(Value(BIGINT_MAX), Value(2))),
-        Constant(Div(Value(BIGINT_MIN), Value(-1))),
-        Constant(Neg(Value(BIGINT_MIN))),
-        Constant(Mul(Value(1.7976931348623157e308), Value(2.0))),
+        Div(Value(1), Value(0)),
+        Mod(Value(1), Value(0)),
+        Div(Value(1.0), Value(0.0)),
+        Add(Value(BIGINT_MAX), Value(1)),
+        Sub(Value(BIGINT_MIN), Value(1)),
+        Mul(Value(BIGINT_MAX), Value(2)),
+        Div(Value(BIGINT_MIN), Value(-1)),
+        Neg(Value(BIGINT_MIN)),
+        Mul(Value(1.7976931348623157e308), Value(2.0)),
         # What is not defined here is not defined there
-        Constant(Add(Value("a"), Value("b"))),
-        Constant(Mod(Value(5.5), Value(2))),
-        Constant(Add(Value(True), Value(1))),
-        Constant(Neg(Value("a"))),
-        Constant(Equal(Value("a"), Value(1))),
-        Constant(LessThan(Value(True), Value(2))),
-        Constant(Is(Value("a"), Value(1))),
+        Add(Value("a"), Value("b")),
+        Mod(Value(5.5), Value(2)),
+        Add(Value(True), Value(1)),
+        Neg(Value("a")),
+        Equal(Value("a"), Value(1)),
+        LessThan(Value(True), Value(2)),
+        Is(Value("a"), Value(1)),
         # Comparisons
-        Constant(Equal(Value(1), Value(1.0))),
-        Constant(LessThan(Value(1), Value(1.5))),
-        Constant(GreaterThanEqual(Value(2), Value(2))),
-        Constant(LessThanEqual(Value(3), Value(2))),
-        Constant(NotEqual(Value("a"), Value("b"))),
-        Constant(LessThan(Value("a"), Value("b"))),
-        Constant(GreaterThan(Value(True), Value(False))),
-        Constant(Equal(Value(NAN), Value(NAN))),
-        Constant(GreaterThan(Value(NAN), Value(1.7976931348623157e308))),
-        Constant(LessThanEqual(Value(1.0), Value(NAN))),
-        Constant(Equal(Value(-0.0), Value(0.0))),
-        Constant(Equal(Equal(Value(1), Value(1)), Value(True))),
-        Constant(Equal(Value(True), Equal(Value(1), Value(2)))),
+        Equal(Value(1), Value(1.0)),
+        LessThan(Value(1), Value(1.5)),
+        GreaterThanEqual(Value(2), Value(2)),
+        LessThanEqual(Value(3), Value(2)),
+        NotEqual(Value("a"), Value("b")),
+        LessThan(Value("a"), Value("b")),
+        GreaterThan(Value(True), Value(False)),
+        Equal(Value(NAN), Value(NAN)),
+        GreaterThan(Value(NAN), Value(1.7976931348623157e308)),
+        LessThanEqual(Value(1.0), Value(NAN)),
+        Equal(Value(-0.0), Value(0.0)),
+        Equal(Equal(Value(1), Value(1)), Value(True)),
+        Equal(Value(True), Equal(Value(1), Value(2))),
         # Nulls
-        Constant(Equal(null(), Value(1))),
-        Constant(Equal(null(), null())),
-        Constant(NotEqual(Value(1), null())),
-        Constant(Add(Value(1), null())),
-        Constant(Neg(null())),
-        Constant(Div(null(), Value(0))),
-        boolean(Not(null())),
-        boolean(And(null(), f())),
-        boolean(And(f(), null())),
-        boolean(And(null(), t())),
-        boolean(And(null(), null())),
-        boolean(Or(null(), t())),
-        boolean(Or(t(), null())),
-        boolean(Or(null(), f())),
-        boolean(And(Or(t(), f()), f())),
-        boolean(Or(t(), And(f(), f()))),
-        boolean(And(t(), And(t(), f()))),
-        boolean(Not(And(t(), f()))),
-        boolean(Not(Not(t()))),
-        boolean(IsNull(Or(null(), f()))),
-        boolean(IsNull(IsNull(null()))),
-        boolean(Equal(IsNull(null()), t())),
-        Constant(IsNull(Equal(Value(1), null()))),
-        Constant(IsNotNull(Equal(Value(1), null()))),
-        boolean(Not(IsNull(null()))),
+        Equal(null(), Value(1)),
+        Equal(null(), null()),
+        NotEqual(Value(1), null()),
+        Add(Value(1), null()),
+        Neg(null()),
+        Div(null(), Value(0)),
+        Not(null()),
+        And(null(), f()),
+        And(f(), null()),
+        And(null(), t()),
+        And(null(), null()),
+        Or(null(), t()),
+        Or(t(), null()),
+        Or(null(), f()),
+        And(Or(t(), f()), f()),
+        Or(t(), And(f(), f())),
+        And(t(), And(t(), f())),
+        Not(And(t(), f())),
+        Not(Not(t())),
+        IsNull(Or(null(), f())),
+        IsNull(IsNull(null())),
+        Equal(IsNull(null()), t()),
+        IsNull(Equal(Value(1), null())),
+        IsNotNull(Equal(Value(1), null())),
+        Not(IsNull(null())),
         # IS
-        boolean(Is(t(), t())),
-        boolean(Is(t(), f())),
-        boolean(Is(null(), null())),
-        boolean(Is(null(), t())),
-        Constant(Is(Value(1), null())),
-        Constant(Is(Value(1), Value(1))),
-        boolean(Equal(Is(t(), null()), f())),
-        boolean(Is(Equal(Value(1), Value(1)), t())),
+        Is(t(), t()),
+        Is(t(), f()),
+        Is(null(), null()),
+        Is(null(), t()),
+        Is(Value(1), null()),
+        Is(Value(1), Value(1)),
+        Equal(Is(t(), null()), f()),
+        Is(Equal(Value(1), Value(1)), t()),
     ]
 
 
@@ -316,6 +287,12 @@ def specifications() -> list[Visitable]:
         Equal(Field(Object(GlobalScope(), "owner"), "name"), Value("bob")),
         And(IsNull(Field(Object(GlobalScope(), "owner"), "name")), IsNotNull(field("a"))),
         some(Equal(owner_name_of_item(), Field(Object(GlobalScope(), "owner"), "name"))),
+        # Constants with nothing but constants beside them: their types are
+        # said in the text, for the server has nothing to find them by.
+        GreaterThan(field("a"), Sub(Value(4), Value(3))),
+        some(GreaterThan(item("price"), Mul(Value(100), Value(5)))),
+        LessThan(field("a"), Neg(Value(-2))),
+        Or(IsNull(null()), field("flag")),
         # A name is the column's, whatever else PostgreSQL knows by it.
         Equal(field("user"), Value("one")),
         GreaterThan(field("order"), Value(0)),
@@ -336,16 +313,15 @@ class PostgresqlAgreementIntegrationTestCase(IsolatedAsyncioTestCase):
         nothing = DictContext({})
         async with self._session_pool.session() as session:
             for constant in constants():
-                sql, params = compile_to_sql(constant.node)
-                types = constant.types or [type_of(param, constant.null_type) for param in params]
-                evaluated, failure = self._evaluate(constant.node, nothing)
+                sql, params = compile_to_sql(constant)
+                evaluated, failure = self._evaluate(constant, nothing)
                 with self.subTest(sql=sql, params=params):
                     try:
                         # A transaction of its own: a failure is one of the
                         # answers, and must not take the connection with it.
                         async with session.connection.transaction():
                             cursor = await session.connection.execute(
-                                "SELECT (%s)" % to_psycopg(sql, types), params,
+                                "SELECT (%s)" % to_psycopg(sql), params,
                             )
                             answered = (await cursor.fetchone())[0]
                     except tuple(FAILURES.values()) as error:
@@ -402,6 +378,39 @@ class PostgresqlAgreementIntegrationTestCase(IsolatedAsyncioTestCase):
                             )
                             selected = [row[0] for row in await cursor.fetchall()]
                             self.assertEqual(selected, satisfied)
+
+    async def test_a_constant_beside_a_column_takes_the_columns_type(self):
+        """Why a type is said only where nothing stands beside the constant.
+
+        A time without zone is sent as a timestamp, as the column is. Said to
+        be timestamptz beside that column, it would be compared in the
+        session's time zone, and the row would not be found.
+        """
+        moment = datetime.datetime(2023, 11, 14, 22, 13, 20)
+        zoned = moment.replace(tzinfo=datetime.timezone.utc)
+        async with self._session_pool.session() as session:
+            async with session.connection.transaction(force_rollback=True):
+                for statement in (
+                    "SET LOCAL TIME ZONE 'Asia/Tokyo'",
+                    "CREATE TEMP TABLE spec_moments"
+                    " (id int8, at timestamp, zoned timestamptz, small int2)",
+                    "INSERT INTO spec_moments VALUES"
+                    " (1, '2023-11-14 22:13:20', '2023-11-14 22:13:20+00', 7)",
+                ):
+                    await session.connection.execute(statement)
+                for specification in (
+                    Equal(field("at"), Value(moment)),
+                    Equal(field("zoned"), Value(zoned)),
+                    Equal(field("small"), Value(7)),
+                    # And where nothing stands beside them, the constants say their own.
+                    Equal(field("small"), Add(Value(3), Value(4))),
+                ):
+                    sql, params = compile_to_sql(specification)
+                    with self.subTest(sql=sql):
+                        cursor = await session.connection.execute(
+                            "SELECT id FROM spec_moments WHERE %s" % to_psycopg(sql), params,
+                        )
+                        self.assertEqual([row[0] for row in await cursor.fetchall()], [1])
 
     async def _make_tables(self, connection: typing.Any) -> None:
         await connection.execute(

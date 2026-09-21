@@ -284,6 +284,14 @@ silence. Any other member of such a column is an error. And an object that is
 null has no members for the evaluator, which raises, where PostgreSQL has null
 for a member of a null composite.
 
+A constant with nothing but constants beside it has its type said in the
+query, `$1::bigint + $2::bigint`, by the kind of its value; a null, which has
+no kind, by what its operator is of. The server finds the type of a parameter
+from what stands beside it, and there it has nothing to find it by; psycopg
+sends a type with each value, an integer's by its size, so the server computed
+`1 << 63` in sixteen bits and answered 0. Beside a column the type is not
+said: the value adapts to the column.
+
 Not supported (yet):
 - JSONPath functions (len, min, max, etc.)
 - Array indices: `$.items[0]`, `$.items[1:5]`

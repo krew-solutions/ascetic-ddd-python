@@ -10,7 +10,7 @@ from typing import Any, override
 from ascetic_ddd.specification.domain.evaluate_visitor import EvaluateVisitor
 from ascetic_ddd.specification.domain.nodes import (
     Add, And, Div, EmptiableObject, Equal, Field, GlobalScope, GreaterThan, Is,
-    IsNull, Item, LeftShift, Mul, Neg, Not, Object, Or, Sub, Value, Visitable,
+    IsNull, Item, LeftShift, LessThan, Mul, Neg, Not, Object, Or, Sub, Value, Visitable,
     Wildcard,
 )
 from ascetic_ddd.specification.infrastructure.composite_expression_node import (
@@ -134,7 +134,49 @@ class TestParenthesesFollowAssociativity(unittest.TestCase):
         self.assertEqual(sql(Neg(Neg(a))), '-(-"a")')
         self.assertEqual(sql(Sub(a, Neg(b))), '"a" - -"b"')
         self.assertEqual(sql(Not(Not(a))), 'NOT NOT "a"')
-        self.assertEqual(compile_to_sql(Neg(Value(5))), ("-$1", [5]))
+        self.assertEqual(compile_to_sql(Neg(Value(5))), ("-$1::bigint", [5]))
+
+
+class TestAConstantWithNothingBesideItHasItsTypeSaid(unittest.TestCase):
+    """A constant is a parameter, and the server finds its type from what
+    stands beside it. Where every operand of an operator is a constant there
+    is nothing beside it - "operator is not unique: unknown + unknown" to a
+    driver that asks the server, and to psycopg, which sends an integer's type
+    by its size, arithmetic in sixteen bits: `1 << 63` was 0. So there the
+    text says the type, by the kind of the value. Beside a column it does not:
+    the value adapts to the column, which a type said would take away.
+    """
+
+    def test_where_it_is_said_and_where_it_is_not(self):
+        price = field("price")
+        cases = (
+            # Beside a column, or beside what has a type already: as it was.
+            (GreaterThan(price, Value(1)), '"price" > $1'),
+            (GreaterThan(Add(price, Value(1)), Value(2)), '"price" + $1 > $2'),
+            # Both operands constants.
+            (GreaterThan(price, Add(Value(1), Value(2))), '"price" > $1::bigint + $2::bigint'),
+            (LessThan(Value(1), Value(2.5)), "$1::bigint < $2::double precision"),
+            (Equal(Value("a"), Value("b")), "$1::text = $2::text"),
+            # What was typed so is a type for what stands beside it.
+            (Mul(Add(Value(1), Value(2)), Value(3)), "($1::bigint + $2::bigint) * $3"),
+            # PostgreSQL shifts a bigint by an integer.
+            (LeftShift(Value(1), Value(4)), "$1::bigint << $2::integer"),
+            # Alone under its operator.
+            (Neg(Value(5)), "-$1::bigint"),
+            (Not(Value(True)), "NOT $1::boolean"),
+            (IsNull(Value(7)), "$1::bigint IS NULL"),
+            # A null has no kind. Beside a constant it takes that one's type
+            # from the server; alone, what its operator is of.
+            (Add(Value(None), Value(1)), "$1 + $2::bigint"),
+            (Add(Value(None), Value(None)), "$1::bigint + $2::bigint"),
+            (Equal(Value(None), Value(None)), "$1 = $2"),
+            (IsNull(Value(None)), "$1::text IS NULL"),
+            (Neg(Value(None)), "-$1::bigint"),
+            (Not(Value(None)), "NOT $1"),
+        )
+        for node, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(sql(node), expected)
 
 
 class TestIsTakesAParameter(unittest.TestCase):

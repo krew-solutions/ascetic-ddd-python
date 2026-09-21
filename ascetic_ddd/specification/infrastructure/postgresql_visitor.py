@@ -1,5 +1,7 @@
 """PostgreSQL visitor for generating SQL from specification AST."""
 import dataclasses
+import datetime
+import decimal
 import re
 
 import inflection
@@ -184,6 +186,110 @@ def _identifier(name: str) -> str:
         if _IDENTIFIER.match(part) is None:
             raise ValueError("'%s' is not a valid identifier" % name)
     return ".".join(_quote(part) for part in parts)
+
+
+# The type PostgreSQL is told a constant has, where nothing else tells it.
+#
+# A constant is a numbered parameter, and the server finds its type from what
+# stands beside it: `"age" >= $1` makes `$1` whatever `age` is. Where every
+# operand of an operator is a constant there is nothing beside it: to a driver
+# that asks the server for the types `$1 + $2` is "operator is not unique:
+# unknown + unknown", and of `$1 IS NULL` the server "could not determine data
+# type". psycopg sends a type with each value instead, and an integer's by its
+# size - so the server computed `1 << 63` in sixteen bits and answered 0, and
+# `30000 + 30000` was "smallint out of range".
+#
+# So there, and only there, the text says the type: `$1::bigint + $2::bigint`.
+# Not everywhere. A value adapts to the column it meets, and a type said beside
+# a column takes that away: `"at" = $1::timestamptz` of a column without zone
+# is compared in the session's time zone, and selects other rows than
+# `"at" = $1` does.
+_ARITHMETIC = frozenset((
+    OPERATOR.ADD, OPERATOR.SUB, OPERATOR.MUL, OPERATOR.DIV, OPERATOR.MOD,
+    OPERATOR.LSHIFT, OPERATOR.RSHIFT,
+))
+_SHIFTS = frozenset((OPERATOR.LSHIFT, OPERATOR.RSHIFT))
+
+
+def _param_type(value: Any) -> str:
+    """
+    Return what PostgreSQL calls the type of a value, by its kind.
+
+    "" for None, which has none, and for a kind this does not know.
+    """
+    # A bool is an int to Python, and is not one here
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "bigint"
+    if isinstance(value, float):
+        return "double precision"
+    if isinstance(value, decimal.Decimal):
+        return "numeric"
+    if isinstance(value, str):
+        return "text"
+    if isinstance(value, datetime.datetime):
+        return "timestamptz"
+    if isinstance(value, datetime.timedelta):
+        return "interval"
+    return ""
+
+
+def _type_under_prefix(operator: OPERATOR, operand: Visitable) -> str:
+    """
+    Return the type to say of the operand of a prefix operator, if it is a constant.
+
+    It has nothing beside it to take a type from. A null has no kind, and
+    takes what the operator is of: a number under `-`; under NOT the server
+    finds boolean by itself.
+    """
+    if not isinstance(operand, Value):
+        return ""
+    if operand.value() is None and operator is OPERATOR.NEG:
+        return "bigint"
+    return _param_type(operand.value())
+
+
+def _type_under_postfix(operand: Visitable) -> str:
+    """
+    Return the type to say of the operand of a null test, if it is a constant.
+
+    Of what type a null is tested does not matter, and the server must be
+    told one: "could not determine data type of parameter".
+    """
+    if not isinstance(operand, Value):
+        return ""
+    if operand.value() is None:
+        return "text"
+    return _param_type(operand.value())
+
+
+def _types_of_both(left: Visitable, operator: OPERATOR, right: Visitable) -> Tuple[str, str]:
+    """
+    Return the types to say of the operands of an operator, if both are constants.
+
+    Neither has anything beside it to take a type from. PostgreSQL shifts a
+    bigint by an integer, so the count of a shift is that. Two nulls take what
+    the operator is of: numbers under arithmetic; compared, the server takes
+    them for texts by itself.
+    """
+    if not isinstance(left, Value) or not isinstance(right, Value):
+        return "", ""
+    of_left, of_right = _param_type(left.value()), _param_type(right.value())
+    if left.value() is None and right.value() is None and operator in _ARITHMETIC:
+        of_left, of_right = "bigint", "bigint"
+    if of_right == "bigint" and operator in _SHIFTS:
+        of_right = "integer"
+    return of_left, of_right
+
+
+def _of_type(sql: str, said: str) -> str:
+    """
+    Return the text with its type said, if there is one to say.
+
+    A cast binds tighter than any operator, so what was an atom is one still.
+    """
+    return "%s::%s" % (sql, said) if said else sql
 
 
 # The operators a run of which can be regrouped without a change of its
@@ -587,6 +693,7 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
             inner_prec, apart=node.operator() is OPERATOR.NEG,
         )
         op_sql, op_params = node.operand().accept(sub)
+        op_sql = _of_type(op_sql, _type_under_prefix(node.operator(), node.operand()))
 
         # Unary - doesn't need space
         if node.operator() is OPERATOR.NEG:
@@ -616,6 +723,8 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         )
         left_sql, left_params = node.left().accept(left_sub)
         right_sql, right_params = node.right().accept(right_sub)
+        of_left, of_right = _types_of_both(node.left(), node.operator(), node.right())
+        left_sql, right_sql = _of_type(left_sql, of_left), _of_type(right_sql, of_right)
 
         sql = "%s %s %s" % (left_sql, self._spell(node.operator()), right_sql)
         return self._wrap_parens(inner_prec, sql), left_params + right_params
@@ -629,6 +738,7 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         inner_prec = self._lookup_precedence(node)
         sub = self._at_precedence(inner_prec, apart=True)
         op_sql, op_params = node.operand().accept(sub)
+        op_sql = _of_type(op_sql, _type_under_postfix(node.operand()))
 
         sql = "%s %s" % (op_sql, self._spell(node.operator()))
         return self._wrap_parens(inner_prec, sql), op_params
