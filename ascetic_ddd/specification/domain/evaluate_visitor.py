@@ -4,7 +4,7 @@ from typing import Any, Protocol, runtime_checkable
 from ascetic_ddd.specification.domain.constants import OPERATOR, OPERATOR_MAPPING
 from ascetic_ddd.specification.domain.nodes import (
     Collection, Field, GlobalScope, Infix, Item, Object, Prefix,
-    Value, Postfix, Visitor,
+    Value, Postfix, Visitor, read_option,
 )
 
 
@@ -101,11 +101,12 @@ class EvaluateVisitor(Visitor[Any]):
     def visit_field(self, node: Field) -> Any:
         """Visit field node — retrieve its value from the object context."""
         obj_ctx = node.object().accept(self)
-        return obj_ctx.get(node.name())
+        # An Option of a value is the value, or a null
+        return read_option(obj_ctx.get(node.name()))
 
     def visit_value(self, node: Value) -> Any:
         """Visit value node — return the literal."""
-        return node.value()
+        return read_option(node.value())
 
     def visit_prefix(self, node: Prefix) -> Any:
         """Visit prefix operator node."""

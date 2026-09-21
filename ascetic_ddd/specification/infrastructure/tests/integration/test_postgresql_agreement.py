@@ -19,6 +19,8 @@ from unittest import IsolatedAsyncioTestCase
 
 from psycopg import errors
 
+from ascetic_ddd.option import Nothing, Option, Some
+
 from ascetic_ddd.specification.domain.evaluate_visitor import (
     CollectionContext,
     EvaluateVisitor,
@@ -507,6 +509,77 @@ class PostgresqlAgreementIntegrationTestCase(IsolatedAsyncioTestCase):
                             params,
                         )
                         self.assertEqual([row[0] for row in await cursor.fetchall()], on_the_server)
+
+    async def test_an_option_is_what_it_holds_or_a_null(self):
+        """A member of an aggregate may be an ``Option`` of a Value Object,
+        ``Some(Discount(15))`` or ``Nothing()``. The evaluator took the
+        wrapper for the value: a comparison was the Value Object's operator
+        applied to an ``Option`` and raised, equality and IS NULL were false
+        in silence. It is read as what it holds, or as a null - where a value
+        comes to a reader: from the candidate, and from a constant of the
+        specification.
+
+        A null on both sides, so the two readers agree on every
+        specification, the negation of a comparison included: where a special
+        case kept as a null differs from the server, an ``Option`` does not.
+        """
+        def shop(*discounts: Option[Discount]) -> DictContext:
+            return DictContext({"items": CollectionContext([
+                DictContext({"discount": discount}) for discount in discounts
+            ])})
+
+        shops = {
+            1: shop(Some(Discount(15)), Nothing()),
+            2: shop(Nothing(), Some(Discount(15))),
+            3: shop(Nothing()),
+        }
+        discount = Field(Item(), "discount")
+
+        def some(predicate: Visitable) -> Visitable:
+            return Wildcard(Object(GlobalScope(), "items"), predicate)
+
+        def over(percent: int) -> Visitable:
+            return GreaterThan(discount, Value(Discount(percent)))
+
+        cases = (
+            (some(over(10)), [1, 2]),
+            (some(Equal(discount, Value(Discount(15)))), [1, 2]),
+            (some(IsNull(discount)), [1, 2, 3]),
+            (Not(some(over(10))), [3]),
+            # A null to both readers: unknown, and so is its negation.
+            (some(Not(over(10))), []),
+            (some(NotEqual(discount, Value(Discount(15)))), []),
+            # A constant of the specification may be an Option as well.
+            (some(Equal(discount, Value(Some(Discount(15))))), [1, 2]),
+            (some(Is(discount, Value(Nothing()))), [1, 2, 3]),
+            (some(Equal(discount, Value(Nothing()))), []),
+        )
+        async with self._session_pool.session() as session:
+            async with session.connection.transaction(force_rollback=True):
+                for statement in (
+                    "CREATE TYPE pg_temp.spec_optional AS (price int8, discount_percent int8)",
+                    "CREATE TEMP TABLE spec_optional_shops"
+                    " (id int8, items pg_temp.spec_optional[])",
+                    "INSERT INTO spec_optional_shops VALUES"
+                    " (1, ARRAY[ROW(900, 15), ROW(100, NULL)]::pg_temp.spec_optional[]),"
+                    " (2, ARRAY[ROW(100, NULL), ROW(900, 15)]::pg_temp.spec_optional[]),"
+                    " (3, ARRAY[ROW(100, NULL)]::pg_temp.spec_optional[])",
+                ):
+                    await session.connection.execute(statement)
+                for specification, expected in cases:
+                    sql, params = compile_specification(DiscountsContext(), specification)
+                    with self.subTest(sql=sql, params=params):
+                        satisfied = [
+                            id_ for id_, candidate in shops.items()
+                            if specification.accept(EvaluateVisitor(candidate)) is True
+                        ]
+                        self.assertEqual(satisfied, expected)
+                        cursor = await session.connection.execute(
+                            "SELECT id FROM spec_optional_shops WHERE %s ORDER BY id"
+                            % to_psycopg(sql),
+                            params,
+                        )
+                        self.assertEqual([row[0] for row in await cursor.fetchall()], expected)
 
     async def test_a_constant_beside_a_column_takes_the_columns_type(self):
         """Why a type is said only where nothing stands beside the constant.

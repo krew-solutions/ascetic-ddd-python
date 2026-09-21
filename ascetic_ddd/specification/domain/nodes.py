@@ -3,6 +3,7 @@ import typing
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Protocol
 
+from ascetic_ddd.option import Option
 from ascetic_ddd.specification.domain.constants import OPERATOR, ASSOCIATIVITY
 
 
@@ -321,6 +322,32 @@ class IsNotNull(Postfix):
         super().__init__(operand, OPERATOR.IS_NOT_NULL, ASSOCIATIVITY.NON_ASSOCIATIVE)
 
 
+def read_option(value: Any) -> Any:
+    """
+    Return what an ``Option`` holds, or the null it is if it holds nothing.
+
+    A member of an aggregate may be an ``Option`` of a value,
+    ``Some(Discount(15))`` or ``Nothing()``, and so may a constant of a
+    specification. To a reader of the tree it is the value or a null: taken
+    for the value itself, a comparison was the Value Object's operator applied
+    to the wrapper, and IS NULL was false of a ``Nothing``. Read where a value
+    comes to a reader - from the candidate, from a constant - so that nothing
+    after meets an ``Option``.
+
+    Args:
+        value: A value, which may be an ``Option``; one inside another is read
+            through
+
+    Returns:
+        The value; None for a ``Nothing``
+    """
+    while isinstance(value, Option):
+        if value.is_nothing():
+            return None
+        value = value.unwrap()
+    return value
+
+
 def equality_or_null_test(
     node_class: Callable[[Visitable, Visitable], Infix],
     left: Visitable,
@@ -346,9 +373,10 @@ def equality_or_null_test(
     """
     if node_class is Equal or node_class is NotEqual:
         null_test = IsNull if node_class is Equal else IsNotNull
-        if isinstance(right, Value) and right.value() is None:
+        # A parameter bound to a Nothing is the null constant as a None is
+        if isinstance(right, Value) and read_option(right.value()) is None:
             return null_test(left)
-        if isinstance(left, Value) and left.value() is None:
+        if isinstance(left, Value) and read_option(left.value()) is None:
             return null_test(right)
     return node_class(left, right)
 

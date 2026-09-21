@@ -7,6 +7,7 @@ import decimal
 import unittest
 from typing import Any
 
+from ascetic_ddd.option import Nothing, Some
 from ascetic_ddd.specification.domain.constants import OPERATOR
 from ascetic_ddd.specification.domain.evaluate_visitor import (
     CollectionContext,
@@ -37,6 +38,45 @@ def evaluate(node: Any, data: dict[str, Any] | None = None) -> Any:
 def division_by_zero() -> Any:
     """A boolean expression whose evaluation raises ZeroDivisionError."""
     return Equal(Div(Value(1), Value(0)), Value(1))
+
+
+class TestAnOptionIsWhatItHoldsOrANull(unittest.TestCase):
+    """A member of an aggregate may be an ``Option`` of a value, and so may a
+    constant of a specification. The evaluator took the wrapper for the
+    value: a comparison was the value's operator applied to an ``Option`` -
+    an error for a Value Object, False for a number - and IS NULL was false
+    of a ``Nothing``. It is read as what it holds, or as a null, where a
+    value comes to the evaluator: from the candidate, and from a constant.
+    """
+
+    def test_a_member(self):
+        price = Field(GlobalScope(), "price")
+        self.assertIs(evaluate(GreaterThan(price, Value(10)), {"price": Some(15)}), True)
+        self.assertIs(evaluate(Equal(price, Value(15)), {"price": Some(15)}), True)
+        self.assertIs(evaluate(IsNull(price), {"price": Some(15)}), False)
+        # A Nothing is a null: unknown to a comparison, and to its negation.
+        self.assertIsNone(evaluate(GreaterThan(price, Value(10)), {"price": Nothing()}))
+        self.assertIsNone(evaluate(Not(GreaterThan(price, Value(10))), {"price": Nothing()}))
+        self.assertIs(evaluate(IsNull(price), {"price": Nothing()}), True)
+        self.assertIs(evaluate(IsNotNull(price), {"price": Nothing()}), False)
+
+    def test_a_constant(self):
+        price = Field(GlobalScope(), "price")
+        self.assertIs(evaluate(Equal(price, Value(Some(15))), {"price": 15}), True)
+        self.assertIs(evaluate(Equal(price, Value(Some(15))), {"price": Some(15)}), True)
+        self.assertIsNone(evaluate(Equal(price, Value(Nothing())), {"price": 15}))
+        self.assertIs(evaluate(Is(price, Value(Nothing())), {"price": Nothing()}), True)
+        self.assertIs(evaluate(Is(price, Value(Nothing())), {"price": 15}), False)
+
+    def test_one_inside_another_is_read_through(self):
+        price = Field(GlobalScope(), "price")
+        self.assertIs(evaluate(Equal(price, Value(15)), {"price": Some(Some(15))}), True)
+        self.assertIs(evaluate(IsNull(price), {"price": Some(Nothing())}), True)
+
+    def test_the_item_of_a_collection(self):
+        items = CollectionContext([DictContext({"price": Nothing()}), DictContext({"price": Some(15)})])
+        dear = Wildcard(Object(GlobalScope(), "items"), GreaterThan(Field(Item(), "price"), Value(10)))
+        self.assertIs(evaluate(dear, {"items": items}), True)
 
 
 class TestUnaryOperatorsAreOperatorsOfTheirOwn(unittest.TestCase):

@@ -17,6 +17,7 @@ import decimal
 import unittest
 from typing import Any
 
+from ascetic_ddd.option import Nothing, Some
 from ascetic_ddd.specification.domain import nodes
 from ascetic_ddd.specification.domain.evaluate_visitor import (
     CollectionContext,
@@ -584,6 +585,30 @@ class TestTheGrammarIsClosed(unittest.TestCase):
         self.assertIs(spec.match(store(), (1,)), False)
         spec = jsonpath_parser.parse("$[?@.a < @.b]")
         self.assertIs(spec.match(store()), True)
+
+
+
+class TestAParameterMayBeAnOption(unittest.TestCase):
+    """A template is bound to what the application has, and that may be an
+    ``Option``. Bound to a ``Nothing`` an equality is the null test, as it is
+    bound to a None: the rule asked ``is None`` of the wrapper, and built a
+    comparison that is true of nothing. Bound to a ``Some`` it compares what
+    that holds.
+    """
+
+    def test_bound_to_nothing_it_is_the_null_test(self):
+        template = jsonpath_parser.parse("$[?@.deleted_at == %s]")
+        self.assertEqual(
+            describe(template.bind((Nothing(),))),
+            ("IS_NULL", ("field", "$", "deleted_at")),
+        )
+        self.assertIs(template.match(Context({"deleted_at": None}), (Nothing(),)), True)
+        self.assertIs(template.match(Context({"deleted_at": Nothing()}), (Nothing(),)), True)
+
+    def test_bound_to_some_it_compares_what_that_holds(self):
+        template = jsonpath_parser.parse("$[?@.name == %s]")
+        self.assertIs(template.match(Context({"name": "ann"}), (Some("ann"),)), True)
+        self.assertIs(template.match(Context({"name": Some("ann")}), ("ann",)), True)
 
 
 if __name__ == "__main__":

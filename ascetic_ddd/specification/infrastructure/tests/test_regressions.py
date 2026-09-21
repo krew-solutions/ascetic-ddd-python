@@ -7,6 +7,7 @@ which a differential test holds against a live PostgreSQL.
 import unittest
 from typing import Any, override
 
+from ascetic_ddd.option import Nothing, Some
 from ascetic_ddd.specification.domain.evaluate_visitor import EvaluateVisitor
 from ascetic_ddd.specification.domain.nodes import (
     Add, And, Div, EmptiableObject, Equal, Field, GlobalScope, GreaterThan, Is,
@@ -200,6 +201,31 @@ class TestEqualityWithWhatTheMappingMadeANullIsTheNullTest(unittest.TestCase):
         for node, expected in cases:
             with self.subTest(expected=expected):
                 self.assertEqual(compile_specification(OwnersContext(), node)[0], expected)
+
+
+class TestAnOptionIsWhatItHoldsOrANull(unittest.TestCase):
+    """A constant of a specification may be an ``Option`` of a value. The
+    transformer handed the wrapper to the context, which knows the domain's
+    values and not their wrappers. It is read first: the context is asked of
+    what a ``Some`` holds, and a ``Nothing`` is the null it is in any storage -
+    the domain's own null, so it stays compared, and is not taken for a value
+    the mapping made a null of. The rows are in ``test_postgresql_agreement``.
+    """
+
+    def test_the_context_is_asked_of_the_value_and_not_of_the_wrapper(self):
+        owner = field("owner")
+        cases = (
+            (Equal(owner, Value(Some(Somebody(7)))), '"owner" = $1', [7]),
+            (Equal(owner, Value(Some(Some(Somebody(7))))), '"owner" = $1', [7]),
+            # The domain's own null: compared, as a None is.
+            (Equal(owner, Value(Nothing())), '"owner" = $1', [None]),
+            (Is(owner, Value(Nothing())), '"owner" IS NOT DISTINCT FROM $1', [None]),
+            # What it holds may be a special case, which the mapping makes a null of.
+            (Equal(owner, Value(Some(Nobody()))), '"owner" IS NULL', []),
+        )
+        for node, expected, params in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(compile_specification(OwnersContext(), node), (expected, params))
 
 
 class TestAConstantWithNothingBesideItHasItsTypeSaid(unittest.TestCase):

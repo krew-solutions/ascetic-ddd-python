@@ -2,11 +2,13 @@
 from abc import ABCMeta, abstractmethod
 from typing import Any, Callable, List, Optional
 
+from ascetic_ddd.option import Option
+
 from ascetic_ddd.specification.domain.nodes import (
     Collection, EmptiableObject, Field, GlobalScope, Infix, IsNotNull, IsNull, Item, Object,
     Prefix,
     Value, Visitable, Postfix, Visitor, extract_field_path, extract_field_root,
-    extract_object_path, extract_object_root,
+    extract_object_path, extract_object_root, read_option,
 )
 
 __all__ = (
@@ -215,7 +217,12 @@ class TransformVisitor(Visitor[Mapped]):
         Uses context to decompose value objects into database-compatible values.
         May return a composite expression for composite value objects.
         """
-        return self._context.value_node(node.value())
+        # An Option of a value is the value, which the context maps, or the
+        # null it is in any storage: a context is asked of the domain's values.
+        value = read_option(node.value())
+        if value is None and isinstance(node.value(), Option):
+            return Value(None)
+        return self._context.value_node(value)
 
     def visit_prefix(self, node: Prefix) -> Mapped:
         """
@@ -253,7 +260,7 @@ class TransformVisitor(Visitor[Mapped]):
             return None
         for operand, mapped, other in ((node.right(), right, left), (node.left(), left, right)):
             made_null = (
-                isinstance(operand, Value) and operand.value() is not None
+                isinstance(operand, Value) and read_option(operand.value()) is not None
                 and isinstance(mapped, Value) and mapped.value() is None
             )
             if made_null and not isinstance(other, CompositeExpression):
