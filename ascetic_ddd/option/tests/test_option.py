@@ -40,6 +40,32 @@ class TestNothing(unittest.TestCase):
         self.assertFalse(o.is_some())
 
 
+class TestIsSomeAnd(unittest.TestCase):
+
+    def test_some_is_asked(self):
+        self.assertIs(Some(11).is_some_and(lambda held: held > 10), True)
+        self.assertIs(Some(5).is_some_and(lambda held: held > 10), False)
+
+    def test_nothing_is_not(self):
+        def never(held):
+            raise AssertionError("asked of nothing")
+
+        self.assertIs(Nothing().is_some_and(never), False)
+
+
+class TestIsNothingOr(unittest.TestCase):
+
+    def test_some_is_asked(self):
+        self.assertIs(Some(11).is_nothing_or(lambda held: held > 10), True)
+        self.assertIs(Some(5).is_nothing_or(lambda held: held > 10), False)
+
+    def test_nothing_is(self):
+        def never(held):
+            raise AssertionError("asked of nothing")
+
+        self.assertIs(Nothing().is_nothing_or(never), True)
+
+
 class TestUnwrap(unittest.TestCase):
 
     def test_some_returns_value(self):

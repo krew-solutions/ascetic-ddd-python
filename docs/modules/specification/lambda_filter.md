@@ -199,6 +199,37 @@ print(visitor.result())  # True (there is an item with price > 100)
 lambda that is `None`. In the tree, as in SQL, a comparison with null is null
 and true of nothing; what the lambda means by it is the null test.
 
+### Option
+
+A member that is an `ascetic_ddd.option.Option` is what it holds, or a null,
+to both readers of the tree. In a lambda:
+
+- `a.discount.is_some_and(lambda d: d > 10)` -
+  `And(IsNotNull(discount), GreaterThan(discount, Value(10)))`
+- `a.discount.is_nothing_or(lambda d: d > 10)` -
+  `Or(IsNull(discount), GreaterThan(discount, Value(10)))`
+- `a.discount.is_nothing()` - `IsNull(discount)`; `is_some()` - `IsNotNull`
+- `a.discount.unwrap()` - the member itself, `discount`
+- `Some(x)` - `x`; `Nothing()` - the null, so `a.discount == Nothing()` is
+  `IsNull(discount)`
+
+The name the inner lambda gives stands for the Option: `d.percent` is
+`discount.percent`. The null test beside the predicate makes the whole of two
+values, as it is to the lambda, so the two agree under `not` too, and nothing
+is unwrapped. An Option from outside the lambda is asked the same way,
+`limit.is_some_and(lambda held: ...)`, and `limit.unwrap()` is the Option
+itself, not what it holds when the lambda is parsed: the lambda unwraps it
+behind its guard, and of a `Nothing` never does.
+
+`Some` and `Nothing` are told by what the name stands for where the lambda is
+written: `option.Some` and an alias are the maker, another function called
+`Some` is not. `unwrap_or` and the other methods have no node and are refused.
+
+The tree's logic is the storage's, of three values: `a.discount != Some(5)` is
+true of `Nothing` to the lambda, and null - not selected - to the tree and to
+SQL. Whoever means the absent too says so:
+`a.discount.is_nothing_or(lambda d: d != 5)`.
+
 ### Values From Outside the Lambda
 
 A name that is not the lambda's argument, nor the target of a comprehension,

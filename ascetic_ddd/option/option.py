@@ -21,6 +21,14 @@ class Option(typing.Generic[T]):
     def is_nothing(self) -> bool:
         return not self._valid
 
+    def is_some_and(self, f: typing.Callable[[T], bool]) -> bool:
+        """Returns True if the Option is Some and the contained value satisfies the predicate."""
+        return self._valid and f(self._val)
+
+    def is_nothing_or(self, f: typing.Callable[[T], bool]) -> bool:
+        """Returns True if the Option is Nothing, or the contained value satisfies the predicate."""
+        return not self._valid or f(self._val)
+
     def unwrap(self) -> T:
         """Returns the contained value.
 

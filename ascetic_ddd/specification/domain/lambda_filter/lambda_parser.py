@@ -10,6 +10,7 @@ import dataclasses
 import inspect
 from typing import Any, Callable, Mapping
 
+from ascetic_ddd.option import Nothing, Some
 from ascetic_ddd.specification.domain.nodes import (
     Add,
     And,
@@ -56,11 +57,33 @@ class _Scope:
     # The targets of the comprehensions further out. The tree has one Item(),
     # the nearest, so these can be named in Python and not in the tree.
     outer: tuple[str, ...] = ()
+    # What an Option holds, under the name the lambda of ``is_some_and`` or of
+    # ``is_nothing_or`` gives it: the node of the Option, a member or a value
+    # from outside, which is what it holds or a null. The latest is the nearest.
+    held: tuple[tuple[str, Field | Value], ...] = ()
 
     def inside(self, item: str) -> "_Scope":
-        """The scope of the body of a comprehension whose target is ``item``."""
+        """The scope of the body of a comprehension whose target is ``item``.
+
+        What the item so far holds goes out of reach with it; what the
+        candidate holds, or a value from outside, stays.
+        """
         outer = self.outer if self.item is None else self.outer + (self.item,)
-        return _Scope(root=self.root, item=item, outer=outer)
+        held = tuple((name, node) for name, node in self.held if name != item)
+        lost = tuple(name for name, node in held if _is_of_item(node))
+        kept = tuple((name, node) for name, node in held if name not in lost)
+        return _Scope(root=self.root, item=item, outer=outer + lost, held=kept)
+
+    def holding(self, name: str, option: Field | Value) -> "_Scope":
+        """The scope of a predicate of what ``option`` holds, which it calls ``name``."""
+        return dataclasses.replace(self, held=self.held + ((name, option),))
+
+    def held_as(self, name: str) -> Field | Value | None:
+        """The Option whose content is called ``name`` here; None if none is."""
+        for held, option in reversed(self.held):
+            if held == name:
+                return option
+        return None
 
     def owner(self, name: str) -> GlobalScope | Item | None:
         """The node a path from ``name`` starts at; None for a name from outside.
@@ -68,6 +91,8 @@ class _Scope:
         Raises:
             ValueError: If ``name`` is the item of an outer comprehension.
         """
+        if self.held_as(name) is not None:
+            return None
         if name == self.item:
             return Item()
         if name == self.root:
@@ -78,6 +103,16 @@ class _Scope:
                 " from an inner one: %s" % name
             )
         return None
+
+
+def _is_of_item(node: Field | Value) -> bool:
+    """Whether the node is a member of the item of a collection."""
+    if isinstance(node, Value):
+        return False
+    owner = node.object()
+    while isinstance(owner, Object):
+        owner = owner.parent()
+    return isinstance(owner, Item)
 
 
 def _free_variables(predicate: Callable[[Any], bool]) -> Mapping[str, Any]:
@@ -214,6 +249,9 @@ class LambdaParser:
 
         # Names (variables)
         if isinstance(node, ast.Name):
+            held = scope.held_as(node.id)
+            if held is not None:
+                return held
             owner = scope.owner(node.id)
             if owner is not None:
                 return owner
@@ -237,6 +275,9 @@ class LambdaParser:
             ValueError: If the name is not the lambda's and is nowhere else.
         """
         if isinstance(node, ast.Name):
+            held = scope.held_as(node.id)
+            if held is not None:
+                return held if isinstance(held, Value) else None
             if scope.owner(node.id) is not None:
                 return None
             if node.id not in self._free_variables:
@@ -246,6 +287,11 @@ class LambdaParser:
             owner = self._free_value(node.value, scope)
             if owner is None:
                 return None
+            if isinstance(node.value, ast.Name) and scope.held_as(node.value.id) is not None:
+                raise ValueError(
+                    "A member of what an Option from outside holds is not a"
+                    " value of the tree: %s" % ast.unparse(node)
+                )
             return Value(getattr(owner.value(), node.attr))
         return None
 
@@ -357,9 +403,13 @@ class LambdaParser:
 
     # Mapping of method names to postfix node classes.
     # Postfix methods: receiver.Method() -> NodeClass(receiver)
+    # An Option is what it holds, or a null, to both readers of the tree: to
+    # ask one whether it holds anything is the null test.
     _METHOD_POSTFIX_MAP = {
         "IsNull": IsNull,
         "IsNotNull": IsNotNull,
+        "is_nothing": IsNull,
+        "is_some": IsNotNull,
     }
 
     def _convert_call(self, node: ast.Call, scope: _Scope) -> Visitable:
@@ -372,6 +422,9 @@ class LambdaParser:
         - all([generator expression]) -> Not(Wildcard(Not(...)))
         - receiver.Eq(arg) -> Equal(receiver, arg)
         - receiver.IsNull() -> IsNull(receiver)
+        - receiver.is_nothing() -> IsNull(receiver)
+        - receiver.unwrap() -> receiver
+        - Some(x) -> x, Nothing() -> Value(None)
         - etc.
         """
         if isinstance(node.func, ast.Name):
@@ -394,7 +447,114 @@ class LambdaParser:
             if postfix_class is not None:
                 return self._convert_method_postfix(node, postfix_class, scope)
 
+            if method_name == "unwrap":
+                return self._convert_unwrap(node, scope)
+
+            held = self._METHOD_HELD_MAP.get(method_name)
+            if held is not None:
+                join, test = held
+                return self._convert_held(node, join, test, scope)
+
+        made = self._convert_option(node, scope)
+        if made is not None:
+            return made
+
         raise ValueError("Unsupported function call: %s" % ast.unparse(node))
+
+    def _convert_unwrap(self, node: ast.Call, scope: _Scope) -> Visitable:
+        """
+        What an Option holds: the Option itself, a member or a value from
+        outside, which is what it holds, or a null, to both readers of the
+        tree.
+
+        Not what an Option from outside holds when the lambda is parsed: the
+        lambda unwraps it behind its guard, ``limit.is_some() and ...``, and
+        of a Nothing never does.
+
+        Examples:
+            user.discount.unwrap() -> Field(GlobalScope(), "discount")
+            limit.unwrap() -> Value(limit)
+        """
+        assert isinstance(node.func, ast.Attribute)
+        if node.args or node.keywords:
+            raise ValueError("unwrap() takes no arguments")
+        return self._convert_node(node.func.value, scope)
+
+    # Methods that ask what an Option holds: how the null test and the
+    # predicate are joined, and which null test it is.
+    _METHOD_HELD_MAP = {
+        "is_some_and": (And, IsNotNull),
+        "is_nothing_or": (Or, IsNull),
+    }
+
+    def _convert_held(self, node: ast.Call, join: type, test: type, scope: _Scope) -> Visitable:
+        """
+        ``option.is_some_and(lambda held: predicate)``: the Option is not null
+        and the predicate is true of it; ``is_nothing_or``: it is null, or the
+        predicate is. The lambda's name stands for the Option.
+
+        The null test beside the predicate makes the whole of two values, as
+        it is to the lambda: of a Nothing the predicate is null, and
+        ``false AND null`` is false, ``true OR null`` true. So the lambda and
+        its tree agree under ``not`` too, and nothing is unwrapped.
+
+        Examples:
+            a.discount.is_some_and(lambda d: d > 10)
+                -> And(IsNotNull(discount), GreaterThan(discount, Value(10)))
+        """
+        assert isinstance(node.func, ast.Attribute)
+        name = node.func.attr
+        predicate = node.args[0] if len(node.args) == 1 and not node.keywords else None
+        if not isinstance(predicate, ast.Lambda):
+            raise ValueError("%s() takes a lambda of what the Option holds" % name)
+        arguments = predicate.args
+        if (
+            len(arguments.args) != 1 or arguments.defaults or arguments.posonlyargs
+            or arguments.kwonlyargs or arguments.vararg or arguments.kwarg
+        ):
+            raise ValueError("The lambda of %s() takes what the Option holds" % name)
+        option = self._convert_node(node.func.value, scope)
+        if not isinstance(option, (Field, Value)):
+            raise ValueError(
+                "An Option asked for what it holds is a member or a value"
+                " from outside: %s" % ast.unparse(node.func.value)
+            )
+        body = self._convert_node(predicate.body, scope.holding(arguments.args[0].arg, option))
+        return join(test(option), body)
+
+    def _convert_option(self, node: ast.Call, scope: _Scope) -> Visitable | None:
+        """
+        An Option made inside the lambda: ``Some(x)`` is ``x``, and
+        ``Nothing()`` is the null. None if the call makes neither.
+
+        Which of the two is called is told by what the name stands for where
+        the lambda was written, not by its spelling: ``option.Some`` and an
+        alias are the maker, and another function called ``Some`` is not.
+        """
+        callee = self._callee(node.func, scope)
+        if callee is Some:
+            if len(node.args) != 1 or node.keywords:
+                raise ValueError("Some() takes exactly 1 argument")
+            return self._convert_node(node.args[0], scope)
+        if callee is Nothing:
+            if node.args or node.keywords:
+                raise ValueError("Nothing() takes no arguments")
+            return Value(None)
+        return None
+
+    def _callee(self, func: ast.expr, scope: _Scope) -> Any:
+        """
+        What is called, if it is a name from outside the lambda or is reached
+        from one by attributes; None otherwise, and if there is no such name.
+        """
+        if isinstance(func, ast.Name):
+            if scope.held_as(func.id) is not None or scope.owner(func.id) is not None:
+                return None
+            return self._free_variables.get(func.id)
+        if isinstance(func, ast.Attribute):
+            owner = self._callee(func.value, scope)
+            return None if owner is None else getattr(owner, func.attr, None)
+        return None
 
     def _convert_method_comparison(self, node: ast.Call, node_class: type, scope: _Scope) -> Visitable:
         """
@@ -580,6 +740,10 @@ class LambdaParser:
         """
         # Get the object (parent)
         if isinstance(node.value, ast.Name):
+            # A member of what an Option holds is a member of the Option's.
+            held = scope.held_as(node.value.id)
+            if isinstance(held, Field):
+                return Field(Object(held.object(), held.name()), node.attr)
             # In item context (inside wildcard), use Item()
             # Otherwise use GlobalScope()
             owner = scope.owner(node.value.id)
