@@ -1,9 +1,9 @@
 """Transform visitor for converting domain specifications to infrastructure specifications."""
 from abc import ABCMeta, abstractmethod
-from typing import Any, List
+from typing import Any, Callable, List, Optional
 
 from ascetic_ddd.specification.domain.nodes import (
-    Collection, EmptiableObject, Field, GlobalScope, Infix, Item, Object,
+    Collection, EmptiableObject, Field, GlobalScope, Infix, IsNotNull, IsNull, Item, Object,
     Prefix,
     Value, Visitable, Postfix, Visitor, extract_field_path, extract_field_root,
     extract_object_path, extract_object_root,
@@ -226,6 +226,40 @@ class TransformVisitor(Visitor[Mapped]):
         operand = _node(node.operand().accept(self))
         return Prefix(node.operator(), operand, node.associativity())
 
+    def _null_test(self, node: Infix, left: Mapped, right: Mapped) -> Optional[Visitable]:
+        """
+        Return the null test an equality stands for, if it stands for one.
+
+        A value of the domain that the storage keeps as a null - a special
+        case that answers for itself, ``discount == NoDiscount()`` - is equal
+        to itself in the domain, and ``discount = $1`` with a null is true of
+        nothing. It is tested for: IS NULL, and IS NOT NULL of ``!=``.
+
+        Only a null the mapping made: a value that was null in the domain
+        already stays compared, as it is in the tree. The context maps
+        operands and knows nothing of operators; it is here, where both
+        operands are mapped and the node is built, that the operator is seen.
+
+        Args:
+            node: The comparison, in the domain's terms
+            left: Its left operand, mapped
+            right: Its right operand, mapped
+        """
+        if node.operator() is OPERATOR.EQ:
+            test: Callable[[Visitable], Visitable] = IsNull
+        elif node.operator() is OPERATOR.NE:
+            test = IsNotNull
+        else:
+            return None
+        for operand, mapped, other in ((node.right(), right, left), (node.left(), left, right)):
+            made_null = (
+                isinstance(operand, Value) and operand.value() is not None
+                and isinstance(mapped, Value) and mapped.value() is None
+            )
+            if made_null and not isinstance(other, CompositeExpression):
+                return test(other)
+        return None
+
     def visit_infix(self, node: Infix) -> Mapped:
         """
         Visit infix node (e.g., AND, OR, =, >).
@@ -235,6 +269,12 @@ class TransformVisitor(Visitor[Mapped]):
         """
         left = node.left().accept(self)
         right = node.right().accept(self)
+
+        # Equality with a value the mapping made the storage's null is the
+        # null test of the other operand
+        tested = self._null_test(node, left, right)
+        if tested is not None:
+            return tested
 
         # Check if we have composite expressions, on either side: one on the
         # right alone used to go into the tree as it was

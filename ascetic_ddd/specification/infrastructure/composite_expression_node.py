@@ -12,6 +12,7 @@ from ascetic_ddd.specification.domain.nodes import (
     And,
     Equal,
     Not,
+    equality_or_null_test,
 )
 
 __all__ = (
@@ -92,7 +93,9 @@ class CompositeExpression:
                 new_node = left == right
                 operands.append(new_node)
             else:
-                operands.append(Equal(left, right))
+                # A part the mapping made the storage's null is tested for, as
+                # a whole is: `b = $1` with a null is true of nothing.
+                operands.append(equality_or_null_test(Equal, left, right))
 
         # A composite of one part is that part: And takes two operands and
         # more, and used to refuse it from inside the comparison.

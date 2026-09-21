@@ -10,7 +10,8 @@ from typing import Any, override
 from ascetic_ddd.specification.domain.evaluate_visitor import EvaluateVisitor
 from ascetic_ddd.specification.domain.nodes import (
     Add, And, Div, EmptiableObject, Equal, Field, GlobalScope, GreaterThan, Is,
-    IsNull, Item, LeftShift, LessThan, Mul, Neg, Not, Object, Or, Sub, Value, Visitable,
+    IsNull, Item, LeftShift, LessThan, Mul, Neg, Not, NotEqual, Object, Or, Sub, Value,
+    Visitable,
     Wildcard,
 )
 from ascetic_ddd.specification.infrastructure.composite_expression_node import (
@@ -135,6 +136,70 @@ class TestParenthesesFollowAssociativity(unittest.TestCase):
         self.assertEqual(sql(Sub(a, Neg(b))), '"a" - -"b"')
         self.assertEqual(sql(Not(Not(a))), 'NOT NOT "a"')
         self.assertEqual(compile_to_sql(Neg(Value(5))), ("-$1::bigint", [5]))
+
+
+class Somebody:
+    def __init__(self, id_: int):
+        self.id = id_
+
+
+class Nobody:
+    """The special case: an owner that is nobody, equal to itself in the domain."""
+
+
+class Pair:
+    """Known by two numbers, of which the second may be nobody's."""
+
+    def __init__(self, a: int, b: int | None):
+        self.a, self.b = a, b
+
+
+class OwnersContext(ITransformContext):
+    def attr_node(self, path: list[str]) -> Any:
+        if path == ["pair"]:
+            return CompositeExpression(field("a"), field("b"))
+        return field(".".join(path))
+
+    def value_node(self, val: Any) -> Any:
+        if isinstance(val, Somebody):
+            return Value(val.id)
+        if isinstance(val, Nobody):
+            return Value(None)
+        if isinstance(val, Pair):
+            return CompositeExpression(Value(val.a), Value(val.b))
+        return Value(val)
+
+
+class TestEqualityWithWhatTheMappingMadeANullIsTheNullTest(unittest.TestCase):
+    """A value of the domain that the storage keeps as a null - a special case
+    that answers for itself in the domain - is equal to itself there, and
+    ``owner = $1`` with a null is true of nothing: the server selected no row
+    where the evaluator was satisfied. The transformer tests for it, where
+    both operands are mapped and the node is built; the context maps operands
+    and knows nothing of operators. Only a null the mapping made: a value that
+    was null in the domain already stays compared. The rows are in
+    ``test_postgresql_agreement``.
+    """
+
+    def test_where_it_is_tested_for_and_where_it_is_not(self):
+        owner = field("owner")
+        cases = (
+            # Somebody is compared, as any value is.
+            (Equal(owner, Value(Somebody(7))), '"owner" = $1'),
+            (Equal(owner, Value(Nobody())), '"owner" IS NULL'),
+            (Equal(Value(Nobody()), owner), '"owner" IS NULL'),
+            (NotEqual(owner, Value(Nobody())), '"owner" IS NOT NULL'),
+            (Equal(Value(Nobody()), Value(Nobody())), "$1::text IS NULL"),
+            # Under any other operator it is the null it was made.
+            (GreaterThan(owner, Value(Nobody())), '"owner" > $1'),
+            # A null of the domain's own stays compared.
+            (Equal(owner, Value(None)), '"owner" = $1'),
+            # A part of a composite is tested for as a whole is.
+            (Equal(field("pair"), Value(Pair(1, None))), '"a" = $1 AND "b" IS NULL'),
+        )
+        for node, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(compile_specification(OwnersContext(), node)[0], expected)
 
 
 class TestAConstantWithNothingBesideItHasItsTypeSaid(unittest.TestCase):

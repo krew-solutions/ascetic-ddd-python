@@ -10,6 +10,7 @@ one reader alone can hold them. The Rust port has the same test,
 ``crates/specification/tests/pg.rs``.
 """
 import datetime
+import functools
 import re
 import sys
 import typing
@@ -27,7 +28,10 @@ from ascetic_ddd.specification.domain.nodes import (
     Is, IsNotNull, IsNull, Item, LeftShift, LessThan, LessThanEqual, Mod, Mul,
     Neg, Not, NotEqual, Object, Or, RightShift, Sub, Value, Visitable, Wildcard,
 )
-from ascetic_ddd.specification.infrastructure.postgresql_visitor import compile_to_sql
+from ascetic_ddd.specification.infrastructure.postgresql_visitor import (
+    compile_specification, compile_to_sql,
+)
+from ascetic_ddd.specification.infrastructure.transform_visitor import ITransformContext
 from ascetic_ddd.specification.infrastructure.schema import SchemaRegistry
 from ascetic_ddd.utils.tests.db import make_pg_session_pool
 
@@ -316,6 +320,48 @@ def specifications() -> list[Visitable]:
     ]
 
 
+@functools.total_ordering
+class Discount:
+    """A Value Object, which a specification compares as a whole."""
+
+    def __init__(self, percent: int):
+        self.percent = percent
+
+    def __eq__(self, other: object) -> bool:
+        return type(self) is type(other) and self.percent == typing.cast(Discount, other).percent
+
+    def __lt__(self, other: "Discount") -> bool:
+        return self.percent < other.percent
+
+    def __hash__(self) -> int:
+        return hash((type(self), self.percent))
+
+
+class NoDiscount(Discount):
+    """The special case, which answers for itself as Fowler's Special Case
+    does: it is equal to itself and to no discount, and less than any.
+    Nothing of it is null to the evaluator."""
+
+    def __init__(self) -> None:
+        super().__init__(0)
+
+
+class DiscountsContext(ITransformContext):
+    """What the storage has for them: a discount is its percent in a column,
+    and the special case is that column's null."""
+
+    def attr_node(self, path: list[str]) -> Visitable:
+        raise ValueError("No such member: %s" % ".".join(path))
+
+    def item_attr_node(self, path: list[str]) -> Visitable:
+        if path == ["discount"]:
+            return Field(Item(), "discount_percent")
+        raise ValueError("No such member of an item: %s" % ".".join(path))
+
+    def value_node(self, val: typing.Any) -> Visitable:
+        return Value(None if isinstance(val, NoDiscount) else val.percent)
+
+
 class PostgresqlAgreementIntegrationTestCase(IsolatedAsyncioTestCase):
     """The evaluator and PostgreSQL, on the same specifications."""
 
@@ -394,6 +440,73 @@ class PostgresqlAgreementIntegrationTestCase(IsolatedAsyncioTestCase):
                             )
                             selected = [row[0] for row in await cursor.fetchall()]
                             self.assertEqual(selected, satisfied)
+
+    async def test_equality_with_a_special_case_kept_as_a_null_is_the_null_test(self):
+        """A special case that answers for itself is equal to itself, and the
+        storage has a null for it: ``discount = $1`` with a null is true of
+        nothing, so the server found no shop where the evaluator found all
+        three. Equality with a value the mapping made the storage's null is
+        the null test.
+
+        What stays the server's own: a null compared with a value is unknown
+        to it, and so is the negation of that, where the special case answers
+        false and true. A special case kept as a value, and not as a null,
+        has none of this.
+        """
+        def shop(*discounts: Discount) -> DictContext:
+            return DictContext({"items": CollectionContext([
+                DictContext({"discount": discount}) for discount in discounts
+            ])})
+
+        shops = {
+            1: shop(Discount(15), NoDiscount()),
+            2: shop(NoDiscount(), Discount(15)),
+            3: shop(NoDiscount()),
+        }
+        discount = Field(Item(), "discount")
+
+        def some(predicate: Visitable) -> Visitable:
+            return Wildcard(Object(GlobalScope(), "items"), predicate)
+
+        def over(percent: int) -> Visitable:
+            return GreaterThan(discount, Value(Discount(percent)))
+
+        # The specification; the shops it is satisfied by; the shops the server selects.
+        cases = (
+            (some(Equal(discount, Value(NoDiscount()))), [1, 2, 3], [1, 2, 3]),
+            (some(Equal(Value(NoDiscount()), discount)), [1, 2, 3], [1, 2, 3]),
+            (some(NotEqual(discount, Value(NoDiscount()))), [1, 2], [1, 2]),
+            (some(over(10)), [1, 2], [1, 2]),
+            # The server's own logic of a null, which the null test does not reach.
+            (some(Not(over(10))), [1, 2, 3], []),
+            (some(NotEqual(discount, Value(Discount(15)))), [1, 2, 3], []),
+        )
+        async with self._session_pool.session() as session:
+            async with session.connection.transaction(force_rollback=True):
+                for statement in (
+                    "CREATE TYPE pg_temp.spec_answering AS (price int8, discount_percent int8)",
+                    "CREATE TEMP TABLE spec_answering_shops"
+                    " (id int8, items pg_temp.spec_answering[])",
+                    "INSERT INTO spec_answering_shops VALUES"
+                    " (1, ARRAY[ROW(900, 15), ROW(100, NULL)]::pg_temp.spec_answering[]),"
+                    " (2, ARRAY[ROW(100, NULL), ROW(900, 15)]::pg_temp.spec_answering[]),"
+                    " (3, ARRAY[ROW(100, NULL)]::pg_temp.spec_answering[])",
+                ):
+                    await session.connection.execute(statement)
+                for specification, in_memory, on_the_server in cases:
+                    sql, params = compile_specification(DiscountsContext(), specification)
+                    with self.subTest(sql=sql):
+                        satisfied = [
+                            id_ for id_, candidate in shops.items()
+                            if specification.accept(EvaluateVisitor(candidate)) is True
+                        ]
+                        self.assertEqual(satisfied, in_memory)
+                        cursor = await session.connection.execute(
+                            "SELECT id FROM spec_answering_shops WHERE %s ORDER BY id"
+                            % to_psycopg(sql),
+                            params,
+                        )
+                        self.assertEqual([row[0] for row in await cursor.fetchall()], on_the_server)
 
     async def test_a_constant_beside_a_column_takes_the_columns_type(self):
         """Why a type is said only where nothing stands beside the constant.

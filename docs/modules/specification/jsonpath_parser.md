@@ -284,6 +284,16 @@ silence. Any other member of such a column is an error. And an object that is
 null has no members for the evaluator, which raises, where PostgreSQL has null
 for a member of a null composite.
 
+A value of the domain that the storage keeps as a null - a special case that
+answers for itself, `discount == NoDiscount()` - is tested for where it is
+compared for equality: the transform context maps it to `Value(None)`, and the
+transformer, which sees both mapped operands and the operator, builds `IS
+NULL` and `IS NOT NULL`. A value that was null in the domain already stays
+compared. What stays PostgreSQL's own is a null compared with a value:
+`discount > 10` is unknown to it of such a row, and so is `NOT discount > 10`,
+where the special case answers false and true. A special case kept as a
+value, and not as a null, has none of this.
+
 A constant with nothing but constants beside it has its type said in the
 query, `$1::bigint + $2::bigint`, by the kind of its value; a null, which has
 no kind, by what its operator is of. The server finds the type of a parameter
