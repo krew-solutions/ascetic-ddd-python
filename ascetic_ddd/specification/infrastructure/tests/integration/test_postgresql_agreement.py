@@ -11,6 +11,7 @@ one reader alone can hold them. The Rust port has the same test,
 """
 import datetime
 import re
+import sys
 import typing
 import unittest
 from unittest import IsolatedAsyncioTestCase
@@ -79,7 +80,7 @@ def to_psycopg(sql: str) -> str:
 
 def constants() -> list[Visitable]:
     t, f = (lambda: Value(True)), (lambda: Value(False))
-    return [
+    written = [
         # Arithmetic, and the parentheses that keep its shape
         Sub(Value(10), Sub(Value(4), Value(3))),
         Sub(Sub(Value(10), Value(4)), Value(3)),
@@ -173,6 +174,21 @@ def constants() -> list[Visitable]:
         Equal(Is(t(), null()), f()),
         Is(Equal(Value(1), Value(1)), t()),
     ]
+    # Floats at their edges, every pair under every operator. What the server
+    # makes of each - a value, "out of range" for a result too large or too
+    # small to be one, "division by zero" - is the server's to say, and the
+    # evaluator's to repeat: a zero from operands that are not zero is an
+    # underflow, a NaN divided by zero is a NaN, one divided by infinity is a
+    # zero and no underflow.
+    edges = (
+        0.0, 1.0, -1.0, 1e300, 1e-300, sys.float_info.max, sys.float_info.min,
+        float("inf"), float("-inf"), NAN,
+    )
+    at_the_edges = [
+        operator(Value(left), Value(right))
+        for left in edges for right in edges for operator in (Add, Sub, Mul, Div)
+    ]
+    return written + at_the_edges
 
 
 class Store(typing.NamedTuple):

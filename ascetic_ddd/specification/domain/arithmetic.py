@@ -60,6 +60,37 @@ def _double(value: float, left: float, right: float) -> float:
     return value
 
 
+def _product(left: float, right: float) -> float:
+    """Return the product, which must not be an underflow.
+
+    A zero of operands that are not zero: IEEE arithmetic rounds a result too
+    small to be a float to zero in silence, and PostgreSQL has "value out of
+    range: underflow" for it, as it has for one too large.
+    """
+    value = left * right
+    if value == 0.0 and left != 0.0 and right != 0.0:
+        raise OverflowError("value out of range: underflow")
+    return value
+
+
+def _quotient(left: float, right: float) -> float:
+    """Return the quotient, as PostgreSQL has it.
+
+    A NaN divided by zero is a NaN, as it is divided by anything; any other
+    number divided by zero is the error, which Python raises of a NaN as
+    well. A zero of a dividend that is not zero is an underflow, unless the
+    divisor is infinite: one divided by infinity is a zero, and right.
+    """
+    if right == 0.0:
+        if math.isnan(left):
+            return left
+        raise ZeroDivisionError("division by zero")
+    value = left / right
+    if value == 0.0 and left != 0.0 and not math.isinf(right):
+        raise OverflowError("value out of range: underflow")
+    return value
+
+
 def _truncated(left: int, right: int) -> int:
     """Return the quotient rounded towards zero; Python's ``//`` rounds down."""
     quotient = abs(left) // abs(right)
@@ -125,8 +156,8 @@ def _unary(symbol: str, of_integer: _Unary, otherwise: _Unary) -> _Unary:
 
 add = _binary("+", lambda l, r: _bigint(l + r), operator.add, operator.add)
 sub = _binary("-", lambda l, r: _bigint(l - r), operator.sub, operator.sub)
-mul = _binary("*", lambda l, r: _bigint(l * r), operator.mul, operator.mul)
-div = _binary("/", lambda l, r: _bigint(_truncated(l, r)), operator.truediv, operator.truediv)
+mul = _binary("*", lambda l, r: _bigint(l * r), _product, operator.mul)
+div = _binary("/", lambda l, r: _bigint(_truncated(l, r)), _quotient, operator.truediv)
 mod = _binary("%", _remainder, None, operator.mod)
 # PostgreSQL takes the count of a shift modulo 64, a negative count included,
 # and drops the bits shifted out.
