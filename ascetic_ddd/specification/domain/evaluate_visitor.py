@@ -42,15 +42,17 @@ class EvaluateVisitor(Visitor[Any]):
         OPERATOR.OR: True,
     }
 
-    __slots__ = ('_context', '_current_item')
+    __slots__ = ('_context', '_items')
 
-    def __init__(self, context: Context, current_item: Context | None = None):
+    def __init__(self, context: Context, items: tuple[Context, ...] = ()):
         self._context = context
-        self._current_item = current_item
+        # The item under test, last, and before it the items of the
+        # enclosing collections: Item(depth) is the one depth steps out.
+        self._items = items
 
     def _with_item(self, item: Context) -> 'EvaluateVisitor':
         """Return a sub-visitor bound to a new current item (for wildcard iteration)."""
-        return EvaluateVisitor(self._context, item)
+        return EvaluateVisitor(self._context, self._items + (item,))
 
     def visit_global_scope(self, node: GlobalScope) -> Context:
         """Visit global scope node — return the root context."""
@@ -93,10 +95,10 @@ class EvaluateVisitor(Visitor[Any]):
         raise TypeError("%s, got: %s" % (message, type(value).__name__))
 
     def visit_item(self, node: Item) -> Context:
-        """Visit item node (current collection item)."""
-        if self._current_item is None:
+        """Visit item node: the item of the collection ``depth`` steps out."""
+        if node.depth() >= len(self._items):
             raise RuntimeError("No current item in context")
-        return self._current_item
+        return self._items[-1 - node.depth()]
 
     def visit_field(self, node: Field) -> Any:
         """Visit field node — retrieve its value from the object context."""

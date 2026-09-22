@@ -21,7 +21,7 @@ class _DescribeVisitor(Visitor[Any]):
         return "$"
 
     def visit_item(self, node: Item) -> Any:
-        return "@"
+        return "@" if node.depth() == 0 else "@%d" % node.depth()
 
     def visit_object(self, node: Object) -> Any:
         return (node.parent().accept(self), node.name())

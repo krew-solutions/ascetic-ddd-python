@@ -34,6 +34,28 @@ def _object_chain(root: EmptiableObject, names: List[str]) -> EmptiableObject:
     return result
 
 
+def _rerooted_object(obj: EmptiableObject, root: EmptiableObject) -> EmptiableObject:
+    """Return the object at the same names from ``root``."""
+    return _object_chain(root, extract_object_path(obj))
+
+
+def _at_the_item(mapped: Mapped, item: Item) -> Mapped:
+    """Return what the mapping said, where the member was.
+
+    A mapping names the column of an item's member from ``Item()``, not
+    knowing how far out the item is - the category, from the predicate of
+    its products - so the transformer puts it at the item of the member it
+    was asked about, a part of a composite as a whole. A node the mapping
+    did not root at the item - a value, a column of the candidate - is what
+    it said.
+    """
+    if isinstance(mapped, CompositeExpression):
+        return CompositeExpression(*[_at_the_item(part, item) for part in mapped.nodes()])
+    if isinstance(mapped, Field) and isinstance(extract_field_root(mapped), Item):
+        return Field(_rerooted_object(mapped.object(), item), mapped.name())
+    return mapped
+
+
 class ITransformContext(metaclass=ABCMeta):
     """
     Interface for transformation context.
@@ -191,8 +213,12 @@ class TransformVisitor(Visitor[Mapped]):
         It used to stay under the domain's name whatever the storage calls
         it: `unnest(parts)` of a column that is `something_parts`.
         """
-        if isinstance(extract_object_root(parent), Item):
-            return self._context.item_collection_node(extract_object_path(parent))
+        root = extract_object_root(parent)
+        if isinstance(root, Item):
+            mapped = self._context.item_collection_node(extract_object_path(parent))
+            if isinstance(extract_object_root(mapped), Item):
+                return _rerooted_object(mapped, root)
+            return mapped
         return self._context.collection_node(extract_object_path(parent))
 
     def visit_item(self, node: Item) -> Mapped:
@@ -206,8 +232,9 @@ class TransformVisitor(Visitor[Mapped]):
         Extracts the field path and uses context to map it to infrastructure.
         May return a composite expression for composite keys.
         """
-        if isinstance(extract_field_root(node), Item):
-            return self._context.item_attr_node(extract_field_path(node))
+        root = extract_field_root(node)
+        if isinstance(root, Item):
+            return _at_the_item(self._context.item_attr_node(extract_field_path(node)), root)
         return self._context.attr_node(extract_field_path(node))
 
     def visit_value(self, node: Value) -> Mapped:

@@ -460,7 +460,24 @@ class Wildcard(Collection):
 
 
 class Item(Visitable):
-    """Node representing the current item in a collection (@)."""
+    """Node representing the item under test in an enclosing collection (@).
+
+    ``depth`` says how far out that collection is: ``Item()`` is the item of
+    the nearest, JSONPath's ``@``; ``Item(1)`` the item of the collection
+    enclosing that one, which the text of JSONPath cannot name and a lambda
+    can - the category, from the predicate of its products.
+    """
+
+    __slots__ = ("_depth",)
+
+    def __init__(self, depth: int = 0):
+        if depth < 0:
+            raise ValueError("The depth of an item is how far out its collection is: %d" % depth)
+        self._depth = depth
+
+    def depth(self) -> int:
+        """Return how far out the item's collection is: 0 for the nearest."""
+        return self._depth
 
     def parent(self) -> EmptiableObject:
         """Return parent (global scope)."""

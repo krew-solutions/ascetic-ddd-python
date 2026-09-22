@@ -62,6 +62,138 @@ class DictContext:
         return self._data[key]
 
 
+class TestTheItemOfAnEnclosingCollectionIsItsAlias(unittest.TestCase):
+    """The item of an enclosing collection has an alias of its own, which the
+    inner query names as SQL lets it: ``Item(1)`` is that alias.
+    """
+
+    def setUp(self):
+        self.over_its_category = Wildcard(Object(GlobalScope(), "categories"), Wildcard(
+            Object(Item(), "products"), GreaterThan(item("price"), Field(Item(1), "limit")),
+        ))
+
+    def test_embedded(self):
+        self.assertEqual(
+            sql(self.over_its_category),
+            'EXISTS (SELECT 1 FROM unnest("categories") AS "category_1"'
+            ' WHERE EXISTS (SELECT 1 FROM unnest("category_1"."products") AS "product_2"'
+            ' WHERE "product_2"."price" > "category_1"."limit"))',
+        )
+
+    def test_relational(self):
+        # The enclosing row is the one the keys point at, and its columns are
+        # named the same way.
+        schema = SchemaRegistry("shops").register_relational(
+            "categories", "categories", "shop_id", "id",
+        ).register_relational("categories.products", "products", "category_id", "id")
+        self.assertEqual(
+            sql(self.over_its_category, schema),
+            'EXISTS (SELECT 1 FROM "categories" AS "category_1"'
+            ' WHERE "category_1"."shop_id" = "shops"."id"'
+            ' AND EXISTS (SELECT 1 FROM "products" AS "product_2"'
+            ' WHERE "product_2"."category_id" = "category_1"."id"'
+            ' AND "product_2"."price" > "category_1"."limit"))',
+        )
+
+    def test_two_collections_out_beside_the_candidates_row(self):
+        three_deep = Wildcard(Object(GlobalScope(), "categories"), Wildcard(
+            Object(Item(), "products"), Wildcard(Object(Item(), "tags"), And(
+                GreaterThan(item("weight"), Field(Item(2), "limit")),
+                LessThan(Field(Item(1), "price"), field("limit")),
+            )),
+        ))
+        self.assertEqual(
+            sql(three_deep, SchemaRegistry("shops")),
+            'EXISTS (SELECT 1 FROM unnest("categories") AS "category_1"'
+            ' WHERE EXISTS (SELECT 1 FROM unnest("category_1"."products") AS "product_2"'
+            ' WHERE EXISTS (SELECT 1 FROM unnest("product_2"."tags") AS "tag_3"'
+            ' WHERE "tag_3"."weight" > "category_1"."limit" AND "product_2"."price" < "shops"."limit")))',
+        )
+
+    def test_the_item_is_only_inside_a_collection(self):
+        with self.assertRaises(ValueError):
+            sql(Wildcard(Object(GlobalScope(), "categories"), GreaterThan(item("limit"), Field(Item(1), "limit"))))
+
+
+class TestTheCandidatesColumnInsideAPredicateIsQualifiedWithItsRow(unittest.TestCase):
+    """Unqualified, PostgreSQL read it from the innermost row that has a
+    column of that name: a category with a ``limit`` of its own hid the
+    shop's, and the query selected other rows than the evaluator was
+    satisfied by. The row is what the schema calls it, so without a schema
+    there is no query.
+    """
+
+    def setUp(self):
+        self.over_the_shops_limit = Wildcard(
+            Object(GlobalScope(), "categories"), GreaterThan(item("limit"), field("limit")),
+        )
+
+    def test_with_the_table(self):
+        self.assertEqual(
+            sql(self.over_the_shops_limit, SchemaRegistry("shops")),
+            'EXISTS (SELECT 1 FROM unnest("categories") AS "category_1"'
+            ' WHERE "category_1"."limit" > "shops"."limit")',
+        )
+
+    def test_with_the_alias(self):
+        self.assertEqual(
+            sql(self.over_the_shops_limit, SchemaRegistry("public.shops").with_parent_alias("s")),
+            'EXISTS (SELECT 1 FROM unnest("categories") AS "category_1"'
+            ' WHERE "category_1"."limit" > "s"."limit")',
+        )
+
+    def test_without_a_schema_there_is_no_query(self):
+        with self.assertRaises(ValueError):
+            sql(self.over_the_shops_limit)
+
+    def test_what_stays(self):
+        # A name of several parts the author qualified, and it stays as
+        # written; outside a collection's predicate a name is unqualified.
+        self.assertEqual(
+            sql(Wildcard(Object(GlobalScope(), "categories"), GreaterThan(item("limit"), field("s.limit")))),
+            'EXISTS (SELECT 1 FROM unnest("categories") AS "category_1"'
+            ' WHERE "category_1"."limit" > "s"."limit")',
+        )
+        self.assertEqual(sql(GreaterThan(field("limit"), Value(1))), '"limit" > $1')
+
+
+class TestAMappingKeepsTheItemWhereItWas(unittest.TestCase):
+    """A mapping names the column of an item's member from ``Item()``, not
+    knowing how far out the item is: the transformer puts the column where
+    the member was.
+    """
+
+    def test_a_member_of_an_outer_item(self):
+        class Mapping(ITransformContext):
+            def attr_node(self, path: list[str]) -> Any:
+                return field("_".join(path))
+
+            def item_attr_node(self, path: list[str]) -> Any:
+                if path == ["id"]:
+                    return CompositeExpression(item("tenant_id"), item("member_id"))
+                return Field(Object(Item(), "row"), "_".join(path))
+
+            def value_node(self, val: Any) -> Any:
+                return Value(val)
+
+        transformed = transform(Mapping(), Wildcard(Object(GlobalScope(), "categories"), Wildcard(
+            Object(Item(), "products"), And(
+                GreaterThan(item("price"), Field(Item(1), "limit")),
+                Equal(Field(Item(1), "id"), Field(Item(), "id")),
+            ),
+        )))
+        self.assertEqual(
+            describe(transformed),
+            ("any", ("$", "categories"), ("any", ("@", "products"), ("AND",
+                ("GT", ("field", ("@", "row"), "price"), ("field", ("@1", "row"), "limit")),
+                ("AND",
+                    ("EQ", ("field", "@1", "tenant_id"), ("field", "@", "tenant_id")),
+                    ("EQ", ("field", "@1", "member_id"), ("field", "@", "member_id")),
+                ),
+            ))),
+        )
+
+
 class TestParenthesesAreWritten(unittest.TestCase):
     """No parenthesis was ever written. A precedence was looked up by
     ``"%s %s" % (operator, associativity)``, which for members of a

@@ -79,6 +79,55 @@ class TestAnOptionIsWhatItHoldsOrANull(unittest.TestCase):
         self.assertIs(evaluate(dear, {"items": items}), True)
 
 
+def shop() -> DictContext:
+    """A shop with categories, each with a limit and products of its own."""
+    def category(limit: int, *prices: int) -> DictContext:
+        return DictContext({"limit": limit, "products": CollectionContext([
+            DictContext({"price": price}) for price in prices
+        ])})
+
+    return DictContext({"limit": 50, "categories": CollectionContext([
+        category(10, 5, 20), category(100, 30),
+    ])})
+
+
+class TestTheItemOfAnEnclosingCollectionIsNamedByHowFarOutItIs(unittest.TestCase):
+    """The evaluator kept one item, the nearest: ``Item(1)`` is the item one
+    collection out, the category from the predicate of its products.
+    """
+
+    def setUp(self):
+        self.price = Field(Item(), "price")
+        self.category_limit = Field(Item(1), "limit")
+
+    def over_its_category(self, predicate: Any) -> Any:
+        return Wildcard(Object(GlobalScope(), "categories"), Wildcard(Object(Item(), "products"), predicate))
+
+    def test_on_a_shop(self):
+        for specification, expected in (
+            # 20 > 10 in the first category; 30 > 100 is not.
+            (self.over_its_category(GreaterThan(self.price, self.category_limit)), True),
+            # A product is priced over the shop's limit in neither.
+            (self.over_its_category(GreaterThan(self.price, Field(GlobalScope(), "limit"))), False),
+            (self.over_its_category(And(
+                GreaterThan(self.price, self.category_limit),
+                LessThan(self.category_limit, Field(GlobalScope(), "limit")),
+            )), True),
+            # The nearest item is still the product; from the outer predicate
+            # the category is the item, at depth 0.
+            (self.over_its_category(GreaterThan(self.price, Value(25))), True),
+            (Wildcard(Object(GlobalScope(), "categories"), GreaterThan(Field(Item(), "limit"), Value(50))), True),
+        ):
+            with self.subTest(expected=expected):
+                self.assertIs(specification.accept(EvaluateVisitor(shop())), expected)
+
+    def test_the_item_is_only_inside_a_collection(self):
+        with self.assertRaises(RuntimeError):
+            Wildcard(Object(GlobalScope(), "categories"), GreaterThan(self.category_limit, Value(1))).accept(
+                EvaluateVisitor(shop())
+            )
+
+
 class TestUnaryOperatorsAreOperatorsOfTheirOwn(unittest.TestCase):
     """``POS = "+"`` and ``NEG = "-"`` repeated the values of ``ADD`` and
     ``SUB``, and an ``Enum`` makes a member with a repeated value an alias:

@@ -175,19 +175,59 @@ class TestValuesFromOutsideTheLambda(unittest.TestCase):
 
     def test_a_module_variable_does_not_stand_in_for_an_outer_item(self):
         # ``ADULT_AGE`` is a variable of this module, and here it is also the
-        # name of the outer item, which the tree cannot refer to: reading it
-        # as the module's value would compile to a wrong specification.
-        with self.assertRaises(ValueError):
-            parse(
-                lambda s: any(any(i.age > ADULT_AGE.limit for i in ADULT_AGE.items) for ADULT_AGE in s.groups)
-            )
+        # name of the outer item: the item, as Python reads it. It used to be
+        # read as the module's value, and compiled to a wrong specification.
+        spec = parse(
+            lambda s: any(any(i.age > ADULT_AGE.limit for i in ADULT_AGE.items) for ADULT_AGE in s.groups)
+        )
+        self.assertEqual(
+            describe(spec),
+            ("any", ("$", "groups"), ("any", ("@", "items"), (
+                "GT", ("field", "@", "age"), ("field", "@1", "limit"),
+            ))),
+        )
 
-    def test_the_item_of_an_outer_collection_is_out_of_reach(self):
-        # The tree has one "@", the nearest: an outer item cannot be named.
-        with self.assertRaises(ValueError):
-            parse(
-                lambda s: any(any(i.price > c.limit for i in c.items) for c in s.categories)
+    def test_the_item_of_an_outer_collection_is_named_by_how_far_out_it_is(self):
+        # The tree used to have one "@", the nearest, and an outer item could
+        # not be named: ``Item(1)`` is the item one collection out.
+        spec = parse(
+            lambda s: any(any(i.price > c.limit and c.limit < s.limit for i in c.items) for c in s.categories)
+        )
+        self.assertEqual(
+            describe(spec),
+            ("any", ("$", "categories"), ("any", ("@", "items"), ("AND",
+                ("GT", ("field", "@", "price"), ("field", "@1", "limit")),
+                ("LT", ("field", "@1", "limit"), ("field", "$", "limit")),
+            ))),
+        )
+
+    def test_what_an_outer_item_holds_is_a_member_of_it(self):
+        spec = parse(
+            lambda s: any(
+                c.discount.is_some_and(lambda d: any(i.price > d for i in c.items))
+                for c in s.categories
             )
+        )
+        self.assertEqual(
+            describe(spec),
+            ("any", ("$", "categories"), ("AND", ("IS_NOT_NULL", ("field", "@", "discount")), (
+                "any", ("@", "items"), ("GT", ("field", "@", "price"), ("field", "@1", "discount")),
+            ))),
+        )
+
+    def test_two_collections_out(self):
+        spec = parse(
+            lambda s: any(
+                any(any(t.weight > c.limits.max for t in i.tags) for i in c.items)
+                for c in s.categories
+            )
+        )
+        self.assertEqual(
+            describe(spec),
+            ("any", ("$", "categories"), ("any", ("@", "items"), ("any", ("@", "tags"), (
+                "GT", ("field", "@", "weight"), ("field", (("@2", "limits")), "max"),
+            )))),
+        )
 
 
 class TestNoneIsTestedNotCompared(unittest.TestCase):

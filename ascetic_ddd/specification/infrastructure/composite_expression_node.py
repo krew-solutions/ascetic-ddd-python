@@ -66,6 +66,10 @@ class CompositeExpression:
     def __init__(self, *nodes: "Mapped"):
         self._nodes = list(nodes)
 
+    def nodes(self) -> list["Mapped"]:
+        """Return the expressions the composite stands for, in order."""
+        return list(self._nodes)
+
     def __eq__(self, other: "CompositeExpression") -> Visitable:  # type: ignore[override]
         """
         Create an AND expression of equality comparisons.

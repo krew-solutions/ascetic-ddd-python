@@ -186,6 +186,11 @@ print(visitor.result())  # True (there is an item with price > 100)
 - `all([list comprehension])` - The same
 - **The candidate inside a predicate** - `any(item.name == store.name for item in store.items)`
 - **Nested wildcards** - `any([any([...]) for ...])` - Supported
+- **The item of an outer comprehension inside an inner one** -
+  `any(any(i.price > c.limit for i in c.items) for c in s.categories)`:
+  `c.limit` is `Field(Item(1), "limit")`, the item one collection out. A name
+  is the nearest of that name, as Python reads it. The text of JSONPath has
+  one `@`; the item further out is named in the tree only.
 
 ### Unary Operators
 - `not x` - `Not`
@@ -459,10 +464,6 @@ The current version **does not support**:
 - Slice operations (e.g., `list[0:5]`)
 - Ternary operators (`x if condition else y`)
 - Bitwise operations (except `<<`, `>>`)
-- The item of an outer comprehension inside an inner one
-  (`any(any(i.price > c.limit for i in c.items) for c in s.categories)`):
-  the tree has one `Item()`, the nearest. It is a `ValueError`, whatever else
-  bears the same name.
 
 ## Inspiration
 

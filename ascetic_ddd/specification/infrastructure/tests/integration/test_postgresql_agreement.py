@@ -581,6 +581,88 @@ class PostgresqlAgreementIntegrationTestCase(IsolatedAsyncioTestCase):
                         )
                         self.assertEqual([row[0] for row in await cursor.fetchall()], expected)
 
+    async def test_the_item_of_an_enclosing_collection_is_named_from_an_inner_predicate(self):
+        """The item of an enclosing collection, named from an inner predicate
+        by how far out it is: the category's limit beside the price of its
+        product, ``Item(1)``. In either storage - arrays nested in a
+        composite, or tables that point at one another - the enclosing item's
+        row is in scope of the inner query.
+
+        And the shop's own limit beside them, which used to be written
+        unqualified and read by PostgreSQL from the innermost row that has a
+        column of that name: the category's, not the shop's.
+        """
+        def shop(limit: int | None, *categories: tuple[int | None, list[int | None]]) -> DictContext:
+            return DictContext({"limit": limit, "categories": CollectionContext([
+                DictContext({"limit": category_limit, "products": CollectionContext([
+                    DictContext({"price": price}) for price in prices
+                ])})
+                for category_limit, prices in categories
+            ])})
+
+        shops = {
+            1: shop(50, (10, [5, 20]), (100, [30])),
+            2: shop(50, (100, [30, None])),
+            3: shop(5, (None, [30])),
+            4: shop(50),
+        }
+        price = Field(Item(), "price")
+        category_limit = Field(Item(1), "limit")
+        shop_limit = Field(GlobalScope(), "limit")
+
+        def over_its_category(predicate: Visitable) -> Visitable:
+            return Wildcard(Object(GlobalScope(), "categories"), Wildcard(Object(Item(), "products"), predicate))
+
+        cases = (
+            (over_its_category(GreaterThan(price, category_limit)), [1]),
+            (over_its_category(LessThan(price, category_limit)), [1, 2]),
+            (over_its_category(GreaterThan(price, shop_limit)), [3]),
+            (over_its_category(And(
+                GreaterThan(price, category_limit), LessThan(category_limit, shop_limit),
+            )), [1]),
+            (over_its_category(IsNull(category_limit)), [3]),
+            # Of a null limit the comparison is null, and so is its negation:
+            # no product of shop 3 is a witness, and the shop is selected.
+            (Not(over_its_category(Not(GreaterThan(price, category_limit)))), [3, 4]),
+        )
+        embedded = SchemaRegistry("spec_shops")
+        relational = SchemaRegistry("spec_shops").register_relational(
+            "categories", "spec_categories", "shop_id", "id",
+        ).register_relational("categories.products", "spec_products", "category_id", "id")
+        async with self._session_pool.session() as session:
+            async with session.connection.transaction(force_rollback=True):
+                for statement in (
+                    "CREATE TYPE pg_temp.spec_product AS (price int8)",
+                    'CREATE TYPE pg_temp.spec_category AS ("limit" int8, products pg_temp.spec_product[])',
+                    'CREATE TEMP TABLE spec_shops (id int8, "limit" int8, categories pg_temp.spec_category[])',
+                    'CREATE TEMP TABLE spec_categories (id int8, shop_id int8, "limit" int8)',
+                    "CREATE TEMP TABLE spec_products (category_id int8, price int8)",
+                    "INSERT INTO spec_shops VALUES"
+                    " (1, 50, ARRAY[ROW(10, ARRAY[ROW(5), ROW(20)]::pg_temp.spec_product[]),"
+                    "               ROW(100, ARRAY[ROW(30)]::pg_temp.spec_product[])]::pg_temp.spec_category[]),"
+                    " (2, 50, ARRAY[ROW(100, ARRAY[ROW(30), ROW(NULL)]::pg_temp.spec_product[])]::pg_temp.spec_category[]),"
+                    " (3, 5, ARRAY[ROW(NULL, ARRAY[ROW(30)]::pg_temp.spec_product[])]::pg_temp.spec_category[]),"
+                    " (4, 50, '{}')",
+                    "INSERT INTO spec_categories VALUES (11, 1, 10), (12, 1, 100), (21, 2, 100), (31, 3, NULL)",
+                    "INSERT INTO spec_products VALUES (11, 5), (11, 20), (12, 30), (21, 30), (21, NULL), (31, 30)",
+                ):
+                    await session.connection.execute(statement)
+                for specification, expected in cases:
+                    satisfied = [
+                        id_ for id_, candidate in shops.items()
+                        if specification.accept(EvaluateVisitor(candidate)) is True
+                    ]
+                    self.assertEqual(satisfied, expected)
+                    for storage, schema in (("embedded", embedded), ("relational", relational)):
+                        sql, params = compile_to_sql(specification, schema)
+                        with self.subTest(storage=storage, sql=sql):
+                            cursor = await session.connection.execute(
+                                "SELECT id FROM spec_shops WHERE %s ORDER BY id"
+                                % to_psycopg(sql),
+                                params,
+                            )
+                            self.assertEqual([row[0] for row in await cursor.fetchall()], expected)
+
     async def test_a_constant_beside_a_column_takes_the_columns_type(self):
         """Why a type is said only where nothing stands beside the constant.
 

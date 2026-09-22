@@ -218,11 +218,18 @@ class TestWhatAnOptionHoldsIsAskedUnderAName(unittest.TestCase):
             )),
         )
 
-    def test_what_an_outer_item_holds_is_out_of_reach_of_an_inner_predicate(self):
-        with self.assertRaises(ValueError):
-            parse(
-                lambda s: any(i.discount.is_some_and(lambda d: any(t.weight > d for t in i.tags)) for i in s.items)
-            )
+    def test_what_an_outer_item_holds_is_a_member_of_it(self):
+        # One collection out, from the inner predicate. It used to be refused.
+        spec = parse(
+            lambda s: any(i.discount.is_some_and(lambda d: any(t.weight > d for t in i.tags)) for i in s.items)
+        )
+        discount = ("field", "@", "discount")
+        self.assertEqual(
+            describe(spec),
+            ("any", ("$", "items"), ("AND", ("IS_NOT_NULL", discount), (
+                "any", ("@", "tags"), ("GT", ("field", "@", "weight"), ("field", "@1", "discount")),
+            ))),
+        )
 
     def test_the_predicate_is_a_lambda_of_what_is_held(self):
         def check(held: int) -> bool:

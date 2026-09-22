@@ -5,7 +5,7 @@ import decimal
 import re
 
 import inflection
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, NamedTuple, Optional, Tuple
 
 from ascetic_ddd.specification.domain.nodes import (
     Visitor,
@@ -299,6 +299,15 @@ def _of_type(sql: str, said: str) -> str:
 _REGROUPING = frozenset((OPERATOR.AND, OPERATOR.OR))
 
 
+class _Wildcard(NamedTuple):
+    """A collection whose predicate is being compiled: what its item's row
+    is called in the query, and the names from the aggregate to it, through
+    the collections on the way - what a schema names it by.
+    """
+    alias: str
+    path: tuple[str, ...]
+
+
 class PostgresqlVisitor(Visitor[SqlFragment]):
     """
     Visitor that generates PostgreSQL SQL from specification AST.
@@ -324,7 +333,7 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
     __slots__ = (
         '_counters', '_schema',
         '_outer_precedence', '_outer_apart',
-        '_in_wildcard', '_wildcard_alias', '_wildcard_path',
+        '_wildcards',
     )
 
     def __init__(
@@ -335,9 +344,7 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         _counters: Optional[_Counters] = None,
         _outer_precedence: int = 0,
         _outer_apart: bool = False,
-        _in_wildcard: bool = False,
-        _wildcard_alias: str = "",
-        _wildcard_path: tuple[str, ...] = (),
+        _wildcards: tuple[_Wildcard, ...] = (),
     ):
         if _counters is None:
             _counters = _Counters(placeholder_index=placeholder_index)
@@ -347,11 +354,9 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         # Whether an operand as tight as the outer operator is parenthesised:
         # it is on the side the operator does not group to.
         self._outer_apart = _outer_apart
-        self._in_wildcard = _in_wildcard
-        self._wildcard_alias = _wildcard_alias
-        # The names from the aggregate to the collection of the current item,
-        # through the collections on the way: what a schema names it by.
-        self._wildcard_path = _wildcard_path
+        # The collection whose item is under test, last, and before it the
+        # enclosing ones: Item(depth) is the item of the one depth steps out.
+        self._wildcards = _wildcards
 
     # --- Sub-visitor builders ---
 
@@ -368,10 +373,42 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
             _counters=self._counters,
             _outer_precedence=prec,
             _outer_apart=apart,
-            _in_wildcard=self._in_wildcard,
-            _wildcard_alias=self._wildcard_alias,
-            _wildcard_path=self._wildcard_path,
+            _wildcards=self._wildcards,
         )
+
+    @property
+    def _in_wildcard(self) -> bool:
+        """Whether this is the predicate of a collection."""
+        return bool(self._wildcards)
+
+    def _wildcard(self, item: Item) -> "_Wildcard":
+        """Return the collection whose item ``item`` is: the one its depth
+        steps out.
+
+        Raises:
+            ValueError: If there is no collection that far out
+        """
+        if item.depth() >= len(self._wildcards):
+            raise ValueError("No current item in context: the item %d collections out" % item.depth())
+        return self._wildcards[-1 - item.depth()]
+
+    def _candidates_column(self, name: str) -> str:
+        """Return the column ``name`` of the candidate's row, inside the
+        predicate of a collection.
+
+        Unqualified, PostgreSQL reads it from the innermost row that has a
+        column of that name, and a category with a ``limit`` of its own hid
+        the shop's. The row is what the schema calls it.
+
+        Raises:
+            ValueError: Without a schema
+        """
+        if self._schema is None:
+            raise ValueError(
+                "A member of the candidate inside a collection's predicate needs"
+                " the candidate's table: compile with a schema"
+            )
+        return _identifier(self._schema.get_parent_ref()) + "." + _identifier(name)
 
     def _enter_wildcard(
         self, alias: str, path: tuple[str, ...], prec: int = 0
@@ -388,9 +425,7 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
             schema=self._schema,
             _counters=self._counters,
             _outer_precedence=prec,
-            _in_wildcard=True,
-            _wildcard_alias=alias,
-            _wildcard_path=path,
+            _wildcards=self._wildcards + (_Wildcard(alias, path),),
         )
 
     # --- Precedence helpers ---
@@ -527,8 +562,9 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         # the outer wildcard alias. A collection of the candidate named inside
         # the predicate of another is joined to the root row: it used to be
         # joined to the enclosing item, whatever it was a collection of.
-        if self._in_wildcard and self._is_item_reference(self._extract_root(node)):
-            return self._wildcard_alias
+        root = self._extract_root(node)
+        if isinstance(root, Item):
+            return self._wildcard(root).alias
 
         # Otherwise, use schema's parent reference.
         if self._schema is not None:
@@ -567,8 +603,8 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
             parent = parent.parent()
 
         # A path from the current item goes on from the path to its collection
-        if self._in_wildcard and self._is_item_reference(parent):
-            return self._wildcard_path + tuple(parts)
+        if isinstance(parent, Item):
+            return self._wildcard(parent).path + tuple(parts)
         return tuple(parts)
 
     def _extract_collection_path(self, node: Collection) -> str:
@@ -581,13 +617,16 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
             parts.insert(0, parent.name())
             parent = parent.parent()
 
-        # If we're in a wildcard context and the root parent is Item(), prefix with current alias.
+        # A collection of an item is under the alias of that item's row.
         # This handles nested wildcards: category_1.Items instead of just Items
-        if self._in_wildcard and self._is_item_reference(parent):
+        if isinstance(parent, Item):
+            alias = _identifier(self._wildcard(parent).alias)
             if parts:
-                return _identifier(self._wildcard_alias) + "." + _identifier(".".join(parts))
-            return _identifier(self._wildcard_alias)
+                return alias + "." + _identifier(".".join(parts))
+            return alias
 
+        if self._in_wildcard and len(parts) == 1 and "." not in parts[0]:
+            return self._candidates_column(parts[0])
         return _identifier(".".join(parts))
 
     def _extract_collection_name(self, node: Collection) -> str:
@@ -601,10 +640,6 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
             return inflection.singularize(parent.name())
         return "item"  # fallback
 
-    def _is_item_reference(self, obj: EmptiableObject) -> bool:
-        """Check if the object is Item() (current item in wildcard)."""
-        return isinstance(obj, Item)
-
     def visit_field(self, node: Field) -> SqlFragment:
         """
         Visit field node and render as SQL field path.
@@ -617,15 +652,21 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         # the parent of `name` in `@.maker.name` is the object `maker`, so
         # the item's alias was dropped and `"maker"."name"` written - the
         # column of another table, if the query had one of that name.
-        if self._in_wildcard and self._is_item_reference(extract_field_root(node)):
-            # This is a field of the current item: item.Price, item.Active, etc.
-            row = _identifier(self._wildcard_alias)
-            return self._member_of_row(row, self._wildcard_path, path), []
+        root = extract_field_root(node)
+        if isinstance(root, Item):
+            # This is a field of an item: item.Price, item.Active, etc.
+            wildcard = self._wildcard(root)
+            return self._member_of_row(_identifier(wildcard.alias), wildcard.path, path), []
 
         # An object of the candidate kept in a table of its own
         if len(path) > 1 and self._schema is not None and self._schema.is_relational(path[0]):
             row = _identifier(self._schema.get_parent_ref())
             return self._member_of_row(row, (), path), []
+
+        # Inside a collection's predicate the candidate's column is qualified
+        # with its row; a name of several parts the author qualified.
+        if self._in_wildcard and len(path) == 1 and "." not in path[0]:
+            return self._candidates_column(path[0]), []
 
         # Normal field access: from the candidate the dots stay, a qualified
         # name - `"s"."price"` is the column `price` of `s`.

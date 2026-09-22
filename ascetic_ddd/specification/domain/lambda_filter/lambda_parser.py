@@ -51,12 +51,9 @@ class _Scope:
     # The lambda's argument: the candidate. A path from it is from
     # GlobalScope(), inside a comprehension as well as outside.
     root: str
-    # The target of the nearest enclosing comprehension: a path from it is
-    # from Item().
-    item: str | None = None
-    # The targets of the comprehensions further out. The tree has one Item(),
-    # the nearest, so these can be named in Python and not in the tree.
-    outer: tuple[str, ...] = ()
+    # The targets of the enclosing comprehensions, the nearest last: a path
+    # from one is from Item(depth), by how far out it is.
+    items: tuple[str, ...] = ()
     # What an Option holds, under the name the lambda of ``is_some_and`` or of
     # ``is_nothing_or`` gives it: the node of the Option, a member or a value
     # from outside, which is what it holds or a null. The latest is the nearest.
@@ -65,14 +62,12 @@ class _Scope:
     def inside(self, item: str) -> "_Scope":
         """The scope of the body of a comprehension whose target is ``item``.
 
-        What the item so far holds goes out of reach with it; what the
-        candidate holds, or a value from outside, stays.
+        What is held so far is one collection further out from here.
         """
-        outer = self.outer if self.item is None else self.outer + (self.item,)
-        held = tuple((name, node) for name, node in self.held if name != item)
-        lost = tuple(name for name, node in held if _is_of_item(node))
-        kept = tuple((name, node) for name, node in held if name not in lost)
-        return _Scope(root=self.root, item=item, outer=outer + lost, held=kept)
+        held = tuple(
+            (name, _further_in(node)) for name, node in self.held if name != item
+        )
+        return _Scope(root=self.root, items=self.items + (item,), held=held)
 
     def holding(self, name: str, option: Field | Value) -> "_Scope":
         """The scope of a predicate of what ``option`` holds, which it calls ``name``."""
@@ -88,31 +83,35 @@ class _Scope:
     def owner(self, name: str) -> GlobalScope | Item | None:
         """The node a path from ``name`` starts at; None for a name from outside.
 
-        Raises:
-            ValueError: If ``name`` is the item of an outer comprehension.
+        The nearest of that name, as Python reads it: the items inside the
+        candidate, the nearest item inside the ones further out.
         """
         if self.held_as(name) is not None:
             return None
-        if name == self.item:
-            return Item()
+        for depth, item in enumerate(reversed(self.items)):
+            if name == item:
+                return Item(depth)
         if name == self.root:
             return GlobalScope()
-        if name in self.outer:
-            raise ValueError(
-                "The item of an outer comprehension cannot be referred to"
-                " from an inner one: %s" % name
-            )
         return None
 
 
-def _is_of_item(node: Field | Value) -> bool:
-    """Whether the node is a member of the item of a collection."""
+def _further_in(node: Field | Value) -> Field | Value:
+    """The same node, seen from one collection further in: a member of an
+    item is of the item one step further out."""
     if isinstance(node, Value):
-        return False
-    owner = node.object()
+        return node
+    owner: EmptiableObject = node.object()
+    names: list[str] = []
     while isinstance(owner, Object):
+        names.insert(0, owner.name())
         owner = owner.parent()
-    return isinstance(owner, Item)
+    if not isinstance(owner, Item):
+        return node
+    rerooted: EmptiableObject = Item(owner.depth() + 1)
+    for name in names:
+        rerooted = Object(rerooted, name)
+    return Field(rerooted, node.name())
 
 
 def _free_variables(predicate: Callable[[Any], bool]) -> Mapping[str, Any]:

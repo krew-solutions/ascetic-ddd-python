@@ -576,7 +576,7 @@ IDENTIFIER  # age, name, status
 The parser creates the following Specification nodes:
 
 - `GlobalScope()` - root context
-- `Item()` - current collection element (@)
+- `Item()` - current collection element (@); `Item(1)` the item of the enclosing collection, which a tree has and the text of a template does not
 - `Field(parent, name)` - field access
 - `Value(val)` - literal value
 - `Equal/NotEqual/GreaterThan/...` - comparison operators
