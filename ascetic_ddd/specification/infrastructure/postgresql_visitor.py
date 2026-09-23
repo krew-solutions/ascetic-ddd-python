@@ -721,10 +721,15 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
             wildcard = self._wildcard(root)
             return self._member_of_row(_identifier(wildcard.alias), wildcard.row, path), []
 
-        # An object of the candidate kept in a table of its own
+        # An object of the candidate kept in a table of its own, or a
+        # composite column of its row - a Value Object - that the schema
+        # says is one: the dots of an undeclared name are a qualifier.
         if (
             len(path) > 1 and self._schema is not None
-            and self._key_of_object(self._schema.table, path[0]) is not None
+            and (
+                self._key_of_object(self._schema.table, path[0]) is not None
+                or self._schema.is_composite(self._schema.table, path[0])
+            )
         ):
             row = _identifier(self._schema.row())
             return self._member_of_row(row, self._schema.table, path), []

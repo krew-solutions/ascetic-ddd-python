@@ -11,10 +11,14 @@ A tree names a collection by the table its rows are in, ``store_items``,
 or, where two keys of that table reference the same row, by the key's name;
 and an object kept in a table of its own by the key's column, ``owner_id``.
 A key has a name as it has in PostgreSQL: the one it is given, or
-``<table>_<columns>_fkey``.
+``<table>_<columns>_fkey``. A Value Object kept in the query's row as a
+column of a composite type is declared as one, ``composite("stores",
+"address")``, and a path through it from the candidate is a member of it,
+``("s"."address")."city"``: from the candidate an undeclared name is a
+table's alias, ``"s"."price"``.
 """
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 
 @dataclass
@@ -84,6 +88,7 @@ class SchemaRegistry:
         self._table = table
         self._alias = ""
         self._keys: List[ForeignKey] = []
+        self._composites: List[Tuple[str, str]] = []
 
     @property
     def table(self) -> str:
@@ -146,6 +151,18 @@ class SchemaRegistry:
     def keys_on(self, table: str, column: str) -> List[ForeignKey]:
         """Return the keys on ``table`` that ``column`` is a column of."""
         return [key for key in self._keys if key.table == table and column in key.columns]
+
+    def composite(self, table: str, column: str) -> "SchemaRegistry":
+        """The column ``column`` of ``table`` is of a composite type: a Value
+        Object kept in the row. From the candidate a path through it is a
+        member of the composite, ``("s"."address")."city"``, where a name
+        not declared is a table's alias, ``"s"."price"``."""
+        self._composites.append((table, column))
+        return self
+
+    def is_composite(self, table: str, column: str) -> bool:
+        """Return whether ``column`` of ``table`` is declared a composite."""
+        return (table, column) in self._composites
 
     def row(self) -> str:
         """Return what the query calls its table's row: the alias, or the table."""

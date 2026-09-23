@@ -936,6 +936,46 @@ class TestAMemberOfAnObjectKeptInATableOfItsOwnIsReadThroughTheKey(unittest.Test
         )
 
 
+class TestACompositeColumnOfTheCandidateIsDeclared(unittest.TestCase):
+    """From the candidate a path of two names is a qualified name, ``"s"."price"``
+    - an Object under the root is a table's alias - so a Value Object kept
+    in the candidate's row as a composite column could not be reached:
+    ``"address"."city"`` is a table PostgreSQL does not have. The schema says
+    which columns are composites, as it says which are keys, and a path
+    through one is a member of it; an undeclared name stays a qualifier.
+    The rows are in ``test_postgresql_agreement``.
+    """
+
+    CITY = Field(Object(GlobalScope(), "address"), "city")
+
+    def setUp(self):
+        self.schema = SchemaRegistry("stores").with_alias("s").composite("stores", "address")
+
+    def test_a_member_of_a_declared_composite(self):
+        self.assertEqual(sql(Equal(self.CITY, Value("x")), self.schema), '("s"."address")."city" = $1')
+        code = Field(Object(Object(GlobalScope(), "address"), "country"), "code")
+        self.assertEqual(sql(IsNull(code), self.schema), '(("s"."address")."country")."code" IS NULL')
+        # Without an alias, the table's; and inside a collection's predicate
+        # the candidate's, beside the item's.
+        self.assertEqual(
+            sql(Equal(self.CITY, Value("x")), SchemaRegistry("stores").composite("stores", "address")),
+            '("stores"."address")."city" = $1',
+        )
+        self.assertEqual(
+            sql(Wildcard(Object(GlobalScope(), "items"), Equal(item("city"), self.CITY)), self.schema),
+            'EXISTS (SELECT 1 FROM unnest("items") AS "item_1" WHERE "item_1"."city" = ("s"."address")."city")',
+        )
+
+    def test_an_undeclared_name_stays_a_qualifier(self):
+        owner = Field(Object(GlobalScope(), "owner"), "name")
+        self.assertEqual(sql(Equal(owner, Value("x")), self.schema), '"owner"."name" = $1')
+        # Without a schema there is no row to read a composite of.
+        self.assertEqual(sql(Equal(self.CITY, Value("x"))), '"address"."city" = $1')
+        # A composite column of another table is not the candidate's.
+        other = SchemaRegistry("stores").composite("items", "address")
+        self.assertEqual(sql(Equal(self.CITY, Value("x")), other), '"address"."city" = $1')
+
+
 class TestANameIsTheColumnsAndNothingElse(unittest.TestCase):
     """A name was written into the query as it stood, and PostgreSQL reads a
     word it knows as what it knows: ``user = $1`` compares the user of the

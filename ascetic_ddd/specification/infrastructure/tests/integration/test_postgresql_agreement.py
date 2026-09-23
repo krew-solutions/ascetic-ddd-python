@@ -778,6 +778,55 @@ class PostgresqlAgreementIntegrationTestCase(IsolatedAsyncioTestCase):
                         )
                         self.assertEqual([row[0] for row in await cursor.fetchall()], expected)
 
+    async def test_a_composite_column_of_the_candidate_is_a_member_where_the_schema_says(self):
+        """A Value Object kept in the candidate's row as a composite column:
+        ``"address"."city"`` was a table PostgreSQL does not have. Declared
+        in the schema, the column is read as a composite,
+        ``("t"."address")."city"``, whose member of a null is null.
+        """
+        rows = {
+            1: {"address": DictContext({"city": "Minsk", "zip": 220000})},
+            2: {"address": DictContext({"city": "Riga", "zip": None})},
+            3: {"address": DictContext({"city": None, "zip": 1000})},
+        }
+        city = Field(Object(GlobalScope(), "address"), "city")
+        zip_ = Field(Object(GlobalScope(), "address"), "zip")
+        cases = (
+            (Equal(city, Value("Minsk")), [1]),
+            (NotEqual(city, Value("Minsk")), [2]),
+            (IsNull(city), [3]),
+            (And(IsNotNull(zip_), GreaterThan(zip_, Value(5000))), [1]),
+        )
+        schema = SchemaRegistry("spec_addressed").with_alias("t").composite("spec_addressed", "address")
+        async with self._session_pool.session() as session:
+            async with session.connection.transaction(force_rollback=True):
+                for statement in (
+                    "CREATE TYPE pg_temp.spec_address AS (city text, zip int8)",
+                    "CREATE TEMP TABLE spec_addressed (id int8, address pg_temp.spec_address)",
+                    "INSERT INTO spec_addressed VALUES"
+                    " (1, ROW('Minsk', 220000)), (2, ROW('Riga', NULL)), (3, ROW(NULL, 1000))",
+                ):
+                    await session.connection.execute(statement)
+                for specification, expected in cases:
+                    satisfied = [
+                        id_ for id_, row in rows.items()
+                        if specification.accept(EvaluateVisitor(DictContext(row))) is True
+                    ]
+                    self.assertEqual(satisfied, expected)
+                    sql, params = compile_to_sql(specification, schema)
+                    with self.subTest(sql=sql):
+                        cursor = await session.connection.execute(
+                            "SELECT id FROM spec_addressed t WHERE %s ORDER BY id" % to_psycopg(sql), params,
+                        )
+                        self.assertEqual([row[0] for row in await cursor.fetchall()], expected)
+                # Undeclared, the same path is a table the query does not have.
+                sql, params = compile_to_sql(Equal(city, Value("Minsk")))
+                self.assertEqual(sql, '"address"."city" = $1')
+                with self.assertRaises(errors.UndefinedTable):
+                    await session.connection.execute(
+                        "SELECT id FROM spec_addressed t WHERE %s" % to_psycopg(sql), params,
+                    )
+
     async def _make_tables(self, connection: typing.Any) -> None:
         await connection.execute(
             "CREATE TYPE pg_temp.spec_maker AS (name text)"

@@ -274,8 +274,10 @@ column of. Kept in a table of its own,
 the key, by a subquery in the column's place. Not mentioned, it is a
 composite kept in the item's row, `("item_1"."maker")."name"` - a Value
 Object; one kept as columns with a prefix is for the mapping to say.
-From the candidate an object not mentioned is a qualifier, `"s"."price"`, so a
-composite column of the candidate's own row cannot be reached.
+From the candidate an object not mentioned is a qualifier, `"s"."price"` - an
+object under the root is a table's alias - so a composite column of the
+candidate's own row is declared, `composite("stores", "address")`, and read
+as one, `("s"."address")."city"`.
 
 An object kept by a key and not said to be is taken for a composite, and
 PostgreSQL reads a member called like a type it can cast to - `name`, `text` -
