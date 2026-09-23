@@ -22,15 +22,35 @@ class ForeignKey:
     """``table (columns) REFERENCES referenced_table (referenced_columns)``.
 
     A key has at least one column: without any, every row of the table
-    would belong to every row it references. ``table`` is a table; or, for
-    a key on a row of an array in a composite, which has no table, the
-    array's column by its table, ``stores.items``.
+    would belong to every row it references; and as many referenced
+    columns as columns. Any other is refused where it is declared.
+    ``table`` is a table; or, for a key on a row of an array in a
+    composite, which has no table, the array's column by its table,
+    ``stores.items``.
     """
     table: str
     columns: List[str]
     referenced_table: str
     referenced_columns: List[str]
     constraint_name: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        # A key that could not be created is a mistake in the program's
+        # constants - a schema is declared, not read - and is refused where
+        # it is declared, in PostgreSQL's words, rather than at the first
+        # query that joins by it.
+        if not self.columns:
+            raise ValueError("%s: a foreign key has at least one column" % self._ddl())
+        if len(self.columns) != len(self.referenced_columns):
+            raise ValueError(
+                "%s: number of referencing and referenced columns for foreign key disagree" % self._ddl()
+            )
+
+    def _ddl(self) -> str:
+        """The key as ``\\d`` shows it."""
+        return "%s (%s) REFERENCES %s (%s)" % (
+            self.table, ", ".join(self.columns), self.referenced_table, ", ".join(self.referenced_columns),
+        )
 
     @property
     def name(self) -> str:

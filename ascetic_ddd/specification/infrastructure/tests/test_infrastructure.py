@@ -823,6 +823,27 @@ class TestSchemaRegistry(unittest.TestCase):
         self.assertEqual(expected_sql, sql)
         self.assertEqual([1000], params)
 
+    def test_a_key_whose_columns_disagree_is_refused_where_it_is_declared(self):
+        """A key whose columns and referenced columns disagree in number, or
+        that has none, was registered as it was and failed at the first
+        query that joined by it: an IndexError in the compiler, or ``WHERE
+        AND`` at the server. A schema is declared, not read: such a key is
+        refused where it is declared, in PostgreSQL's words."""
+        with self.assertRaises(ValueError) as refused:
+            ForeignKey("items", ["tenant_id", "store_id"], "stores", ["id"])
+        self.assertEqual(
+            str(refused.exception),
+            "items (tenant_id, store_id) REFERENCES stores (id):"
+            " number of referencing and referenced columns for foreign key disagree",
+        )
+        with self.assertRaises(ValueError) as refused:
+            SchemaRegistry("stores").foreign_key_composite("items", [], "stores", [])
+        self.assertEqual(
+            str(refused.exception), "items () REFERENCES stores (): a foreign key has at least one column",
+        )
+        # A key as it can be created is registered.
+        SchemaRegistry("stores").foreign_key("items", "store_id", "stores", "id")
+
     def test_relational_composite_fk(self):
         """Relational collection with composite FK (tenant_id, store_id)."""
         schema = (
