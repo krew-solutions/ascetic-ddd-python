@@ -11,7 +11,7 @@ from ascetic_ddd.option import Nothing, Some
 from ascetic_ddd.specification.domain.evaluate_visitor import EvaluateVisitor
 from ascetic_ddd.specification.domain.nodes import (
     Add, And, Div, EmptiableObject, Equal, Field, GlobalScope, GreaterThan, Is,
-    IsNull, Item, LeftShift, LessThan, Mul, Neg, Not, NotEqual, Object, Or, Sub, Value,
+    IsNull, Item, LeftShift, LessThan, Mul, Neg, Not, NotEqual, Object, Or, RightShift, Sub, Value,
     Visitable,
     Wildcard,
 )
@@ -262,8 +262,8 @@ class TestParenthesesAreWritten(unittest.TestCase):
             (IsNull(Or(a, b)), '("a" OR "b") IS NULL'),
             (IsNull(Equal(a, b)), '"a" = "b" IS NULL'),
             (Neg(Add(a, b)), '-("a" + "b")'),
-            (LeftShift(Add(a, b), c), '"a" + "b" << "c"'),
-            (Add(a, LeftShift(b, c)), '"a" + ("b" << "c")'),
+            (LeftShift(Add(a, b), c), '"a" + "b" << "c"::integer'),
+            (Add(a, LeftShift(b, c)), '"a" + ("b" << "c"::integer)'),
             (Equal(Is(a, b), c), '("a" IS NOT DISTINCT FROM "b") = "c"'),
         )
         for node, expected in cases:
@@ -444,6 +444,41 @@ class TestAConstantWithNothingBesideItHasItsTypeSaid(unittest.TestCase):
             (IsNull(Value(None)), "$1::text IS NULL"),
             (Neg(Value(None)), "-$1::bigint"),
             (Not(Value(None)), "NOT $1"),
+        )
+        for node, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(sql(node), expected)
+
+
+class TestTheCountOfAShiftIsAnInteger(unittest.TestCase):
+    """PostgreSQL shifts by an ``integer`` and by nothing else: ``bigint <<
+    bigint`` is "operator does not exist", and a column is a ``bigint`` more
+    often than not. A constant as the count is inferred by the server from
+    the operator, and where nothing stands beside it was said an integer
+    already; a column or an expression as the count has a type of its own,
+    which the server will not convert, so it is cast. A cast binds tighter
+    than any operator, so what is not an atom is parenthesised. The rows are
+    in ``test_postgresql_agreement``.
+    """
+
+    def test_a_column_or_an_expression_is_cast(self):
+        a, b, c = field("a"), field("b"), field("c")
+        cases = (
+            (LeftShift(a, b), '"a" << "b"::integer'),
+            (RightShift(a, Add(b, Value(1))), '"a" >> ("b" + $1)::integer'),
+            (LeftShift(a, LeftShift(b, c)), '"a" << ("b" << "c"::integer)::integer'),
+            (LeftShift(a, Neg(b)), '"a" << (-"b")::integer'),
+            (LeftShift(Add(a, b), c), '"a" + "b" << "c"::integer'),
+        )
+        for node, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(sql(node), expected)
+
+    def test_a_constant_is_inferred_as_it_was(self):
+        cases = (
+            (LeftShift(field("a"), Value(3)), '"a" << $1'),
+            (LeftShift(Value(1), Value(4)), "$1::bigint << $2::integer"),
+            (RightShift(Value(64), field("b")), '$1 >> "b"::integer'),
         )
         for node, expected in cases:
             with self.subTest(expected=expected):

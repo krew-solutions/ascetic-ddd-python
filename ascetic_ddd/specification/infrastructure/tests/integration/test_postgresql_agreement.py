@@ -730,6 +730,54 @@ class PostgresqlAgreementIntegrationTestCase(IsolatedAsyncioTestCase):
                         )
                         self.assertEqual([row[0] for row in await cursor.fetchall()], [1])
 
+    async def test_the_count_of_a_shift_is_an_integer_whatever_its_column_is(self):
+        """PostgreSQL shifts by an ``integer`` and by nothing else: a bigint
+        column as the count was "operator does not exist: bigint << bigint".
+        Both readers take the count modulo 64, a negative one included.
+        """
+        rows = {
+            1: {"n": 1, "count": 3, "small": 3},
+            2: {"n": 1, "count": 64, "small": 64},
+            3: {"n": 1, "count": -1, "small": -1},
+            4: {"n": 1, "count": None, "small": None},
+            5: {"n": 8, "count": 62, "small": None},
+        }
+        n, count, small = field("n"), field("count"), field("small")
+        cases = (
+            (Equal(LeftShift(n, count), Value(8)), [1]),
+            # 64 is no shift at all, and -1 is one by 63.
+            (Equal(LeftShift(n, count), Value(1)), [2]),
+            (Equal(LeftShift(n, count), Value(-2 ** 63)), [3]),
+            (IsNull(LeftShift(n, count)), [4]),
+            (IsNull(LeftShift(n, small)), [4, 5]),
+            (Equal(LeftShift(n, small), Value(8)), [1]),
+            # An expression as the count, and a constant shifted by a column.
+            (Equal(LeftShift(n, Add(count, Value(1))), Value(16)), [1]),
+            (Equal(RightShift(Value(64), count), Value(8)), [1]),
+        )
+        async with self._session_pool.session() as session:
+            async with session.connection.transaction(force_rollback=True):
+                await session.connection.execute(
+                    "CREATE TEMP TABLE spec_shifts (id int8, n int8, count int8, small int2)"
+                )
+                for id_, row in rows.items():
+                    await session.connection.execute(
+                        "INSERT INTO spec_shifts VALUES (%s, %s, %s, %s)",
+                        [id_, row["n"], row["count"], row["small"]],
+                    )
+                for specification, expected in cases:
+                    satisfied = [
+                        id_ for id_, row in rows.items()
+                        if specification.accept(EvaluateVisitor(DictContext(row))) is True
+                    ]
+                    self.assertEqual(satisfied, expected)
+                    sql, params = compile_to_sql(specification)
+                    with self.subTest(sql=sql):
+                        cursor = await session.connection.execute(
+                            "SELECT id FROM spec_shifts WHERE %s ORDER BY id" % to_psycopg(sql), params,
+                        )
+                        self.assertEqual([row[0] for row in await cursor.fetchall()], expected)
+
     async def _make_tables(self, connection: typing.Any) -> None:
         await connection.execute(
             "CREATE TYPE pg_temp.spec_maker AS (name text)"

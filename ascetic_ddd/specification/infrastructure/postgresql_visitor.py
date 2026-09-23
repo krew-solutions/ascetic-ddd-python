@@ -204,6 +204,13 @@ def _identifier(name: str) -> str:
 # a column takes that away: `"at" = $1::timestamptz` of a column without zone
 # is compared in the session's time zone, and selects other rows than
 # `"at" = $1` does.
+#
+# The one column that is cast is the count of a shift, `"a" << "b"::integer`:
+# PostgreSQL shifts by an `integer` and by nothing else, and a column there,
+# a `bigint` more often than not, is "operator does not exist: bigint <<
+# bigint". A cast of the count takes nothing away - the operator has it an
+# integer already - and turns a column of any integer type into the one the
+# operator has.
 _ARITHMETIC = frozenset((
     OPERATOR.ADD, OPERATOR.SUB, OPERATOR.MUL, OPERATOR.DIV, OPERATOR.MOD,
     OPERATOR.LSHIFT, OPERATOR.RSHIFT,
@@ -290,6 +297,18 @@ def _of_type(sql: str, said: str) -> str:
     A cast binds tighter than any operator, so what was an atom is one still.
     """
     return "%s::%s" % (sql, said) if said else sql
+
+
+def _is_a_count_to_cast(operator: OPERATOR, right: Visitable) -> bool:
+    """
+    Whether ``right`` is the count of a shift that must be said an integer.
+
+    PostgreSQL shifts by an ``integer`` and by nothing else. A constant there
+    is inferred, or was said an integer already where nothing stands beside
+    it; a column or an expression has a type of its own, which the server
+    will not convert, so it is cast.
+    """
+    return operator in _SHIFTS and not isinstance(right, Value)
 
 
 # The operators a run of which can be regrouped without a change of its
@@ -807,9 +826,15 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
             inner_prec,
             apart=not regroups and node.associativity() != ASSOCIATIVITY.RIGHT_ASSOCIATIVE,
         )
+        of_left, of_right = _types_of_both(node.left(), node.operator(), node.right())
+        if _is_a_count_to_cast(node.operator(), node.right()):
+            # A cast binds tighter than any operator: the count is compiled
+            # under the cast's precedence, so what is not an atom is
+            # parenthesised, `("b" + $1)::integer`.
+            right_sub = self._at_precedence(self._PRECEDENCE_MAPPING[":: LEFT"])
+            of_right = "integer"
         left_sql, left_params = node.left().accept(left_sub)
         right_sql, right_params = node.right().accept(right_sub)
-        of_left, of_right = _types_of_both(node.left(), node.operator(), node.right())
         left_sql, right_sql = _of_type(left_sql, of_left), _of_type(right_sql, of_right)
 
         sql = "%s %s %s" % (left_sql, self._spell(node.operator()), right_sql)
