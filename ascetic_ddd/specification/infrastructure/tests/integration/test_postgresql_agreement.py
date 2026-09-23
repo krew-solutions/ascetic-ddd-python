@@ -26,14 +26,14 @@ from ascetic_ddd.specification.domain.evaluate_visitor import (
     EvaluateVisitor,
 )
 from ascetic_ddd.specification.domain.nodes import (
-    Add, And, Div, Equal, Field, GlobalScope, GreaterThan, GreaterThanEqual,
+    Add, And, Div, EmptiableObject, Equal, Field, GlobalScope, GreaterThan, GreaterThanEqual,
     Is, IsNotNull, IsNull, Item, LeftShift, LessThan, LessThanEqual, Mod, Mul,
     Neg, Not, NotEqual, Object, Or, RightShift, Sub, Value, Visitable, Wildcard,
 )
 from ascetic_ddd.specification.infrastructure.postgresql_visitor import (
     compile_specification, compile_to_sql,
 )
-from ascetic_ddd.specification.infrastructure.transform_visitor import ITransformContext
+from ascetic_ddd.specification.infrastructure.transform_visitor import ITransformContext, transform
 from ascetic_ddd.specification.infrastructure.schema import SchemaRegistry
 from ascetic_ddd.utils.tests.db import make_pg_session_pool
 
@@ -348,17 +348,36 @@ class NoDiscount(Discount):
         super().__init__(0)
 
 
+class Renamed(ITransformContext):
+    """A mapping that renames each name of a path by a table, and leaves
+    the values: the storage's name of a member, whatever leads to it."""
+
+    def __init__(self, names: dict[str, str]):
+        self._names = names
+
+    def attr_node(self, path: list[str]) -> Visitable:
+        owner: EmptiableObject = GlobalScope()
+        renamed = [self._names.get(name, name) for name in path]
+        for name in renamed[:-1]:
+            owner = Object(owner, name)
+        return Field(owner, renamed[-1])
+
+    def value_node(self, val: typing.Any) -> Visitable:
+        return Value(val)
+
+
 class DiscountsContext(ITransformContext):
     """What the storage has for them: a discount is its percent in a column,
     and the special case is that column's null."""
 
     def attr_node(self, path: list[str]) -> Visitable:
+        # By the whole path from the candidate: the collection, and a member
+        # of its item under it. Where the item is, is the tree's.
+        if path == ["items"]:
+            return Field(GlobalScope(), "items")
+        if path == ["items", "discount"]:
+            return Field(Object(GlobalScope(), "items"), "discount_percent")
         raise ValueError("No such member: %s" % ".".join(path))
-
-    def item_attr_node(self, path: list[str]) -> Visitable:
-        if path == ["discount"]:
-            return Field(Item(), "discount_percent")
-        raise ValueError("No such member of an item: %s" % ".".join(path))
 
     def value_node(self, val: typing.Any) -> Visitable:
         return Value(None if isinstance(val, NoDiscount) else val.percent)
@@ -412,17 +431,24 @@ class PostgresqlAgreementIntegrationTestCase(IsolatedAsyncioTestCase):
             self.assertEqual(evaluated, answered)
 
     async def test_a_specification_selects_the_rows_it_is_satisfied_by(self):
-        # The owner of an item, and of the store, is in a table of its own in
-        # either storage of the items.
-        def with_owners(schema: SchemaRegistry) -> SchemaRegistry:
-            return schema.register_relational(
-                "items.owner", "spec_owners", "id", "owner_id",
-            ).register_relational("owner", "spec_owners", "id", "owner_id")
-
-        embedded = with_owners(SchemaRegistry("spec_stores"))
-        relational = with_owners(SchemaRegistry("spec_stores").register_relational(
-            "items", "spec_items", "store_id", "id",
-        ))
+        # The schema is the storage's keys; the tree reaches the compiler in
+        # the storage's names, which a mapping gives it: the items are a
+        # table of their own in one storage and an array in the other, and
+        # the owner is named by the key's column in both. A row of the items
+        # array has no table: it is named by the array's column.
+        relational = (
+            SchemaRegistry("spec_stores")
+            .foreign_key("spec_items", "store_id", "spec_stores", "id")
+            .foreign_key("spec_items", "owner_id", "spec_owners", "id")
+            .foreign_key("spec_stores", "owner_id", "spec_owners", "id")
+        )
+        embedded = (
+            SchemaRegistry("spec_stores")
+            .foreign_key("spec_stores.items", "owner_id", "spec_owners", "id")
+            .foreign_key("spec_stores", "owner_id", "spec_owners", "id")
+        )
+        in_a_table = Renamed({"items": "spec_items", "owner": "owner_id"})
+        in_the_row = Renamed({"owner": "owner_id"})
         async with self._session_pool.session() as session:
             # Rolled back whatever happens: the tables are of this test alone.
             async with session.connection.transaction(force_rollback=True):
@@ -432,8 +458,10 @@ class PostgresqlAgreementIntegrationTestCase(IsolatedAsyncioTestCase):
                         store.id for store in STORES
                         if specification.accept(EvaluateVisitor(store.context())) is True
                     ]
-                    for storage, schema in (("embedded", embedded), ("relational", relational)):
-                        sql, params = compile_to_sql(specification, schema)
+                    for storage, schema, mapping in (
+                        ("embedded", embedded, in_the_row), ("relational", relational, in_a_table),
+                    ):
+                        sql, params = compile_to_sql(transform(mapping, specification), schema)
                         with self.subTest(storage=storage, sql=sql):
                             cursor = await session.connection.execute(
                                 "SELECT id FROM spec_stores WHERE %s ORDER BY id"
@@ -626,9 +654,13 @@ class PostgresqlAgreementIntegrationTestCase(IsolatedAsyncioTestCase):
             (Not(over_its_category(Not(GreaterThan(price, category_limit)))), [3, 4]),
         )
         embedded = SchemaRegistry("spec_shops")
-        relational = SchemaRegistry("spec_shops").register_relational(
-            "categories", "spec_categories", "shop_id", "id",
-        ).register_relational("categories.products", "spec_products", "category_id", "id")
+        relational = (
+            SchemaRegistry("spec_shops")
+            .foreign_key("spec_categories", "shop_id", "spec_shops", "id")
+            .foreign_key("spec_products", "category_id", "spec_categories", "id")
+        )
+        in_tables = Renamed({"categories": "spec_categories", "products": "spec_products"})
+        in_the_row = Renamed({})
         async with self._session_pool.session() as session:
             async with session.connection.transaction(force_rollback=True):
                 for statement in (
@@ -653,8 +685,10 @@ class PostgresqlAgreementIntegrationTestCase(IsolatedAsyncioTestCase):
                         if specification.accept(EvaluateVisitor(candidate)) is True
                     ]
                     self.assertEqual(satisfied, expected)
-                    for storage, schema in (("embedded", embedded), ("relational", relational)):
-                        sql, params = compile_to_sql(specification, schema)
+                    for storage, schema, mapping in (
+                        ("embedded", embedded, in_the_row), ("relational", relational, in_tables),
+                    ):
+                        sql, params = compile_to_sql(transform(mapping, specification), schema)
                         with self.subTest(storage=storage, sql=sql):
                             cursor = await session.connection.execute(
                                 "SELECT id FROM spec_shops WHERE %s ORDER BY id"

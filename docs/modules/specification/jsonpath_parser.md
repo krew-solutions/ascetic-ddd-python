@@ -267,11 +267,11 @@ left, so it has at most 128 operands. Within the bounds a template is parsed,
 and its tree read by everything that reads one, in under 500 frames of
 recursion, and in a time that grows as the length of the text.
 
-In a query, an object on the way to a member - `@.owner.name` - is looked up
-in the schema registry by the names that lead to it, as a collection is. Kept
-in a table of its own,
-`register_relational("items.owner", "owners", "id", "owner_id")`, it is read
-through the key, by a subquery in the column's place. Not mentioned, it is a
+In a query, an object on the way to a member - `@.owner_id.name` - is looked
+up in the schema registry as a collection is: by the key its name is a
+column of. Kept in a table of its own,
+`foreign_key("store_items", "owner_id", "owners", "id")`, it is read through
+the key, by a subquery in the column's place. Not mentioned, it is a
 composite kept in the item's row, `("item_1"."maker")."name"` - a Value
 Object; one kept as columns with a prefix is for the transform context to say.
 From the candidate an object not mentioned is a qualifier, `"s"."price"`, so a

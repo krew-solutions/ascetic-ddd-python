@@ -21,10 +21,8 @@ from ascetic_ddd.specification.domain.nodes import (
     IsNotNull,
 )
 from ascetic_ddd.specification.infrastructure.schema import (
+    ForeignKey,
     SchemaRegistry,
-    StorageType,
-    ForeignKeyPair,
-    CollectionMapping,
 )
 
 from ascetic_ddd.specification.infrastructure.composite_expression_node import CompositeExpressionsDifferentLengthError, CompositeExpression
@@ -554,12 +552,12 @@ class TestCompileToSQL(unittest.TestCase):
         """Test compile_to_sql with schema for relational collections."""
         schema = (
             SchemaRegistry("stores")
-            .with_parent_alias("s")
-            .register_relational("Items", "items", "store_id", "id")
+            .with_alias("s")
+            .foreign_key("items", "store_id", "stores", "id")
         )
 
         expr = Wildcard(
-            Object(GlobalScope(), "Items"),
+            Object(GlobalScope(), "items"),
             GreaterThan(Field(Item(), "Price"), Value(1000)),
         )
 
@@ -809,12 +807,12 @@ class TestSchemaRegistry(unittest.TestCase):
         """Relational collection with simple FK."""
         schema = (
             SchemaRegistry("stores")
-            .with_parent_alias("s")
-            .register_relational("Items", "items", "store_id", "id")
+            .with_alias("s")
+            .foreign_key("items", "store_id", "stores", "id")
         )
 
         ast = Wildcard(
-            Object(GlobalScope(), "Items"),
+            Object(GlobalScope(), "items"),
             GreaterThan(Field(Item(), "Price"), Value(1000)),
         )
 
@@ -829,19 +827,12 @@ class TestSchemaRegistry(unittest.TestCase):
         """Relational collection with composite FK (tenant_id, store_id)."""
         schema = (
             SchemaRegistry("stores")
-            .with_parent_alias("s")
-            .register_relational_composite(
-                "Items",
-                "items",
-                [
-                    ForeignKeyPair("tenant_id", "tenant_id"),
-                    ForeignKeyPair("store_id", "id"),
-                ],
-            )
+            .with_alias("s")
+            .foreign_key_composite("items", ["tenant_id", "store_id"], "stores", ["tenant_id", "id"])
         )
 
         ast = Wildcard(
-            Object(GlobalScope(), "Items"),
+            Object(GlobalScope(), "items"),
             GreaterThan(Field(Item(), "Price"), Value(1000)),
         )
 
@@ -856,20 +847,12 @@ class TestSchemaRegistry(unittest.TestCase):
         """Relational collection with triple composite FK."""
         schema = (
             SchemaRegistry("stores")
-            .with_parent_alias("s")
-            .register_relational_composite(
-                "Items",
-                "items",
-                [
-                    ForeignKeyPair("tenant_id", "tenant_id"),
-                    ForeignKeyPair("region_id", "region_id"),
-                    ForeignKeyPair("store_id", "id"),
-                ],
-            )
+            .with_alias("s")
+            .foreign_key_composite("items", ["tenant_id", "region_id", "store_id"], "stores", ["tenant_id", "region_id", "id"])
         )
 
         ast = Wildcard(
-            Object(GlobalScope(), "Items"),
+            Object(GlobalScope(), "items"),
             Equal(Field(Item(), "Active"), Value(True)),
         )
 
@@ -879,28 +862,9 @@ class TestSchemaRegistry(unittest.TestCase):
         expected_sql = 'EXISTS (SELECT 1 FROM "items" AS "item_1" WHERE "item_1"."tenant_id" = "s"."tenant_id" AND "item_1"."region_id" = "s"."region_id" AND "item_1"."store_id" = "s"."id" AND "item_1"."Active" = $1)'
         self.assertEqual(expected_sql, sql)
 
-    def test_embedded_collection(self):
-        """Embedded collection uses unnest."""
-        schema = (
-            SchemaRegistry("stores")
-            .with_parent_alias("s")
-            .register_embedded("Items")
-        )
-
-        ast = Wildcard(
-            Object(GlobalScope(), "Items"),
-            GreaterThan(Field(Item(), "Price"), Value(1000)),
-        )
-
-        visitor = PostgresqlVisitor(schema=schema)
-        sql, params = ast.accept(visitor)
-
-        expected_sql = 'EXISTS (SELECT 1 FROM unnest("Items") AS "item_1" WHERE "item_1"."Price" > $1)'
-        self.assertEqual(expected_sql, sql)
-
     def test_default_to_embedded(self):
-        """Unknown collection defaults to embedded."""
-        schema = SchemaRegistry("stores").with_parent_alias("s")
+        """A collection the schema does not mention is an array in the row."""
+        schema = SchemaRegistry("stores").with_alias("s")
 
         ast = Wildcard(
             Object(GlobalScope(), "Items"),
@@ -930,12 +894,12 @@ class TestSchemaRegistry(unittest.TestCase):
         """Relational with AND predicate."""
         schema = (
             SchemaRegistry("stores")
-            .with_parent_alias("s")
-            .register_relational("Items", "items", "store_id", "id")
+            .with_alias("s")
+            .foreign_key("items", "store_id", "stores", "id")
         )
 
         ast = Wildcard(
-            Object(GlobalScope(), "Items"),
+            Object(GlobalScope(), "items"),
             And(
                 GreaterThan(Field(Item(), "Price"), Value(1000)),
                 Equal(Field(Item(), "Active"), Value(True)),
@@ -953,14 +917,13 @@ class TestSchemaRegistry(unittest.TestCase):
         """One embedded, one relational."""
         schema = (
             SchemaRegistry("stores")
-            .with_parent_alias("s")
-            .register_embedded("Tags")
-            .register_relational("Items", "items", "store_id", "id")
+            .with_alias("s")
+            .foreign_key("items", "store_id", "stores", "id")
         )
 
         # Test relational
         ast1 = Wildcard(
-            Object(GlobalScope(), "Items"),
+            Object(GlobalScope(), "items"),
             GreaterThan(Field(Item(), "Price"), Value(100)),
         )
 
@@ -988,17 +951,16 @@ class TestSchemaRegistry(unittest.TestCase):
         """Nested relational: stores -> categories -> items."""
         schema = (
             SchemaRegistry("stores")
-            .with_parent_alias("s")
-            .register_relational("Categories", "categories", "store_id", "id")
-            # A collection is named by its whole path: "Items" alone would be
-            # the items of the store.
-            .register_relational("Categories.Items", "items", "category_id", "id")
+            .with_alias("s")
+            .foreign_key("categories", "store_id", "stores", "id")
+            # A relation is of a row: "Items" of a row of categories.
+            .foreign_key("items", "category_id", "categories", "id")
         )
 
         ast = Wildcard(
-            Object(GlobalScope(), "Categories"),
+            Object(GlobalScope(), "categories"),
             Wildcard(
-                Object(Item(), "Items"),
+                Object(Item(), "items"),
                 GreaterThan(Field(Item(), "Price"), Value(1000)),
             ),
         )
@@ -1017,29 +979,15 @@ class TestSchemaRegistry(unittest.TestCase):
         """Nested relational with composite FK."""
         schema = (
             SchemaRegistry("stores")
-            .with_parent_alias("s")
-            .register_relational_composite(
-                "Categories",
-                "categories",
-                [
-                    ForeignKeyPair("tenant_id", "tenant_id"),
-                    ForeignKeyPair("store_id", "id"),
-                ],
-            )
-            .register_relational_composite(
-                "Categories.Items",
-                "items",
-                [
-                    ForeignKeyPair("tenant_id", "tenant_id"),
-                    ForeignKeyPair("category_id", "id"),
-                ],
-            )
+            .with_alias("s")
+            .foreign_key_composite("categories", ["tenant_id", "store_id"], "stores", ["tenant_id", "id"])
+            .foreign_key_composite("items", ["tenant_id", "category_id"], "categories", ["tenant_id", "id"])
         )
 
         ast = Wildcard(
-            Object(GlobalScope(), "Categories"),
+            Object(GlobalScope(), "categories"),
             Wildcard(
-                Object(Item(), "Items"),
+                Object(Item(), "items"),
                 Equal(Field(Item(), "Active"), Value(True)),
             ),
         )
@@ -1053,33 +1001,6 @@ class TestSchemaRegistry(unittest.TestCase):
             'EXISTS (SELECT 1 FROM "items" AS "item_2" WHERE '
             '"item_2"."tenant_id" = "category_1"."tenant_id" AND "item_2"."category_id" = "category_1"."id" AND "item_2"."Active" = $1))'
         )
-        self.assertEqual(expected_sql, sql)
-
-    def test_custom_alias(self):
-        """Relational with custom alias."""
-        schema = (
-            SchemaRegistry("stores")
-            .with_parent_alias("s")
-            .register(
-                "Items",
-                CollectionMapping(
-                    storage=StorageType.RELATIONAL,
-                    table="store_items",
-                    foreign_keys=[ForeignKeyPair("store_id", "id")],
-                    alias="si",
-                ),
-            )
-        )
-
-        ast = Wildcard(
-            Object(GlobalScope(), "Items"),
-            GreaterThan(Field(Item(), "Price"), Value(1000)),
-        )
-
-        visitor = PostgresqlVisitor(schema=schema)
-        sql, params = ast.accept(visitor)
-
-        expected_sql = 'EXISTS (SELECT 1 FROM "store_items" AS "si_1" WHERE "si_1"."store_id" = "s"."id" AND "si_1"."Price" > $1)'
         self.assertEqual(expected_sql, sql)
 
 

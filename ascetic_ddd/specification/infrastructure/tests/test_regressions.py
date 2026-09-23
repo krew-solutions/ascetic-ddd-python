@@ -26,10 +26,8 @@ from ascetic_ddd.specification.infrastructure.postgresql_visitor import (
     compile_to_sql,
 )
 from ascetic_ddd.specification.infrastructure.schema import (
-    CollectionMapping,
-    ForeignKeyPair,
+    ForeignKey,
     SchemaRegistry,
-    StorageType,
 )
 from ascetic_ddd.specification.infrastructure.transform_visitor import (
     CompositeExpressionsDifferentLengthError,
@@ -83,9 +81,7 @@ class TestTheItemOfAnEnclosingCollectionIsItsAlias(unittest.TestCase):
     def test_relational(self):
         # The enclosing row is the one the keys point at, and its columns are
         # named the same way.
-        schema = SchemaRegistry("shops").register_relational(
-            "categories", "categories", "shop_id", "id",
-        ).register_relational("categories.products", "products", "category_id", "id")
+        schema = SchemaRegistry("shops").foreign_key("categories", "shop_id", "shops", "id").foreign_key("products", "category_id", "categories", "id")
         self.assertEqual(
             sql(self.over_its_category, schema),
             'EXISTS (SELECT 1 FROM "categories" AS "category_1"'
@@ -137,7 +133,7 @@ class TestTheCandidatesColumnInsideAPredicateIsQualifiedWithItsRow(unittest.Test
 
     def test_with_the_alias(self):
         self.assertEqual(
-            sql(self.over_the_shops_limit, SchemaRegistry("public.shops").with_parent_alias("s")),
+            sql(self.over_the_shops_limit, SchemaRegistry("public.shops").with_alias("s")),
             'EXISTS (SELECT 1 FROM unnest("categories") AS "category_1"'
             ' WHERE "category_1"."limit" > "s"."limit")',
         )
@@ -157,41 +153,93 @@ class TestTheCandidatesColumnInsideAPredicateIsQualifiedWithItsRow(unittest.Test
         self.assertEqual(sql(GreaterThan(field("limit"), Value(1))), '"limit" > $1')
 
 
-class TestAMappingKeepsTheItemWhereItWas(unittest.TestCase):
-    """A mapping names the column of an item's member from ``Item()``, not
-    knowing how far out the item is: the transformer puts the column where
-    the member was.
+def _from_candidate(*names: str) -> Field:
+    """The field at the names from the candidate."""
+    owner: EmptiableObject = GlobalScope()
+    for name in names[:-1]:
+        owner = Object(owner, name)
+    return Field(owner, names[-1])
+
+
+class TestAMappingIsAskedByTheWholePathAndTheAnswerIsPutWhereTheMemberWas(unittest.TestCase):
+    """A mapping is of the aggregate's members and knows nothing of any
+    query: it is asked about a member of an item by the member's whole path
+    from the candidate, and where the answer goes - from which item, how far
+    out - is the tree's. The mapping's answer for a member of an item starts
+    with its answer for the collection, and the rest is the member from the
+    item. It used to be asked about "the item" by the names alone,
+    ``item_attr_node``, so a mapping could not tell the items of one
+    collection from another's.
     """
 
-    def test_a_member_of_an_outer_item(self):
-        class Mapping(ITransformContext):
-            def attr_node(self, path: list[str]) -> Any:
-                return field("_".join(path))
+    class Shops(ITransformContext):
+        def attr_node(self, path: list[str]) -> Any:
+            storage = {
+                ("limit",): ("max_price",),
+                ("categories",): ("cats",),
+                ("categories", "limit"): ("cats", "max_price"),
+                ("categories", "products"): ("cats", "goods"),
+                ("categories", "products", "price"): ("cats", "goods", "price_cents"),
+            }
+            if tuple(path) == ("categories", "products", "id"):
+                return CompositeExpression(
+                    _from_candidate("cats", "goods", "tenant_id"),
+                    _from_candidate("cats", "goods", "product_id"),
+                )
+            if tuple(path) not in storage:
+                raise ValueError("unknown field: %s" % ".".join(path))
+            return _from_candidate(*storage[tuple(path)])
 
-            def item_attr_node(self, path: list[str]) -> Any:
-                if path == ["id"]:
-                    return CompositeExpression(item("tenant_id"), item("member_id"))
-                return Field(Object(Item(), "row"), "_".join(path))
+        def value_node(self, val: Any) -> Any:
+            return Value(val)
 
-            def value_node(self, val: Any) -> Any:
-                return Value(val)
-
-        transformed = transform(Mapping(), Wildcard(Object(GlobalScope(), "categories"), Wildcard(
+    def test_by_depth_and_part_by_part(self):
+        transformed = transform(self.Shops(), Wildcard(Object(GlobalScope(), "categories"), Wildcard(
             Object(Item(), "products"), And(
                 GreaterThan(item("price"), Field(Item(1), "limit")),
-                Equal(Field(Item(1), "id"), Field(Item(), "id")),
+                And(
+                    LessThan(Field(Item(1), "limit"), field("limit")),
+                    Equal(Field(Item(), "id"), Field(Item(), "id")),
+                ),
             ),
         )))
         self.assertEqual(
             describe(transformed),
-            ("any", ("$", "categories"), ("any", ("@", "products"), ("AND",
-                ("GT", ("field", ("@", "row"), "price"), ("field", ("@1", "row"), "limit")),
+            ("any", ("$", "cats"), ("any", ("@", "goods"), ("AND",
+                ("GT", ("field", "@", "price_cents"), ("field", "@1", "max_price")),
                 ("AND",
-                    ("EQ", ("field", "@1", "tenant_id"), ("field", "@", "tenant_id")),
-                    ("EQ", ("field", "@1", "member_id"), ("field", "@", "member_id")),
+                    ("LT", ("field", "@1", "max_price"), ("field", "$", "max_price")),
+                    ("AND",
+                        ("EQ", ("field", "@", "tenant_id"), ("field", "@", "tenant_id")),
+                        ("EQ", ("field", "@", "product_id"), ("field", "@", "product_id")),
+                    ),
                 ),
             ))),
         )
+
+    def test_what_is_put_outside_its_collection_is_refused(self):
+        class Astray(ITransformContext):
+            def attr_node(self, path: list[str]) -> Any:
+                # A member of an item answered with a column of the candidate.
+                return _from_candidate(*path) if len(path) == 1 else field("elsewhere")
+
+            def value_node(self, val: Any) -> Any:
+                return Value(val)
+
+        class Valued(ITransformContext):
+            def attr_node(self, path: list[str]) -> Any:
+                return Value(1)
+
+            def value_node(self, val: Any) -> Any:
+                return Value(val)
+
+        heavy = Wildcard(Object(GlobalScope(), "items"), GreaterThan(item("weight"), Value(1)))
+        with self.assertRaises(ValueError):
+            transform(Astray(), heavy)
+        with self.assertRaises(ValueError):
+            transform(Valued(), heavy)
+        with self.assertRaises(ValueError):
+            transform(Astray(), GreaterThan(item("weight"), Value(1)))
 
 
 class TestParenthesesAreWritten(unittest.TestCase):
@@ -462,11 +510,11 @@ class TestThePredicateOfARelationalCollectionStaysInsideItsKeys(unittest.TestCas
     def test_a_disjunction_is_parenthesised(self):
         schema = (
             SchemaRegistry("stores")
-            .with_parent_alias("s")
-            .register_relational("Items", "items", "store_id", "id")
+            .with_alias("s")
+            .foreign_key("items", "store_id", "stores", "id")
         )
         dear_or_active = Wildcard(
-            Object(GlobalScope(), "Items"),
+            Object(GlobalScope(), "items"),
             Or(item("Active"), GreaterThan(item("Price"), Value(500))),
         )
         self.assertEqual(
@@ -478,11 +526,11 @@ class TestThePredicateOfARelationalCollectionStaysInsideItsKeys(unittest.TestCas
     def test_a_conjunction_is_not(self):
         schema = (
             SchemaRegistry("stores")
-            .with_parent_alias("s")
-            .register_relational("Items", "items", "store_id", "id")
+            .with_alias("s")
+            .foreign_key("items", "store_id", "stores", "id")
         )
         dear_and_active = Wildcard(
-            Object(GlobalScope(), "Items"),
+            Object(GlobalScope(), "items"),
             And(item("Active"), GreaterThan(item("Price"), Value(500))),
         )
         self.assertEqual(
@@ -493,79 +541,153 @@ class TestThePredicateOfARelationalCollectionStaysInsideItsKeys(unittest.TestCas
 
     def test_an_embedded_collection_needs_none(self):
         dear_or_active = Wildcard(
-            Object(GlobalScope(), "Items"),
+            Object(GlobalScope(), "items"),
             Or(item("Active"), GreaterThan(item("Price"), Value(500))),
         )
         self.assertEqual(
             sql(dear_or_active),
-            'EXISTS (SELECT 1 FROM unnest("Items") AS "item_1"'
+            'EXISTS (SELECT 1 FROM unnest("items") AS "item_1"'
             ' WHERE "item_1"."Active" OR "item_1"."Price" > $1)',
         )
 
 
-class TestACollectionIsNamedByItsWholePath(unittest.TestCase):
+class TestACollectionIsNamedByItsTable(unittest.TestCase):
     """A schema named a collection by its last name alone, so the items of a
-    store and the items of a category were one collection with one table.
+    store and the items of a category were one collection with one table;
+    then by its whole path in the aggregate, which is the query's. It is the
+    foreign keys of the storage, and a tree names a collection by its table:
+    the key of that table that references the row the tree stands in.
     """
 
     def setUp(self):
         self.schema = (
             SchemaRegistry("stores")
-            .with_parent_alias("s")
-            .register_relational("Items", "store_items", "store_id", "id")
-            .register_relational("Categories", "categories", "store_id", "id")
-            .register_relational("Categories.Items", "category_items", "category_id", "id")
+            .with_alias("s")
+            .foreign_key("store_items", "store_id", "stores", "id")
+            .foreign_key("categories", "store_id", "stores", "id")
+            .foreign_key("category_items", "category_id", "categories", "id")
         )
 
-    def test_two_collections_of_one_name(self):
-        of_the_store = Wildcard(Object(GlobalScope(), "Items"), item("Active"))
+    def test_two_collections_of_one_kind(self):
+        of_the_store = Wildcard(Object(GlobalScope(), "store_items"), item("Active"))
         of_a_category = Wildcard(
-            Object(GlobalScope(), "Categories"),
-            Wildcard(Object(Item(), "Items"), item("Active")),
+            Object(GlobalScope(), "categories"),
+            Wildcard(Object(Item(), "category_items"), item("Active")),
         )
         self.assertEqual(
             sql(of_the_store, self.schema),
-            'EXISTS (SELECT 1 FROM "store_items" AS "item_1"'
-            ' WHERE "item_1"."store_id" = "s"."id" AND "item_1"."Active")',
+            'EXISTS (SELECT 1 FROM "store_items" AS "store_item_1"'
+            ' WHERE "store_item_1"."store_id" = "s"."id" AND "store_item_1"."Active")',
         )
         self.assertEqual(
             sql(of_a_category, self.schema),
             'EXISTS (SELECT 1 FROM "categories" AS "category_1"'
-            ' WHERE "category_1"."store_id" = "s"."id" AND EXISTS (SELECT 1 FROM "category_items" AS "item_2"'
-            ' WHERE "item_2"."category_id" = "category_1"."id" AND "item_2"."Active"))',
+            ' WHERE "category_1"."store_id" = "s"."id" AND EXISTS (SELECT 1 FROM "category_items" AS "category_item_2"'
+            ' WHERE "category_item_2"."category_id" = "category_1"."id" AND "category_item_2"."Active"))',
         )
 
-    def test_a_nested_collection_not_named_is_embedded(self):
-        schema = (
-            SchemaRegistry("stores")
-            .with_parent_alias("s")
-            .register_relational("Items", "store_items", "store_id", "id")
-            .register_relational("Categories", "categories", "store_id", "id")
-        )
+    def test_a_name_without_a_key_to_the_row_is_an_array(self):
         of_a_category = Wildcard(
-            Object(GlobalScope(), "Categories"),
+            Object(GlobalScope(), "categories"),
             Wildcard(Object(Item(), "Items"), item("Active")),
         )
         self.assertEqual(
-            sql(of_a_category, schema),
+            sql(of_a_category, self.schema),
             'EXISTS (SELECT 1 FROM "categories" AS "category_1"'
             ' WHERE "category_1"."store_id" = "s"."id" AND EXISTS (SELECT 1 FROM unnest("category_1"."Items") AS "item_2"'
             ' WHERE "item_2"."Active"))',
         )
 
-    def test_the_objects_on_the_way_are_a_part_of_the_name(self):
-        schema = (
-            SchemaRegistry("stores")
-            .with_parent_alias("s")
-            .register_relational("Warehouse.Items", "warehouse_items", "store_id", "id")
+
+class TestASchemaIsTheForeignKeysOfTheStorage(unittest.TestCase):
+    """A schema is the foreign keys of a storage and nothing of any query. A
+    tree names a collection by its table, and where two keys of that table
+    reference the row it is named from - the transfers from an account and
+    the transfers to it - by the key's name, which is what PostgreSQL calls
+    it. An object is named by the key's column. A row of an array, which
+    has no table, is named by the array's column; and what the compiler
+    calls a row in a query is its own.
+    """
+
+    def setUp(self):
+        self.schema = (
+            SchemaRegistry("accounts")
+            .with_alias("a")
+            .foreign_key("transfers", "from_account_id", "accounts", "id")
+            .foreign_key("transfers", "to_account_id", "accounts", "id")
+            .foreign_key("accounts", "owner_id", "owners", "id")
+            .foreign_key("accounts.cards", "issuer_id", "banks", "id")
         )
-        in_the_warehouse = Wildcard(
-            Object(Object(GlobalScope(), "Warehouse"), "Items"), item("Active"),
+
+    def over(self, what: str) -> Visitable:
+        return Wildcard(Object(GlobalScope(), what), GreaterThan(item("amount"), Value(100)))
+
+    def test_a_key_is_named_as_postgresql_names_it_unless_named(self):
+        self.assertEqual(ForeignKey("transfers", ["from_account_id"], "accounts", ["id"]).name, "transfers_from_account_id_fkey")
+        self.assertEqual(
+            ForeignKey("public.orders", ["tenant_id", "customer_id"], "tenants", ["tenant_id", "id"]).name,
+            "orders_tenant_id_customer_id_fkey",
+        )
+        self.assertEqual(ForeignKey("transfers", ["from_account_id"], "accounts", ["id"], "outgoing").name, "outgoing")
+
+    def test_two_keys_to_one_row_are_told_apart_by_name(self):
+        self.assertEqual(
+            sql(self.over("transfers_from_account_id_fkey"), self.schema),
+            'EXISTS (SELECT 1 FROM "transfers" AS "transfer_1"'
+            ' WHERE "transfer_1"."from_account_id" = "a"."id" AND "transfer_1"."amount" > $1)',
         )
         self.assertEqual(
-            sql(in_the_warehouse, schema),
-            'EXISTS (SELECT 1 FROM "warehouse_items" AS "item_1"'
-            ' WHERE "item_1"."store_id" = "s"."id" AND "item_1"."Active")',
+            sql(self.over("transfers_to_account_id_fkey"), self.schema),
+            'EXISTS (SELECT 1 FROM "transfers" AS "transfer_1"'
+            ' WHERE "transfer_1"."to_account_id" = "a"."id" AND "transfer_1"."amount" > $1)',
+        )
+        # By the table alone, the name fits two keys.
+        with self.assertRaises(ValueError) as refused:
+            sql(self.over("transfers"), self.schema)
+        self.assertEqual(
+            str(refused.exception),
+            "transfers has 2 keys to accounts: transfers_from_account_id_fkey,"
+            " transfers_to_account_id_fkey; name the key",
+        )
+        # A key given a name goes by it.
+        named = SchemaRegistry("accounts").with_alias("a").foreign_key(
+            "transfers", "from_account_id", "accounts", "id", constraint_name="outgoing",
+        )
+        self.assertEqual(
+            sql(self.over("outgoing"), named),
+            'EXISTS (SELECT 1 FROM "transfers" AS "transfer_1"'
+            ' WHERE "transfer_1"."from_account_id" = "a"."id" AND "transfer_1"."amount" > $1)',
+        )
+
+    def test_a_key_named_where_it_does_not_go_is_refused(self):
+        with self.assertRaises(ValueError) as refused:
+            sql(Wildcard(Object(GlobalScope(), "accounts_owner_id_fkey"), item("x")), self.schema)
+        self.assertEqual(str(refused.exception), "The key accounts_owner_id_fkey references owners, not accounts")
+
+    def test_a_key_on_a_row_of_an_array(self):
+        self.assertEqual(
+            sql(Wildcard(Object(GlobalScope(), "cards"), Equal(Field(Object(Item(), "issuer_id"), "name"), Value("x"))), self.schema),
+            'EXISTS (SELECT 1 FROM unnest("cards") AS "card_1" WHERE'
+            ' (SELECT "bank_2"."name" FROM "banks" AS "bank_2" WHERE "bank_2"."id" = "card_1"."issuer_id") = $1)',
+        )
+
+    def test_a_column_of_two_keys(self):
+        shared = (
+            SchemaRegistry("stores")
+            .foreign_key("stores", "tenant_id", "tenants", "id")
+            .foreign_key_composite("stores", ["tenant_id", "owner_id"], "owners", ["tenant_id", "id"])
+        )
+        with self.assertRaises(ValueError) as refused:
+            sql(Equal(Field(Object(GlobalScope(), "tenant_id"), "name"), Value("x")), shared)
+        self.assertEqual(
+            str(refused.exception),
+            "tenant_id is a column of 2 keys of stores: stores_tenant_id_fkey,"
+            " stores_tenant_id_owner_id_fkey; name the key",
+        )
+        self.assertEqual(
+            sql(Equal(Field(Object(GlobalScope(), "owner_id"), "name"), Value("x")), shared),
+            '(SELECT "owner_1"."name" FROM "owners" AS "owner_1"'
+            ' WHERE "owner_1"."tenant_id" = "stores"."tenant_id" AND "owner_1"."id" = "stores"."owner_id") = $1',
         )
 
 
@@ -579,17 +701,17 @@ class TestACollectionOfTheCandidateInsideAnotherJoinsToTheRoot(unittest.TestCase
     def test_the_parent_is_what_the_path_starts_at(self):
         schema = (
             SchemaRegistry("stores")
-            .with_parent_alias("s")
-            .register_relational("Items", "items", "store_id", "id")
-            .register_relational("Tags", "tags", "store_id", "id")
-            .register_relational("Items.Tags", "item_tags", "item_id", "id")
+            .with_alias("s")
+            .foreign_key("items", "store_id", "stores", "id")
+            .foreign_key("tags", "store_id", "stores", "id")
+            .foreign_key("item_tags", "item_id", "items", "id")
         )
         on_sale = Equal(item("Name"), Value("sale"))
         of_the_store = Wildcard(
-            Object(GlobalScope(), "Items"), Wildcard(Object(GlobalScope(), "Tags"), on_sale),
+            Object(GlobalScope(), "items"), Wildcard(Object(GlobalScope(), "tags"), on_sale),
         )
         of_the_item = Wildcard(
-            Object(GlobalScope(), "Items"), Wildcard(Object(Item(), "Tags"), on_sale),
+            Object(GlobalScope(), "items"), Wildcard(Object(Item(), "item_tags"), on_sale),
         )
         self.assertEqual(
             sql(of_the_store, schema),
@@ -600,8 +722,8 @@ class TestACollectionOfTheCandidateInsideAnotherJoinsToTheRoot(unittest.TestCase
         self.assertEqual(
             sql(of_the_item, schema),
             'EXISTS (SELECT 1 FROM "items" AS "item_1" WHERE "item_1"."store_id" = "s"."id"'
-            ' AND EXISTS (SELECT 1 FROM "item_tags" AS "tag_2" WHERE "tag_2"."item_id" = "item_1"."id"'
-            ' AND "tag_2"."Name" = $1))',
+            ' AND EXISTS (SELECT 1 FROM "item_tags" AS "item_tag_2" WHERE "item_tag_2"."item_id" = "item_1"."id"'
+            ' AND "item_tag_2"."Name" = $1))',
         )
 
 
@@ -627,38 +749,28 @@ class TestANameThatIsNotAnIdentifierIsRefused(unittest.TestCase):
                     sql(node)
 
     def test_the_names_of_a_schema(self):
-        def schema(table="items", child="store_id", parent="id", alias="", parent_alias="s"):
-            return SchemaRegistry("stores").with_parent_alias(parent_alias).register(
-                "items",
-                CollectionMapping(
-                    storage=StorageType.RELATIONAL,
-                    table=table,
-                    foreign_keys=[ForeignKeyPair(child, parent)],
-                    alias=alias,
-                ),
+        def schema(table="items", column="store_id", referenced_column="id", alias="s"):
+            return SchemaRegistry("stores").with_alias(alias).key(
+                ForeignKey(table, [column], "stores", [referenced_column]),
             )
 
         cases = (
-            schema(table="items; --"),
-            schema(child="store_id = 1 OR 1"),
-            schema(parent="id)"),
-            schema(alias="i i"),
-            schema(parent_alias="s, users"),
+            (schema(table="items; --"), "items; --"),
+            (schema(column="store_id = 1 OR 1"), "items"),
+            (schema(referenced_column="id)"), "items"),
+            (schema(alias="s, users"), "items"),
         )
-        any_item = Wildcard(Object(GlobalScope(), "items"), item("active"))
-        for number, registry in enumerate(cases):
+        for number, (registry, table) in enumerate(cases):
             with self.subTest(case=number):
                 with self.assertRaises(ValueError):
-                    sql(any_item, registry)
+                    sql(Wildcard(Object(GlobalScope(), table), item("active")), registry)
 
     def test_what_is_an_identifier_is_written_between_quotes(self):
         self.assertEqual(sql(Field(Object(GlobalScope(), "users"), "_name1")), '"users"."_name1"')
         self.assertEqual(sql(field("users.name")), '"users"."name"')
-        schema = SchemaRegistry("stores").register_relational(
-            "items", "public.items", "store_id", "id",
-        )
+        schema = SchemaRegistry("stores").foreign_key("public.items", "store_id", "stores", "id")
         self.assertEqual(
-            sql(Wildcard(Object(GlobalScope(), "items"), item("active")), schema),
+            sql(Wildcard(Object(GlobalScope(), "public.items"), item("active")), schema),
             'EXISTS (SELECT 1 FROM "public"."items" AS "item_1"'
             ' WHERE "item_1"."store_id" = "stores"."id" AND "item_1"."active")',
         )
@@ -693,13 +805,13 @@ class TestAMemberOfAnObjectInsideAnItemIsAMemberOfAComposite(unittest.TestCase):
             'EXISTS (SELECT 1 FROM unnest("items") AS "item_1"'
             ' WHERE (("item_1"."maker")."country")."code" = $1)',
         )
-        schema = SchemaRegistry("stores").with_parent_alias("s").register_relational(
-            "items", "store_items", "store_id", "id",
+        schema = SchemaRegistry("stores").with_alias("s").foreign_key(
+            "store_items", "store_id", "stores", "id",
         )
         self.assertEqual(
-            sql(Wildcard(items, self.maker("name")), schema),
-            'EXISTS (SELECT 1 FROM "store_items" AS "item_1"'
-            ' WHERE "item_1"."store_id" = "s"."id" AND ("item_1"."maker")."name" = $1)',
+            sql(Wildcard(Object(GlobalScope(), "store_items"), self.maker("name")), schema),
+            'EXISTS (SELECT 1 FROM "store_items" AS "store_item_1"'
+            ' WHERE "store_item_1"."store_id" = "s"."id" AND ("store_item_1"."maker")."name" = $1)',
         )
 
     def test_the_item_of_an_inner_collection(self):
@@ -725,49 +837,39 @@ class TestAMemberOfAnObjectKeptInATableOfItsOwnIsReadThroughTheKey(unittest.Test
     """
 
     ITEMS = Object(GlobalScope(), "items")
-    OWNER_NAME = Field(Object(Item(), "owner"), "name")
+    OWNER_NAME = Field(Object(Item(), "owner_id"), "name")
 
     def stores(self) -> SchemaRegistry:
-        return SchemaRegistry("stores").with_parent_alias("s")
+        return SchemaRegistry("stores").with_alias("s")
 
     def test_whether_the_items_are_an_array_or_a_table(self):
         named = Wildcard(self.ITEMS, Equal(self.OWNER_NAME, Value("ann")))
-        embedded = self.stores().register_relational("items.owner", "owners", "id", "owner_id")
+        # A row of the items array has no table: it is named by the array's column.
+        embedded = self.stores().foreign_key("stores.items", "owner_id", "owners", "id")
         self.assertEqual(
             sql(named, embedded),
             'EXISTS (SELECT 1 FROM unnest("items") AS "item_1" WHERE'
             ' (SELECT "owner_2"."name" FROM "owners" AS "owner_2"'
             ' WHERE "owner_2"."id" = "item_1"."owner_id") = $1)',
         )
-        relational = self.stores().register_relational(
-            "items", "store_items", "store_id", "id",
-        ).register(
-            "items.owner",
-            CollectionMapping(
-                storage=StorageType.RELATIONAL,
-                table="owners",
-                foreign_keys=[ForeignKeyPair("id", "owner_id")],
-                alias="o",
-            ),
-        )
+        relational = self.stores().foreign_key(
+            "store_items", "store_id", "stores", "id",
+        ).foreign_key("store_items", "owner_id", "owners", "id")
         self.assertEqual(
-            sql(named, relational),
-            'EXISTS (SELECT 1 FROM "store_items" AS "item_1"'
-            ' WHERE "item_1"."store_id" = "s"."id" AND'
-            ' (SELECT "o_2"."name" FROM "owners" AS "o_2"'
-            ' WHERE "o_2"."id" = "item_1"."owner_id") = $1)',
+            sql(Wildcard(Object(GlobalScope(), "store_items"), Equal(self.OWNER_NAME, Value("ann"))), relational),
+            'EXISTS (SELECT 1 FROM "store_items" AS "store_item_1"'
+            ' WHERE "store_item_1"."store_id" = "s"."id" AND'
+            ' (SELECT "owner_2"."name" FROM "owners" AS "owner_2"'
+            ' WHERE "owner_2"."id" = "store_item_1"."owner_id") = $1)',
         )
 
     def test_a_key_of_two_columns_and_a_composite_inside_the_row(self):
-        schema = self.stores().register(
-            "items.owner",
-            CollectionMapping(
-                storage=StorageType.RELATIONAL,
-                table="public.owners",
-                foreign_keys=[ForeignKeyPair("tenant_id", "tenant_id"), ForeignKeyPair("id", "owner_id")],
-            ),
+        # A key of two columns is named by either of them, unless another
+        # key has it too.
+        schema = self.stores().key(
+            ForeignKey("stores.items", ["tenant_id", "owner_id"], "public.owners", ["tenant_id", "id"]),
         )
-        city = Field(Object(Object(Item(), "owner"), "address"), "city")
+        city = Field(Object(Object(Item(), "owner_id"), "address"), "city")
         self.assertEqual(
             sql(Wildcard(self.ITEMS, IsNull(city)), schema),
             'EXISTS (SELECT 1 FROM unnest("items") AS "item_1" WHERE'
@@ -777,10 +879,10 @@ class TestAMemberOfAnObjectKeptInATableOfItsOwnIsReadThroughTheKey(unittest.Test
         )
 
     def test_of_the_candidate_itself_and_each_with_an_alias_of_its_own(self):
-        schema = self.stores().register_relational(
-            "owner", "owners", "id", "owner_id",
-        ).register_relational("items.owner", "owners", "id", "owner_id")
-        of_the_store = Field(Object(GlobalScope(), "owner"), "name")
+        schema = self.stores().foreign_key(
+            "stores", "owner_id", "owners", "id",
+        ).foreign_key("stores.items", "owner_id", "owners", "id")
+        of_the_store = Field(Object(GlobalScope(), "owner_id"), "name")
         self.assertEqual(
             sql(Wildcard(self.ITEMS, Equal(self.OWNER_NAME, of_the_store)), schema),
             'EXISTS (SELECT 1 FROM unnest("items") AS "item_1" WHERE'
@@ -831,17 +933,16 @@ class Weight:
 
 
 class PartsContext(ITransformContext):
-    """A mapping of a domain whose parts have a weight, kept in grams."""
+    """A mapping of a domain whose parts have a weight, kept in grams: by
+    the whole path from the candidate, the parts of a part included."""
 
     def attr_node(self, path: list[str]) -> Visitable:
         if path == ["rank"]:
             return field("rank")
+        # The parts, of the candidate or of a part, and the weight of one.
+        if path and set(path[:-1]) <= {"parts"} and path[-1] in ("parts", "weight"):
+            return _from_candidate(*path[:-1], "weight_grams" if path[-1] == "weight" else "parts")
         raise ValueError("Unknown field: %s" % ".".join(path))
-
-    def item_attr_node(self, path: list[str]) -> Visitable:
-        if path == ["weight"]:
-            return item("weight_grams")
-        raise ValueError("Unknown field of an item: %s" % ".".join(path))
 
     def value_node(self, val: Any) -> Visitable:
         return Value(val.grams if isinstance(val, Weight) else val)
@@ -851,18 +952,11 @@ class StoreItemsContext(ITransformContext):
     """The members of a store by the names the storage has for them."""
 
     def attr_node(self, path: list[str]) -> Visitable:
-        raise ValueError("No such member of a store: %s" % ".".join(path))
-
-    def item_attr_node(self, path: list[str]) -> Visitable:
-        if path == ["Price"]:
-            return item("price_cents")
-        raise ValueError("No such member of an item: %s" % ".".join(path))
-
-    @override
-    def collection_node(self, path: list[str]) -> EmptiableObject:
         if path == ["Items"]:
-            return Object(GlobalScope(), "store_items")
-        raise ValueError("No such collection of a store: %s" % ".".join(path))
+            return field("store_items")
+        if path == ["Items", "Price"]:
+            return _from_candidate("store_items", "price_cents")
+        raise ValueError("No such member of a store: %s" % ".".join(path))
 
     def value_node(self, val: Any) -> Visitable:
         return Value(val)
@@ -877,14 +971,14 @@ class TestAMappingAndASchemaAreGivenTogether(unittest.TestCase):
     """
 
     def test_a_mapped_collection_in_a_table_of_its_own(self):
-        schema = SchemaRegistry("stores").with_parent_alias("s").register_relational(
-            "store_items", "items", "store_id", "id",
+        schema = SchemaRegistry("stores").with_alias("s").foreign_key(
+            "store_items", "store_id", "stores", "id",
         )
         dear = Wildcard(Object(GlobalScope(), "Items"), GreaterThan(item("Price"), Value(500)))
         self.assertEqual(
             compile_specification(StoreItemsContext(), dear, schema),
             (
-                'EXISTS (SELECT 1 FROM "items" AS "store_item_1"'
+                'EXISTS (SELECT 1 FROM "store_items" AS "store_item_1"'
                 ' WHERE "store_item_1"."store_id" = "s"."id" AND "store_item_1"."price_cents" > $1)',
                 [500],
             ),
@@ -952,35 +1046,28 @@ class TestThePredicateOfACollectionIsTransformed(unittest.TestCase):
 
 
 class StoredPartsContext(PartsContext):
-    """A mapping that says as well where the collections are kept."""
+    """A mapping that says as well where the collections are kept: a
+    collection is a member, and where it is a path from the candidate."""
 
     @override
-    def collection_node(self, path: list[str]) -> EmptiableObject:
-        if path == ["parts"]:
-            return Object(GlobalScope(), "something_parts")
-        raise ValueError("Unknown collection: %s" % ".".join(path))
-
-    @override
-    def item_collection_node(self, path: list[str]) -> EmptiableObject:
-        if path == ["parts"]:
-            return Object(Object(Item(), "detail"), "sub_parts")
-        raise ValueError("Unknown collection of an item: %s" % ".".join(path))
-
-
-class CandidateCollectionsContext(PartsContext):
-    """A mapping that says where the collections of the candidate are kept,
-    and nothing of those of an item."""
-
-    @override
-    def collection_node(self, path: list[str]) -> EmptiableObject:
-        return Object(GlobalScope(), "something_" + path[-1])
+    def attr_node(self, path: list[str]) -> Visitable:
+        storage = {
+            ("parts",): ("something_parts",),
+            ("parts", "weight"): ("something_parts", "weight_grams"),
+            ("parts", "parts"): ("something_parts", "detail", "sub_parts"),
+            ("parts", "parts", "weight"): ("something_parts", "detail", "sub_parts", "weight_grams"),
+        }
+        if tuple(path) in storage:
+            return _from_candidate(*storage[tuple(path)])
+        return super().attr_node(path)
 
 
 class TestACollectionIsKeptWhereTheContextSays(unittest.TestCase):
     """The transformer mapped the fields and the values of a specification
     and left the collection under the domain's name: ``unnest(parts)`` of a
-    column that is ``something_parts``. A context may say where a collection
-    is kept; one that does not has the interface's answer, the same place.
+    column that is ``something_parts``. A collection is a member like any
+    other: the context says where it is, by a path from the candidate, and
+    a member of its item under it.
     """
 
     def setUp(self):
@@ -1008,6 +1095,7 @@ class TestACollectionIsKeptWhereTheContextSays(unittest.TestCase):
         )
 
     def test_a_collection_of_an_item(self):
+        # Under the item's collection in the answer, and from the item in the tree.
         self.assertEqual(
             describe(self.nested.accept(TransformVisitor(StoredPartsContext()))),
             (
@@ -1021,7 +1109,7 @@ class TestACollectionIsKeptWhereTheContextSays(unittest.TestCase):
             ),
         )
 
-    def test_a_context_that_does_not_say_keeps_it_where_it_is(self):
+    def test_a_context_that_renames_the_members_alone_keeps_a_collection_where_it_is(self):
         self.assertEqual(
             describe(self.nested.accept(TransformVisitor(PartsContext()))),
             (
@@ -1031,33 +1119,29 @@ class TestACollectionIsKeptWhereTheContextSays(unittest.TestCase):
             ),
         )
 
-    def test_a_context_may_say_of_one_root_and_not_of_the_other(self):
-        self.assertEqual(
-            describe(self.nested.accept(TransformVisitor(CandidateCollectionsContext()))),
-            (
-                "any",
-                ("$", "something_parts"),
-                ("any", ("@", "parts"), ("GT", ("field", "@", "weight_grams"), ("value", 5))),
-            ),
-        )
-
     def test_the_whole_path_is_asked_about(self):
         in_the_store = Wildcard(
             Object(Object(GlobalScope(), "warehouse"), "shelves"), item("weight"),
         )
 
-        class Recording(PartsContext):
+        class Recording(ITransformContext):
             def __init__(self) -> None:
                 self.asked: list[list[str]] = []
 
             @override
-            def collection_node(self, path: list[str]) -> EmptiableObject:
+            def attr_node(self, path: list[str]) -> Visitable:
                 self.asked.append(path)
-                return Object(GlobalScope(), "warehouse_shelves")
+                if path == ["warehouse", "shelves"]:
+                    return field("warehouse_shelves")
+                return _from_candidate("warehouse_shelves", "weight_grams")
+
+            @override
+            def value_node(self, val: Any) -> Visitable:
+                return Value(val)
 
         context = Recording()
         transformed = in_the_store.accept(TransformVisitor(context))
-        self.assertEqual(context.asked, [["warehouse", "shelves"]])
+        self.assertEqual(context.asked, [["warehouse", "shelves"], ["warehouse", "shelves", "weight"]])
         self.assertEqual(
             describe(transformed),
             ("any", ("$", "warehouse_shelves"), ("field", "@", "weight_grams")),
@@ -1071,13 +1155,13 @@ class TestACollectionIsKeptWhereTheContextSays(unittest.TestCase):
     def test_the_schema_names_the_collection_as_the_storage_does(self):
         # The query is compiled of the transformed tree: a schema is of the
         # storage, and knows the collection by the name it has there.
-        schema = SchemaRegistry("things").with_parent_alias("t").register_relational(
-            "something_parts", "parts", "thing_id", "id",
+        schema = SchemaRegistry("things").with_alias("t").foreign_key(
+            "something_parts", "thing_id", "things", "id",
         )
         transformed = self.heavy.accept(TransformVisitor(StoredPartsContext()))
         self.assertEqual(
             sql(transformed, schema),
-            'EXISTS (SELECT 1 FROM "parts" AS "something_part_1"'
+            'EXISTS (SELECT 1 FROM "something_parts" AS "something_part_1"'
             ' WHERE "something_part_1"."thing_id" = "t"."id" AND "something_part_1"."weight_grams" > $1)',
         )
 
@@ -1095,15 +1179,11 @@ class MembersContext(ITransformContext):
 
     @override
     def attr_node(self, path: list[str]) -> Any:
-        if path == ["id"]:
-            return CompositeExpression(field("tenant_id"), field("member_id"))
-        return field(path[-1])
-
-    @override
-    def item_attr_node(self, path: list[str]) -> Any:
-        if path == ["id"]:
-            return CompositeExpression(item("tenant_id"), item("member_id"))
-        return item(path[-1])
+        if path[-1] == "id":
+            return CompositeExpression(
+                _from_candidate(*path[:-1], "tenant_id"), _from_candidate(*path[:-1], "member_id"),
+            )
+        return _from_candidate(*path)
 
     @override
     def value_node(self, val: Any) -> Any:
@@ -1238,10 +1318,13 @@ class TestWhatAContextMustSayAndWhatItMay(unittest.TestCase):
             OfFieldsOnly()  # type: ignore[abstract]
 
     def test_the_least_a_context_says(self):
+        # A renaming of every name of a path, the same for a member and for
+        # the collection on its way: the answer for a member of an item
+        # starts with the answer for its collection.
         class Least(ITransformContext):
             @override
             def attr_node(self, path: list[str]) -> Visitable:
-                return field("stored_" + path[-1])
+                return _from_candidate(*("stored_" + name for name in path))
 
             @override
             def value_node(self, val: Any) -> Visitable:
@@ -1252,25 +1335,27 @@ class TestWhatAContextMustSayAndWhatItMay(unittest.TestCase):
             describe(ranked.accept(TransformVisitor(Least()))),
             ("GT", ("field", "$", "stored_rank"), ("value", 3)),
         )
-        # A collection stays where it is, at any depth and from either root.
+        # A collection is a member like any other, and the least said of it
+        # renames it too - at any depth and from either root, since the
+        # member of an item is asked about by its whole path.
         deep = Wildcard(
             Object(Object(GlobalScope(), "warehouse"), "shelves"),
-            Wildcard(Object(Object(Item(), "box"), "parts"), GreaterThan(field("rank"), Value(1))),
+            Wildcard(Object(Object(Item(), "box"), "parts"), GreaterThan(item("rank"), Value(1))),
         )
         self.assertEqual(
             describe(deep.accept(TransformVisitor(Least()))),
             (
                 "any",
-                (("$", "warehouse"), "shelves"),
+                (("$", "stored_warehouse"), "stored_shelves"),
                 (
                     "any",
-                    (("@", "box"), "parts"),
-                    ("GT", ("field", "$", "stored_rank"), ("value", 1)),
+                    (("@", "stored_box"), "stored_parts"),
+                    ("GT", ("field", "@", "stored_rank"), ("value", 1)),
                 ),
             ),
         )
 
-    def test_the_fields_of_an_item_have_no_answer_but_the_contexts(self):
+    def test_a_member_of_an_item_is_asked_about_by_its_whole_path(self):
         class Least(ITransformContext):
             @override
             def attr_node(self, path: list[str]) -> Visitable:
@@ -1281,8 +1366,11 @@ class TestWhatAContextMustSayAndWhatItMay(unittest.TestCase):
                 return Value(val)
 
         heavy = Wildcard(Object(GlobalScope(), "parts"), GreaterThan(item("weight"), Value(1)))
-        # Left as it is, the field would reach the query under the domain's name.
-        with self.assertRaises(NotImplementedError) as raised:
+        # A context that answers with the last name alone puts the member of
+        # an item beside the candidate's columns, outside its collection.
+        # It used to be asked about "the item" by the names alone, and
+        # refused with NotImplementedError unless it said item_attr_node.
+        with self.assertRaises(ValueError) as raised:
             heavy.accept(TransformVisitor(Least()))
         self.assertIn("weight", str(raised.exception))
 

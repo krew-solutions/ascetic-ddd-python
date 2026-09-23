@@ -1,129 +1,132 @@
-"""Schema registry for mapping collection fields to storage."""
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Dict, List, Optional
+"""The foreign keys of a storage, for the queries of one table.
 
+A schema is the foreign keys of a storage, as ``\\d`` shows them, and
+nothing of any aggregate or query: a key is on a table, of columns, and
+references a table's columns. What the compiler calls a row in a query - an
+alias - is the compiler's own, made as it goes. The one thing of the query
+in a schema is the table the query is of, ``FROM stores s``: the row the
+compiler starts from, and what it qualifies that row's columns with.
 
-class StorageType(Enum):
-    """Defines how a collection is stored."""
-    EMBEDDED = "embedded"      # Collection stored as an array of a composite type in parent table
-    RELATIONAL = "relational"  # Collection stored in a separate table
+A tree names a collection by the table its rows are in, ``store_items``,
+or, where two keys of that table reference the same row, by the key's name;
+and an object kept in a table of its own by the key's column, ``owner_id``.
+A key has a name as it has in PostgreSQL: the one it is given, or
+``<table>_<columns>_fkey``.
+"""
+from dataclasses import dataclass
+from typing import List, Optional
 
 
 @dataclass
-class ForeignKeyPair:
-    """Represents a single FK column mapping."""
-    child_column: str   # Column in the child table (e.g., "store_id", "tenant_id")
-    parent_column: str  # Column in the parent table (e.g., "id", "tenant_id")
+class ForeignKey:
+    """``table (columns) REFERENCES referenced_table (referenced_columns)``.
 
+    A key has at least one column: without any, every row of the table
+    would belong to every row it references. ``table`` is a table; or, for
+    a key on a row of an array in a composite, which has no table, the
+    array's column by its table, ``stores.items``.
+    """
+    table: str
+    columns: List[str]
+    referenced_table: str
+    referenced_columns: List[str]
+    constraint_name: Optional[str] = None
 
-@dataclass
-class CollectionMapping:
-    """Defines how a collection field maps to storage."""
-    storage: StorageType
-    table: str = ""                              # Table name (only for RELATIONAL)
-    foreign_keys: List[ForeignKeyPair] = field(default_factory=list)  # FK relationship
-    alias: str = ""                              # Optional custom alias for subquery
+    @property
+    def name(self) -> str:
+        """The key's name: the one it was given, or the one PostgreSQL gives
+        a key that was not, ``<table>_<columns>_fkey``."""
+        if self.constraint_name is not None:
+            return self.constraint_name
+        table = self.table.rsplit(".", 1)[-1]
+        return "%s_%s_fkey" % (table, "_".join(self.columns))
 
 
 class SchemaRegistry:
     """
-    Holds collection mappings for a specific aggregate/repository.
-
-    A collection is named by its whole path from the aggregate: the objects
-    and the collections on the way, then its own name, joined with dots. It
-    used to be named by its last name alone, so the items of a store and the
-    items of a category were one collection with one table.
+    The foreign keys of a storage, for the queries of one table.
 
     Usage:
-        schema = (SchemaRegistry("stores")
-            .with_parent_alias("s")
-            .register_relational("Items", "store_items", "store_id", "id")
-            .register_relational("Categories", "categories", "store_id", "id")
-            .register_relational("Categories.Items", "category_items", "category_id", "id")
-            .register_embedded("Tags"))
+        schema = (SchemaRegistry("accounts")
+            .with_alias("a")
+            .foreign_key("transfers", "from_account_id", "accounts", "id")
+            .foreign_key("transfers", "to_account_id", "accounts", "id")
+            .foreign_key("accounts", "owner_id", "owners", "id"))
+
+    A tree names a collection by its table, ``any(transfers, ...)``, and
+    where two keys of that table reference the row it is named from, by the
+    key's name, ``transfers_from_account_id_fkey``; an object by the key's
+    column, ``owner_id.name``.
     """
 
-    def __init__(self, parent_table: str):
-        self._parent_table = parent_table
-        self._parent_alias = ""
-        self._collections: Dict[str, CollectionMapping] = {}
+    def __init__(self, table: str):
+        # The table the query is of: the row the compiler starts from.
+        self._table = table
+        self._alias = ""
+        self._keys: List[ForeignKey] = []
 
     @property
-    def parent_table(self) -> str:
-        return self._parent_table
+    def table(self) -> str:
+        """The query's table, as given: what its row is to a key."""
+        return self._table
 
     @property
-    def parent_alias(self) -> str:
-        return self._parent_alias
+    def alias(self) -> str:
+        """The alias the query gives its table: ``s`` of ``FROM stores s``."""
+        return self._alias
 
-    def with_parent_alias(self, alias: str) -> "SchemaRegistry":
-        """Set the parent table alias."""
-        self._parent_alias = alias
+    def with_alias(self, alias: str) -> "SchemaRegistry":
+        """The alias the query gives its table: ``s`` of ``FROM stores s``."""
+        self._alias = alias
         return self
 
-    def register_embedded(self, field_name: str) -> "SchemaRegistry":
-        """Register a collection stored as an embedded array of a composite type."""
-        self._collections[field_name] = CollectionMapping(
-            storage=StorageType.EMBEDDED
-        )
-        return self
-
-    def register_relational(
+    def foreign_key(
         self,
-        field_name: str,
         table: str,
-        child_column: str,
-        parent_column: str
+        column: str,
+        referenced_table: str,
+        referenced_column: str,
+        *,
+        constraint_name: Optional[str] = None,
     ) -> "SchemaRegistry":
-        """Register a collection stored in a separate table with simple FK."""
-        self._collections[field_name] = CollectionMapping(
-            storage=StorageType.RELATIONAL,
-            table=table,
-            foreign_keys=[ForeignKeyPair(child_column, parent_column)]
-        )
-        return self
+        """A key of one column: ``table (column) REFERENCES referenced_table (referenced_column)``."""
+        return self.key(ForeignKey(table, [column], referenced_table, [referenced_column], constraint_name))
 
-    def register_relational_composite(
+    def foreign_key_composite(
         self,
-        field_name: str,
         table: str,
-        foreign_keys: List[ForeignKeyPair]
+        columns: List[str],
+        referenced_table: str,
+        referenced_columns: List[str],
+        *,
+        constraint_name: Optional[str] = None,
     ) -> "SchemaRegistry":
-        """Register a collection with composite FK."""
-        self._collections[field_name] = CollectionMapping(
-            storage=StorageType.RELATIONAL,
-            table=table,
-            foreign_keys=foreign_keys
-        )
+        """A key of several columns, each referencing the column at its place."""
+        return self.key(ForeignKey(table, columns, referenced_table, referenced_columns, constraint_name))
+
+    def key(self, key: ForeignKey) -> "SchemaRegistry":
+        """A key as built."""
+        self._keys.append(key)
         return self
 
-    def register(self, field_name: str, mapping: CollectionMapping) -> "SchemaRegistry":
-        """Register a collection with full mapping configuration."""
-        self._collections[field_name] = mapping
-        return self
+    def key_named(self, name: str) -> Optional[ForeignKey]:
+        """Return the key called ``name``, if there is one."""
+        for key in self._keys:
+            if key.name == name:
+                return key
+        return None
 
-    def get(self, field_name: str) -> Optional[CollectionMapping]:
-        """Return the collection mapping for a field name."""
-        return self._collections.get(field_name)
+    def keys_referencing(self, table: str, referenced_table: str) -> List[ForeignKey]:
+        """Return the keys on ``table`` that reference ``referenced_table``."""
+        return [
+            key for key in self._keys
+            if key.table == table and key.referenced_table == referenced_table
+        ]
 
-    def is_embedded(self, field_name: str) -> bool:
-        """Return True if collection is stored as an embedded array of a composite type."""
-        mapping = self._collections.get(field_name)
-        if mapping is None:
-            # Default to embedded if not registered
-            return True
-        return mapping.storage == StorageType.EMBEDDED
+    def keys_on(self, table: str, column: str) -> List[ForeignKey]:
+        """Return the keys on ``table`` that ``column`` is a column of."""
+        return [key for key in self._keys if key.table == table and column in key.columns]
 
-    def is_relational(self, field_name: str) -> bool:
-        """Return True if collection is stored in a separate table."""
-        mapping = self._collections.get(field_name)
-        if mapping is None:
-            return False
-        return mapping.storage == StorageType.RELATIONAL
-
-    def get_parent_ref(self) -> str:
-        """Return the reference to parent table (alias or table name)."""
-        if self._parent_alias:
-            return self._parent_alias
-        return self._parent_table
+    def row(self) -> str:
+        """Return what the query calls its table's row: the alias, or the table."""
+        return self._alias or self._table

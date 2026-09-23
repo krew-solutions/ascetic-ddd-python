@@ -1,6 +1,6 @@
 """Transform visitor for converting domain specifications to infrastructure specifications."""
 from abc import ABCMeta, abstractmethod
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, List, NamedTuple, Optional
 
 from ascetic_ddd.option import Option
 
@@ -34,44 +34,42 @@ def _object_chain(root: EmptiableObject, names: List[str]) -> EmptiableObject:
     return result
 
 
-def _rerooted_object(obj: EmptiableObject, root: EmptiableObject) -> EmptiableObject:
-    """Return the object at the same names from ``root``."""
-    return _object_chain(root, extract_object_path(obj))
-
-
-def _at_the_item(mapped: Mapped, item: Item) -> Mapped:
-    """Return what the mapping said, where the member was.
-
-    A mapping names the column of an item's member from ``Item()``, not
-    knowing how far out the item is - the category, from the predicate of
-    its products - so the transformer puts it at the item of the member it
-    was asked about, a part of a composite as a whole. A node the mapping
-    did not root at the item - a value, a column of the candidate - is what
-    it said.
-    """
-    if isinstance(mapped, CompositeExpression):
-        return CompositeExpression(*[_at_the_item(part, item) for part in mapped.nodes()])
-    if isinstance(mapped, Field) and isinstance(extract_field_root(mapped), Item):
-        return Field(_rerooted_object(mapped.object(), item), mapped.name())
-    return mapped
-
-
 class ITransformContext(metaclass=ABCMeta):
     """
     Interface for transformation context.
 
-    What a domain's fields and values are in the storage. To inherit: what
-    every mapping must say is abstract, so a mapping that does not say it
-    cannot be made; what a mapping may say has an answer here, which a
-    mapping that has nothing to add leaves alone.
+    What a domain's members and values are in the storage. A mapping is of
+    the aggregate's members and knows nothing of any query: it is asked
+    about a member by its whole path from the candidate,
+    ``["categories", "products", "price"]`` for the price of a product of a
+    category, and answers what that is in the storage as a path from the
+    candidate's row, ``categories.products.price_cents``. A collection is a
+    member like any other, ``["categories", "products"]``. Where a query
+    stands when it asks - inside which collection's predicate, how far out an
+    item is - is the tree's, and the transformer puts the answer there: the
+    member of an item is the answer less the collection's, from the item.
 
-    It used to be a Protocol, which can have neither: what a mapping lacked
-    was found by the first specification that needed it, and what it may
-    leave out had to be asked about through interfaces of its own.
+    It used to ask about the members of "the item" by their names alone,
+    ``item_attr_node``, so a mapping could not tell the items of one
+    collection from another's; and about where a collection is kept, which
+    is the schema's to say.
 
-    Mark what a mapping overrides with ``typing.override``: a misspelled
-    ``collection_node`` is then an error of the type checker, and not the
-    answer of the interface silently kept.
+    A mapping is a guard as well. A specification may arrive as data - a
+    template bound from a request, a tree from another service - and the
+    mapping names every member such a specification may filter by, and
+    refuses any other: a member the mapping does not know is its error, not
+    a column that happens to exist. So what reaches the database is a query
+    over the columns the repository chose to expose, through the relations
+    it declared in the schema, and not whatever a caller composed to read
+    another table or to scan a column without an index. The transformer is
+    the one place for that: the compiler writes the names it is given. The
+    size of a tree is bounded by the parsers - its height and its nesting -
+    and its members by the mapping.
+
+    To inherit: both methods are abstract, so a mapping that does not say
+    them cannot be made. It used to be a Protocol, which cannot have that:
+    what a mapping lacked was found by the first specification that needed
+    it.
     """
 
     @abstractmethod
@@ -86,46 +84,51 @@ class ITransformContext(metaclass=ABCMeta):
         of them."""
         raise NotImplementedError
 
-    def item_attr_node(self, path: List[str]) -> Mapped:
-        """Transform domain field path of the current item of a collection
-        to infrastructure node.
 
-        A path from Item() and a path from GlobalScope() can be of the same
-        names, and are not the same field: a mapping is asked about each by
-        a method of its own. Needed only by a context of specifications that
-        have collections, so it is not abstract; and it has no answer but
-        the mapping's: left as it is, the field would reach the query under
-        the domain's name.
 
-        Raises:
-            NotImplementedError: Unless the mapping says what the field is
-        """
-        raise NotImplementedError(
-            "%s does not map the fields of an item of a collection: %s"
-            % (type(self).__name__, ".".join(path))
+class _Collection(NamedTuple):
+    """A collection whose predicate is being transformed: its whole path from
+    the candidate, in the domain's names and in the storage's."""
+    domain: tuple[str, ...]
+    storage: tuple[str, ...]
+
+
+def _placed(mapped: Mapped, collection: _Collection, depth: int) -> Mapped:
+    """Return the storage's path of a member, put where the member was.
+
+    Of a member of an item the mapping's answer is a path from the
+    candidate, which starts with the collection's; the rest is the member
+    from the item, ``depth`` collections out. A part of a composite is put
+    so as a whole, and a value is what it is.
+
+    Raises:
+        ValueError: If the answer does not start with the collection's
+    """
+    if isinstance(mapped, CompositeExpression):
+        return CompositeExpression(*[_placed(part, collection, depth) for part in mapped.nodes()])
+    if isinstance(mapped, Field) and isinstance(extract_field_root(mapped), GlobalScope):
+        names = extract_field_path(mapped)
+        prefix = list(collection.storage)
+        if names[:len(prefix)] != prefix or len(names) == len(prefix):
+            raise ValueError(
+                "The mapping put a member of an item outside its collection: %s is not under %s"
+                % (".".join(names), ".".join(prefix))
+            )
+        return Field(_object_chain(Item(depth), names[len(prefix):-1]), names[-1])
+    if isinstance(mapped, (Field, Value)):
+        return mapped
+    if isinstance(mapped, Prefix):
+        return Prefix(mapped.operator(), _node(_placed(mapped.operand(), collection, depth)), mapped.associativity())
+    if isinstance(mapped, Postfix):
+        return Postfix(_node(_placed(mapped.operand(), collection, depth)), mapped.operator(), mapped.associativity())
+    if isinstance(mapped, Infix):
+        return Infix(
+            _node(_placed(mapped.left(), collection, depth)),
+            mapped.operator(),
+            _node(_placed(mapped.right(), collection, depth)),
+            mapped.associativity(),
         )
-
-    def collection_node(self, path: List[str]) -> EmptiableObject:
-        """Transform domain path of a collection of the candidate to the
-        infrastructure object its items are of.
-
-        The same place, unless the mapping says otherwise.
-
-        Example:
-            ["parts"] -> Object(GlobalScope(), "something_parts")
-        """
-        return _object_chain(GlobalScope(), path)
-
-    def item_collection_node(self, path: List[str]) -> EmptiableObject:
-        """Transform domain path of a collection of the current item to the
-        infrastructure object its items are of.
-
-        The same place, unless the mapping says otherwise.
-
-        Example:
-            ["parts"] -> Object(Item(), "sub_parts")
-        """
-        return _object_chain(Item(), path)
+    return mapped
 
 
 def _node(mapped: Mapped) -> Visitable:
@@ -181,8 +184,27 @@ class TransformVisitor(Visitor[Mapped]):
     ``visit_infix`` above it turns into nodes.
     """
 
-    def __init__(self, context: ITransformContext):
+    def __init__(self, context: ITransformContext, _inside: tuple[_Collection, ...] = ()):
         self._context = context
+        # The collections the expression is inside of, the nearest last: the
+        # item ``depth`` collections out is of ``_inside[-1 - depth]``.
+        self._inside = _inside
+
+    def _collection(self, item: Item) -> _Collection:
+        """Return the collection whose item ``item`` is.
+
+        Raises:
+            ValueError: If there is no collection that far out
+        """
+        if item.depth() >= len(self._inside):
+            raise ValueError("No current item in context: the item %d collections out" % item.depth())
+        return self._inside[-1 - item.depth()]
+
+    def _whole(self, root: EmptiableObject, names: list[str]) -> list[str]:
+        """Return the whole path from the candidate of the member at ``names`` from ``root``."""
+        if isinstance(root, Item):
+            return list(self._collection(root).domain) + names
+        return names
 
     def visit_global_scope(self, node: GlobalScope) -> Mapped:
         """Visit global scope node — passthrough."""
@@ -200,26 +222,25 @@ class TransformVisitor(Visitor[Mapped]):
         the values of a predicate reached the query as the domain's objects,
         and its fields under the domain's names.
         """
-        return Collection(
-            self._transform_collection_parent(node.parent()),
-            node.name(),
-            _node(node.predicate().accept(self)),
-        )
-
-    def _transform_collection_parent(self, parent: EmptiableObject) -> EmptiableObject:
-        """
-        Transform the object a collection is of to where the context says it is kept.
-
-        It used to stay under the domain's name whatever the storage calls
-        it: `unnest(parts)` of a column that is `something_parts`.
-        """
-        root = extract_object_root(parent)
+        # A collection is a member: the context says where it is, by a path
+        # from the candidate, and the predicate is transformed inside it.
+        root = extract_object_root(node.parent())
+        domain = self._whole(root, extract_object_path(node.parent()))
+        mapped = self._context.attr_node(domain)
+        if not isinstance(mapped, Field) or not isinstance(extract_field_root(mapped), GlobalScope):
+            raise ValueError(
+                "The mapping answered for a collection with what is not a place: %s" % ".".join(domain)
+            )
+        storage = extract_field_path(mapped)
+        collection = _Collection(tuple(domain), tuple(storage))
         if isinstance(root, Item):
-            mapped = self._context.item_collection_node(extract_object_path(parent))
-            if isinstance(extract_object_root(mapped), Item):
-                return _rerooted_object(mapped, root)
-            return mapped
-        return self._context.collection_node(extract_object_path(parent))
+            placed = _placed(mapped, self._collection(root), root.depth())
+            assert isinstance(placed, Field)
+            parent: EmptiableObject = Object(placed.object(), placed.name())
+        else:
+            parent = _object_chain(GlobalScope(), storage)
+        inside = TransformVisitor(self._context, self._inside + (collection,))
+        return Collection(parent, node.name(), _node(node.predicate().accept(inside)))
 
     def visit_item(self, node: Item) -> Mapped:
         """Visit item node — passthrough."""
@@ -233,9 +254,10 @@ class TransformVisitor(Visitor[Mapped]):
         May return a composite expression for composite keys.
         """
         root = extract_field_root(node)
+        mapped = self._context.attr_node(self._whole(root, extract_field_path(node)))
         if isinstance(root, Item):
-            return _at_the_item(self._context.item_attr_node(extract_field_path(node)), root)
-        return self._context.attr_node(extract_field_path(node))
+            return _placed(mapped, self._collection(root), root.depth())
+        return mapped
 
     def visit_value(self, node: Value) -> Mapped:
         """

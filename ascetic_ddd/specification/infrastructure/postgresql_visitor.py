@@ -27,7 +27,7 @@ from ascetic_ddd.specification.domain.nodes import (
 from ascetic_ddd.specification.domain.constants import ASSOCIATIVITY, OPERATOR
 
 from ascetic_ddd.specification.infrastructure.transform_visitor import ITransformContext, transform
-from ascetic_ddd.specification.infrastructure.schema import SchemaRegistry
+from ascetic_ddd.specification.infrastructure.schema import ForeignKey, SchemaRegistry
 
 
 SqlFragment = Tuple[str, List[Any]]
@@ -299,13 +299,19 @@ def _of_type(sql: str, said: str) -> str:
 _REGROUPING = frozenset((OPERATOR.AND, OPERATOR.OR))
 
 
+def _singular_of(table: str) -> str:
+    """Return the singular of the last name of ``table``, in lower case: what
+    an alias is made of."""
+    return inflection.singularize(table.rsplit(".", 1)[-1]).lower()
+
+
 class _Wildcard(NamedTuple):
     """A collection whose predicate is being compiled: what its item's row
-    is called in the query, and the names from the aggregate to it, through
-    the collections on the way - what a schema names it by.
+    is called in the query, and what that row is a row of to the schema - a
+    table, or the composite at a column of one, ``stores.items``.
     """
     alias: str
-    path: tuple[str, ...]
+    row: str
 
 
 class PostgresqlVisitor(Visitor[SqlFragment]):
@@ -408,16 +414,14 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
                 "A member of the candidate inside a collection's predicate needs"
                 " the candidate's table: compile with a schema"
             )
-        return _identifier(self._schema.get_parent_ref()) + "." + _identifier(name)
+        return _identifier(self._schema.row()) + "." + _identifier(name)
 
-    def _enter_wildcard(
-        self, alias: str, path: tuple[str, ...], prec: int = 0
-    ) -> 'PostgresqlVisitor':
+    def _enter_wildcard(self, alias: str, row: str, prec: int = 0) -> 'PostgresqlVisitor':
         """Return a sub-visitor scoped to a new wildcard context.
 
         Args:
             alias: What the current item is called in the query
-            path: The names from the aggregate to the collection of the item
+            row: What the item is a row of, to the schema
             prec: The precedence of the operator the predicate is an operand
                 of: none in ``WHERE predicate``, AND in ``WHERE keys AND predicate``
         """
@@ -425,7 +429,7 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
             schema=self._schema,
             _counters=self._counters,
             _outer_precedence=prec,
-            _wildcards=self._wildcards + (_Wildcard(alias, path),),
+            _wildcards=self._wildcards + (_Wildcard(alias, row),),
         )
 
     # --- Precedence helpers ---
@@ -484,14 +488,78 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         2. Relational (separate table): EXISTS (SELECT 1 FROM table AS item WHERE fk_conditions AND predicate)
         """
         collection_name = self._extract_collection_name(node)
-        field_name = ".".join(self._extract_logical_path(node))
+        # The row the collection is a name of, to the schema: the enclosing
+        # item's, or the root's. Without a schema there is no relation to
+        # look for, and the name is an array in the row.
+        of = self._row_of(node)
+        name = ".".join(self._extract_names(node))
+        key = None if of is None else self._key_of_collection(of, name)
 
-        if self._schema is not None and self._schema.is_relational(field_name):
-            return self._visit_relational_collection(node, field_name, collection_name)
-        return self._visit_embedded_collection(node, collection_name)
+        if key is not None:
+            return self._visit_relational_collection(node, key)
+        return self._visit_embedded_collection(node, "%s.%s" % (of or "", name), collection_name)
+
+    def _key_of_collection(self, row: str, name: str) -> Optional[ForeignKey]:
+        """Return the key a collection named ``name`` in a row of ``row`` is
+        joined by: the one of that name, if it references the row; else the
+        one key on the table ``name`` that does. None: the name is an array
+        in the row.
+
+        Raises:
+            ValueError: If the key named does not reference the row, or the
+                table has several keys to it
+        """
+        if self._schema is None:
+            return None
+        named = self._schema.key_named(name)
+        if named is not None:
+            if named.referenced_table != row:
+                raise ValueError("The key %s references %s, not %s" % (name, named.referenced_table, row))
+            return named
+        keys = self._schema.keys_referencing(name, row)
+        if len(keys) > 1:
+            raise ValueError(
+                "%s has %d keys to %s: %s; name the key"
+                % (name, len(keys), row, ", ".join(key.name for key in keys))
+            )
+        return keys[0] if keys else None
+
+    def _key_of_object(self, row: str, name: str) -> Optional[ForeignKey]:
+        """Return the key an object named ``name`` in a row of ``row`` is
+        read through: the one of that name, if it is on the row; else the
+        one key on the row that ``name`` is a column of. None: the name is a
+        composite in the row.
+
+        Raises:
+            ValueError: If the key named is not on the row, or the column is
+                of several keys
+        """
+        if self._schema is None:
+            return None
+        named = self._schema.key_named(name)
+        if named is not None:
+            if named.table != row:
+                raise ValueError("The key %s is on %s, not %s" % (name, named.table, row))
+            return named
+        keys = self._schema.keys_on(row, name)
+        if len(keys) > 1:
+            raise ValueError(
+                "%s is a column of %d keys of %s: %s; name the key"
+                % (name, len(keys), row, ", ".join(key.name for key in keys))
+            )
+        return keys[0] if keys else None
+
+    def _row_of(self, node: Collection) -> Optional[str]:
+        """Return what the row a collection is a name of is a row of, to the schema."""
+        root = self._extract_root(node)
+        if isinstance(root, Item):
+            return self._wildcard(root).row
+        if self._schema is not None:
+            return self._schema.table
+        return None
 
     def _visit_embedded_collection(
-        self, node: Collection, collection_name: str
+        self, node: Collection, row: str, collection_name: str
     ) -> SqlFragment:
         """Generate SQL for collections kept as an array of a composite type, using unnest."""
         collection_path = self._extract_collection_path(node)
@@ -499,7 +567,7 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         self._counters.wildcard_counter += 1
         alias = "%s_%d" % (collection_name.lower(), self._counters.wildcard_counter)
 
-        sub = self._enter_wildcard(alias, self._extract_logical_path(node))
+        sub = self._enter_wildcard(alias, row)
         predicate_sql, predicate_params = node.predicate().accept(sub)
 
         sql = "EXISTS (SELECT 1 FROM unnest(%s) AS %s WHERE %s)" % (
@@ -507,54 +575,42 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         )
         return sql, predicate_params
 
-    def _visit_relational_collection(
-        self,
-        node: Collection,
-        field_name: str,
-        collection_name: str,
-    ) -> SqlFragment:
+    def _visit_relational_collection(self, node: Collection, key: ForeignKey) -> SqlFragment:
         """Generate SQL for collections in separate tables."""
-        assert self._schema is not None
-        mapping = self._schema.get(field_name)
-        if mapping is None:
-            # Fallback to embedded if no mapping found
-            return self._visit_embedded_collection(node, collection_name)
-
         self._counters.wildcard_counter += 1
-        alias = mapping.alias if mapping.alias else collection_name.lower()
-        alias = "%s_%d" % (alias, self._counters.wildcard_counter)
+        # The alias is the compiler's own: the singular of the row's table,
+        # numbered.
+        alias = "%s_%d" % (_singular_of(key.table), self._counters.wildcard_counter)
         # The alias goes on as it is: a name is quoted where it is written.
         alias_ref = _identifier(alias)
 
         # Determine parent reference BEFORE entering new wildcard context
-        parent_ref = _identifier(self._get_parent_ref_for_relational(node))
+        parent_ref = _identifier(self._row_joined_to(node))
 
         # The predicate is an operand of the AND after the keys: written as it
         # is, `fk AND p OR q` selects through `q` the rows of other parents.
-        sub = self._enter_wildcard(
-            alias,
-            self._extract_logical_path(node),
-            self._PRECEDENCE_MAPPING["AND LEFT"],
-        )
+        sub = self._enter_wildcard(alias, key.table, self._PRECEDENCE_MAPPING["AND LEFT"])
         predicate_sql, predicate_params = node.predicate().accept(sub)
 
         # Generate FK conditions (supports composite keys)
         fk_parts = []
-        for fk in mapping.foreign_keys:
+        for column, referenced in zip(key.columns, key.referenced_columns):
             fk_parts.append(
                 "%s.%s = %s.%s"
-                % (alias_ref, _identifier(fk.child_column), parent_ref, _identifier(fk.parent_column))
+                % (alias_ref, _identifier(column), parent_ref, _identifier(referenced))
             )
         fk_conditions = " AND ".join(fk_parts)
 
         sql = "EXISTS (SELECT 1 FROM %s AS %s WHERE %s AND %s)" % (
-            _identifier(mapping.table), alias_ref, fk_conditions, predicate_sql,
+            _identifier(key.table), alias_ref, fk_conditions, predicate_sql,
         )
         return sql, predicate_params
 
-    def _get_parent_ref_for_relational(self, node: Collection) -> str:
+    def _row_joined_to(self, node: Collection) -> str:
         """
-        Return parent reference based on what the path to the collection starts at.
+        Return what the query calls the row a collection is joined to: the
+        enclosing item's alias if the path to the collection starts at the
+        item, else the query's own table.
 
         Called BEFORE entering a new wildcard context to get the correct outer reference.
         """
@@ -568,7 +624,7 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
 
         # Otherwise, use schema's parent reference.
         if self._schema is not None:
-            return self._schema.get_parent_ref()
+            return self._schema.row()
 
         return ""
 
@@ -586,25 +642,13 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
             parent = parent.parent()
         return parent
 
-    def _extract_logical_path(self, node: Collection) -> tuple[str, ...]:
-        """
-        Extract the names from the aggregate to the collection.
-
-        What a schema names the collection by: `("Categories", "Items")` for
-        the items of a category, `("Items",)` for the items of the store. The
-        last name alone, `_extract_field_name`, does not tell the two apart.
-        """
+    def _extract_names(self, node: Collection) -> tuple[str, ...]:
+        """Extract the names from what the path to the collection starts at."""
         parts: List[str] = []
-
-        # Walk up the parent chain to collect path components
         parent = node.parent()
         while not parent.is_root():
             parts.insert(0, parent.name())
             parent = parent.parent()
-
-        # A path from the current item goes on from the path to its collection
-        if isinstance(parent, Item):
-            return self._wildcard(parent).path + tuple(parts)
         return tuple(parts)
 
     def _extract_collection_path(self, node: Collection) -> str:
@@ -656,12 +700,15 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         if isinstance(root, Item):
             # This is a field of an item: item.Price, item.Active, etc.
             wildcard = self._wildcard(root)
-            return self._member_of_row(_identifier(wildcard.alias), wildcard.path, path), []
+            return self._member_of_row(_identifier(wildcard.alias), wildcard.row, path), []
 
         # An object of the candidate kept in a table of its own
-        if len(path) > 1 and self._schema is not None and self._schema.is_relational(path[0]):
-            row = _identifier(self._schema.get_parent_ref())
-            return self._member_of_row(row, (), path), []
+        if (
+            len(path) > 1 and self._schema is not None
+            and self._key_of_object(self._schema.table, path[0]) is not None
+        ):
+            row = _identifier(self._schema.row())
+            return self._member_of_row(row, self._schema.table, path), []
 
         # Inside a collection's predicate the candidate's column is qualified
         # with its row; a name of several parts the author qualified.
@@ -672,12 +719,12 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         # name - `"s"."price"` is the column `price` of `s`.
         return _identifier(".".join(path)), []
 
-    def _member_of_row(self, row: str, logical: tuple[str, ...], names: list[str]) -> str:
+    def _member_of_row(self, row: str, of: str, names: list[str]) -> str:
         """
         Return the member at ``names`` of the row written ``row``.
 
         An object on the way to the member is looked up in the schema, as a
-        collection is, by the names that lead to it. Kept in a table of its
+        collection is, by the row it is a name of. Kept in a table of its
         own, it is read through its key, by a subquery in the column's place:
         it has at most the one row the key names, and is null if there is
         none, as a member of a composite that is null is. Not mentioned, it
@@ -687,32 +734,30 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
 
         Args:
             row: The row, as the query has it: an alias, or a composite
-            logical: The names that lead to the row's object in the schema
+            of: What the row is a row of, to the schema: a table, or the
+                composite at a column of one
             names: The names from the row to the member
         """
         if len(names) == 1:
             return "%s.%s" % (row, _identifier(names[0]))
 
-        logical = logical + (names[0],)
-        field_name = ".".join(logical)
-        mapping = None
-        if self._schema is not None and self._schema.is_relational(field_name):
-            mapping = self._schema.get(field_name)
-        if mapping is None:
+        key = self._key_of_object(of, names[0])
+        if key is None:
             composite = "(%s.%s)" % (row, _identifier(names[0]))
-            return self._member_of_row(composite, logical, names[1:])
+            return self._member_of_row(composite, "%s.%s" % (of, names[0]), names[1:])
 
+        # The row read is one of the referenced table, and its alias says so.
         self._counters.wildcard_counter += 1
-        alias = mapping.alias if mapping.alias else names[0].lower()
-        alias_ref = _identifier("%s_%d" % (alias, self._counters.wildcard_counter))
-        keys = " AND ".join(
-            "%s.%s = %s.%s"
-            % (alias_ref, _identifier(fk.child_column), row, _identifier(fk.parent_column))
-            for fk in mapping.foreign_keys
+        alias_ref = _identifier(
+            "%s_%d" % (_singular_of(key.referenced_table), self._counters.wildcard_counter)
         )
-        member = self._member_of_row(alias_ref, logical, names[1:])
+        keys = " AND ".join(
+            "%s.%s = %s.%s" % (alias_ref, _identifier(referenced), row, _identifier(column))
+            for column, referenced in zip(key.columns, key.referenced_columns)
+        )
+        member = self._member_of_row(alias_ref, key.referenced_table, names[1:])
         return "(SELECT %s FROM %s AS %s WHERE %s)" % (
-            member, _identifier(mapping.table), alias_ref, keys,
+            member, _identifier(key.referenced_table), alias_ref, keys,
         )
 
     def visit_value(self, node: Value) -> SqlFragment:

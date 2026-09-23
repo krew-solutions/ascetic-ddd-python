@@ -72,19 +72,32 @@ specification over rows with nulls, embedded and relational.
   predicate, as the whole specification - is its ``ValueError``. It used to
   be a ``Visitable`` whose ``accept`` raised from inside whatever visited
   the tree next.
-* **A transform context** is an interface to inherit, ``ITransformContext``.
-  What every mapping must say is abstract - ``attr_node(path)`` for the
-  fields of the candidate, ``value_node(val)`` for the values - so a mapping
-  that does not say it cannot be made. What a mapping may say has an answer
-  in the interface: ``collection_node(path)`` and
-  ``item_collection_node(path)``, where a collection is kept, answer "the
-  same place"; ``item_attr_node(path)``, the fields of the item of a
-  collection, has no answer but the mapping's and raises, as the field would
-  otherwise reach the query under the domain's name. Mark what a mapping
-  overrides with ``typing.override``: a misspelled name is then an error of
-  mypy and pyright, not the interface's answer silently kept. The predicate
-  of a collection is transformed as the rest of the tree is, and a schema,
-  being of the storage, names a collection as the transformed tree does.
+* **A transform context** is an interface to inherit, ``ITransformContext``,
+  of two abstract methods: ``attr_node(path)`` for the members,
+  ``value_node(val)`` for the values. A mapping is of the aggregate's
+  members and knows nothing of any query: it is asked about a member by its
+  whole path from the candidate, ``["categories", "products", "price"]``, a
+  collection being a member like any other, and answers a path from the
+  candidate's row. Where the answer goes - from which item, how far out -
+  is the tree's, and the transformer puts it there: a member of an item is
+  the answer less the collection's, from the item. It used to ask about the
+  members of "the item" by their names alone, ``item_attr_node``, so a
+  mapping could not tell the items of one collection from another's, and
+  about where a collection is kept, ``collection_node``, which is the
+  schema's to say.
+* **A schema** is the foreign keys of the storage, as ``\d`` shows them,
+  and nothing of any aggregate or query:
+  ``foreign_key(table, column, referenced_table, referenced_column)``, a
+  composite key by ``foreign_key_composite``, a key named as PostgreSQL
+  names it - ``store_items_store_id_fkey`` - or by ``constraint_name``. A
+  tree names a collection by its table, and where two keys of that table
+  reference the row it is named from, by the key's name; an object kept in
+  a table of its own by the key's column, ``owner_id``; a row of an array,
+  which has no table, by the array's column, ``"stores.items"``. What the
+  schema does not mention is an array or a composite in the row. It used to
+  key a collection by its path in the aggregate, then by a name of the
+  query's, and carry an alias for the subquery, which is the compiler's to
+  make.
 
 Lambda Filter
 -------------

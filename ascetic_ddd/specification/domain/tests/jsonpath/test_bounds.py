@@ -13,7 +13,9 @@ from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext
 from ascetic_ddd.specification.domain.jsonpath.jsonpath_parser import (
     JSONPathSyntaxError, parse,
 )
-from ascetic_ddd.specification.domain.nodes import Field, GlobalScope, Item, Value, Visitable
+from ascetic_ddd.specification.domain.nodes import (
+    EmptiableObject, Field, GlobalScope, Object, Value, Visitable,
+)
 from ascetic_ddd.specification.domain.tests.describing import describe
 from ascetic_ddd.specification.infrastructure.postgresql_visitor import compile_to_sql
 from ascetic_ddd.specification.infrastructure.transform_visitor import (
@@ -158,10 +160,10 @@ class SameNames(ITransformContext):
     """A mapping that leaves a member under its name."""
 
     def attr_node(self, path: list[str]) -> Visitable:
-        return Field(GlobalScope(), "_".join(path))
-
-    def item_attr_node(self, path: list[str]) -> Visitable:
-        return Field(Item(), "_".join(path))
+        owner: EmptiableObject = GlobalScope()
+        for name in path[:-1]:
+            owner = Object(owner, name)
+        return Field(owner, path[-1])
 
     def value_node(self, val: Any) -> Visitable:
         return Value(val)
