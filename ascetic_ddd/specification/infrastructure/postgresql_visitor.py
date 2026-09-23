@@ -26,7 +26,7 @@ from ascetic_ddd.specification.domain.nodes import (
 )
 from ascetic_ddd.specification.domain.constants import ASSOCIATIVITY, OPERATOR
 
-from ascetic_ddd.specification.infrastructure.transform_visitor import ITransformContext, transform
+from ascetic_ddd.specification.infrastructure.mapping_visitor import IMapping, transform
 from ascetic_ddd.specification.infrastructure.schema import ForeignKey, SchemaRegistry
 
 
@@ -34,7 +34,7 @@ SqlFragment = Tuple[str, List[Any]]
 
 
 def compile_specification(
-    context: ITransformContext,
+    context: IMapping,
     expression: Visitable,
     schema: Optional[SchemaRegistry] = None,
 ) -> SqlFragment:
@@ -160,7 +160,7 @@ def _quote(name: str) -> str:
     Between quotes a name is the column's to the letter: `"createdAt"` is the
     column created as `"createdAt"`, which `createdAt` without quotes is not -
     PostgreSQL folds that to `createdat`. What a member of the domain is
-    called in the storage is for the transform context to say.
+    called in the storage is for the mapping to say.
     """
     return '"%s"' % name.replace('"', '""')
 

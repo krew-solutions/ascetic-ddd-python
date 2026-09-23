@@ -18,8 +18,8 @@ from ascetic_ddd.specification.domain.nodes import (
 )
 from ascetic_ddd.specification.domain.tests.describing import describe
 from ascetic_ddd.specification.infrastructure.postgresql_visitor import compile_to_sql
-from ascetic_ddd.specification.infrastructure.transform_visitor import (
-    ITransformContext, transform,
+from ascetic_ddd.specification.infrastructure.mapping_visitor import (
+    IMapping, transform,
 )
 
 TOO_DEEP = "Expression is nested too deep"
@@ -156,7 +156,7 @@ class TestTheBoundsAreHeldToTheLevel(unittest.TestCase):
         self.assertGreater(accepted, 50)
 
 
-class SameNames(ITransformContext):
+class SameNames(IMapping):
     """A mapping that leaves a member under its name."""
 
     def attr_node(self, path: list[str]) -> Visitable:

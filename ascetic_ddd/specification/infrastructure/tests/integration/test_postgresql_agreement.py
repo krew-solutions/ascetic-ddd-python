@@ -33,7 +33,7 @@ from ascetic_ddd.specification.domain.nodes import (
 from ascetic_ddd.specification.infrastructure.postgresql_visitor import (
     compile_specification, compile_to_sql,
 )
-from ascetic_ddd.specification.infrastructure.transform_visitor import ITransformContext, transform
+from ascetic_ddd.specification.infrastructure.mapping_visitor import IMapping, transform
 from ascetic_ddd.specification.infrastructure.schema import SchemaRegistry
 from ascetic_ddd.utils.tests.db import make_pg_session_pool
 
@@ -348,7 +348,7 @@ class NoDiscount(Discount):
         super().__init__(0)
 
 
-class Renamed(ITransformContext):
+class Renamed(IMapping):
     """A mapping that renames each name of a path by a table, and leaves
     the values: the storage's name of a member, whatever leads to it."""
 
@@ -366,7 +366,7 @@ class Renamed(ITransformContext):
         return Value(val)
 
 
-class DiscountsContext(ITransformContext):
+class DiscountsContext(IMapping):
     """What the storage has for them: a discount is its percent in a column,
     and the special case is that column's null."""
 

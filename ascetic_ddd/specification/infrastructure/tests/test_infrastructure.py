@@ -31,8 +31,8 @@ from ascetic_ddd.specification.infrastructure.postgresql_visitor import (
     compile_to_sql,
     PostgresqlVisitor,
 )
-from ascetic_ddd.specification.infrastructure.transform_visitor import TransformVisitor
-from ascetic_ddd.specification.infrastructure.transform_visitor import ITransformContext
+from ascetic_ddd.specification.infrastructure.mapping_visitor import MappingVisitor
+from ascetic_ddd.specification.infrastructure.mapping_visitor import IMapping
 
 
 # =============================================================================
@@ -120,7 +120,7 @@ class SomethingScopeContext:
             raise ValueError(f'Unknown field: {path[0]}')
 
 
-class TestGlobalScopeContext(ITransformContext):
+class TestGlobalScopeContext(IMapping):
     """Global scope context for tests."""
 
     def __init__(self):
@@ -266,7 +266,7 @@ class TestCompositeExpressionNode(unittest.TestCase):
             left == right
 
 
-class TestTransformVisitor(unittest.TestCase):
+class TestMappingVisitor(unittest.TestCase):
     """Test transform visitor functionality."""
 
     def test_field_transformation(self):
@@ -283,7 +283,7 @@ class TestTransformVisitor(unittest.TestCase):
 
         context = TestGlobalScopeContext()
 
-        visitor = TransformVisitor(context)
+        visitor = MappingVisitor(context)
         result = expr.accept(visitor)
 
         self.assertIsNotNone(result)

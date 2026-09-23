@@ -72,7 +72,7 @@ specification over rows with nulls, embedded and relational.
   predicate, as the whole specification - is its ``ValueError``. It used to
   be a ``Visitable`` whose ``accept`` raised from inside whatever visited
   the tree next.
-* **A transform context** is an interface to inherit, ``ITransformContext``,
+* **A mapping** is an interface to inherit, ``IMapping``,
   of two abstract methods: ``attr_node(path)`` for the members,
   ``value_node(val)`` for the values. A mapping is of the aggregate's
   members and knows nothing of any query: it is asked about a member by its

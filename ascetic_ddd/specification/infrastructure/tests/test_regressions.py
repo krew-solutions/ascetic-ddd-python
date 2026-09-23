@@ -29,10 +29,10 @@ from ascetic_ddd.specification.infrastructure.schema import (
     ForeignKey,
     SchemaRegistry,
 )
-from ascetic_ddd.specification.infrastructure.transform_visitor import (
+from ascetic_ddd.specification.infrastructure.mapping_visitor import (
     CompositeExpressionsDifferentLengthError,
-    ITransformContext,
-    TransformVisitor,
+    IMapping,
+    MappingVisitor,
     transform,
 )
 
@@ -172,7 +172,7 @@ class TestAMappingIsAskedByTheWholePathAndTheAnswerIsPutWhereTheMemberWas(unitte
     collection from another's.
     """
 
-    class Shops(ITransformContext):
+    class Shops(IMapping):
         def attr_node(self, path: list[str]) -> Any:
             storage = {
                 ("limit",): ("max_price",),
@@ -218,7 +218,7 @@ class TestAMappingIsAskedByTheWholePathAndTheAnswerIsPutWhereTheMemberWas(unitte
         )
 
     def test_what_is_put_outside_its_collection_is_refused(self):
-        class Astray(ITransformContext):
+        class Astray(IMapping):
             def attr_node(self, path: list[str]) -> Any:
                 # A member of an item answered with a column of the candidate.
                 return _from_candidate(*path) if len(path) == 1 else field("elsewhere")
@@ -226,7 +226,7 @@ class TestAMappingIsAskedByTheWholePathAndTheAnswerIsPutWhereTheMemberWas(unitte
             def value_node(self, val: Any) -> Any:
                 return Value(val)
 
-        class Valued(ITransformContext):
+        class Valued(IMapping):
             def attr_node(self, path: list[str]) -> Any:
                 return Value(1)
 
@@ -335,7 +335,7 @@ class Pair:
         self.a, self.b = a, b
 
 
-class OwnersContext(ITransformContext):
+class OwnersContext(IMapping):
     def attr_node(self, path: list[str]) -> Any:
         if path == ["pair"]:
             return CompositeExpression(field("a"), field("b"))
@@ -932,7 +932,7 @@ class Weight:
         self.grams = grams
 
 
-class PartsContext(ITransformContext):
+class PartsContext(IMapping):
     """A mapping of a domain whose parts have a weight, kept in grams: by
     the whole path from the candidate, the parts of a part included."""
 
@@ -948,7 +948,7 @@ class PartsContext(ITransformContext):
         return Value(val.grams if isinstance(val, Weight) else val)
 
 
-class StoreItemsContext(ITransformContext):
+class StoreItemsContext(IMapping):
     """The members of a store by the names the storage has for them."""
 
     def attr_node(self, path: list[str]) -> Visitable:
@@ -1003,7 +1003,7 @@ class TestThePredicateOfACollectionIsTransformed(unittest.TestCase):
 
     def test_the_tree(self):
         self.assertEqual(
-            describe(self.heavy.accept(TransformVisitor(PartsContext()))),
+            describe(self.heavy.accept(MappingVisitor(PartsContext()))),
             (
                 "AND",
                 ("GT", ("field", "$", "rank"), ("value", 3)),
@@ -1026,7 +1026,7 @@ class TestThePredicateOfACollectionIsTransformed(unittest.TestCase):
             Object(GlobalScope(), "parts"), GreaterThan(item("weight"), field("rank")),
         )
         self.assertEqual(
-            describe(ranked.accept(TransformVisitor(PartsContext()))),
+            describe(ranked.accept(MappingVisitor(PartsContext()))),
             ("any", ("$", "parts"), ("GT", ("field", "@", "weight_grams"), ("field", "$", "rank"))),
         )
 
@@ -1036,7 +1036,7 @@ class TestThePredicateOfACollectionIsTransformed(unittest.TestCase):
             Wildcard(Object(Item(), "parts"), GreaterThan(item("weight"), Value(Weight(5)))),
         )
         self.assertEqual(
-            describe(nested.accept(TransformVisitor(PartsContext()))),
+            describe(nested.accept(MappingVisitor(PartsContext()))),
             (
                 "any",
                 ("$", "parts"),
@@ -1082,7 +1082,7 @@ class TestACollectionIsKeptWhereTheContextSays(unittest.TestCase):
 
     def test_a_collection_of_the_candidate(self):
         self.assertEqual(
-            describe(self.heavy.accept(TransformVisitor(StoredPartsContext()))),
+            describe(self.heavy.accept(MappingVisitor(StoredPartsContext()))),
             ("any", ("$", "something_parts"), ("GT", ("field", "@", "weight_grams"), ("value", 100))),
         )
         self.assertEqual(
@@ -1097,7 +1097,7 @@ class TestACollectionIsKeptWhereTheContextSays(unittest.TestCase):
     def test_a_collection_of_an_item(self):
         # Under the item's collection in the answer, and from the item in the tree.
         self.assertEqual(
-            describe(self.nested.accept(TransformVisitor(StoredPartsContext()))),
+            describe(self.nested.accept(MappingVisitor(StoredPartsContext()))),
             (
                 "any",
                 ("$", "something_parts"),
@@ -1111,7 +1111,7 @@ class TestACollectionIsKeptWhereTheContextSays(unittest.TestCase):
 
     def test_a_context_that_renames_the_members_alone_keeps_a_collection_where_it_is(self):
         self.assertEqual(
-            describe(self.nested.accept(TransformVisitor(PartsContext()))),
+            describe(self.nested.accept(MappingVisitor(PartsContext()))),
             (
                 "any",
                 ("$", "parts"),
@@ -1124,7 +1124,7 @@ class TestACollectionIsKeptWhereTheContextSays(unittest.TestCase):
             Object(Object(GlobalScope(), "warehouse"), "shelves"), item("weight"),
         )
 
-        class Recording(ITransformContext):
+        class Recording(IMapping):
             def __init__(self) -> None:
                 self.asked: list[list[str]] = []
 
@@ -1140,7 +1140,7 @@ class TestACollectionIsKeptWhereTheContextSays(unittest.TestCase):
                 return Value(val)
 
         context = Recording()
-        transformed = in_the_store.accept(TransformVisitor(context))
+        transformed = in_the_store.accept(MappingVisitor(context))
         self.assertEqual(context.asked, [["warehouse", "shelves"], ["warehouse", "shelves", "weight"]])
         self.assertEqual(
             describe(transformed),
@@ -1150,7 +1150,7 @@ class TestACollectionIsKeptWhereTheContextSays(unittest.TestCase):
     def test_a_refusal_of_the_context_is_not_hidden(self):
         unknown = Wildcard(Object(GlobalScope(), "wheels"), item("weight"))
         with self.assertRaises(ValueError):
-            unknown.accept(TransformVisitor(StoredPartsContext()))
+            unknown.accept(MappingVisitor(StoredPartsContext()))
 
     def test_the_schema_names_the_collection_as_the_storage_does(self):
         # The query is compiled of the transformed tree: a schema is of the
@@ -1158,7 +1158,7 @@ class TestACollectionIsKeptWhereTheContextSays(unittest.TestCase):
         schema = SchemaRegistry("things").with_alias("t").foreign_key(
             "something_parts", "thing_id", "things", "id",
         )
-        transformed = self.heavy.accept(TransformVisitor(StoredPartsContext()))
+        transformed = self.heavy.accept(MappingVisitor(StoredPartsContext()))
         self.assertEqual(
             sql(transformed, schema),
             'EXISTS (SELECT 1 FROM "something_parts" AS "something_part_1"'
@@ -1174,7 +1174,7 @@ class MemberId:
         self.member_id = member_id
 
 
-class MembersContext(ITransformContext):
+class MembersContext(IMapping):
     """A mapping of a domain whose `id` is composite, of a member and of an item."""
 
     @override
@@ -1289,11 +1289,11 @@ class TestACompositeIsNotANode(unittest.TestCase):
     def test_the_error_is_one_class_wherever_it_is_imported_from(self):
         from ascetic_ddd.specification.infrastructure import (
             composite_expression_node,
-            transform_visitor,
+            mapping_visitor,
         )
         self.assertIs(
             composite_expression_node.CompositeExpressionsDifferentLengthError,
-            transform_visitor.CompositeExpressionsDifferentLengthError,
+            mapping_visitor.CompositeExpressionsDifferentLengthError,
         )
 
     def test_a_composite_takes_only_equality(self):
@@ -1309,7 +1309,7 @@ class TestWhatAContextMustSayAndWhatItMay(unittest.TestCase):
     """
 
     def test_a_context_that_does_not_say_what_it_must_cannot_be_made(self):
-        class OfFieldsOnly(ITransformContext):
+        class OfFieldsOnly(IMapping):
             @override
             def attr_node(self, path: list[str]) -> Visitable:
                 return field(path[-1])
@@ -1321,7 +1321,7 @@ class TestWhatAContextMustSayAndWhatItMay(unittest.TestCase):
         # A renaming of every name of a path, the same for a member and for
         # the collection on its way: the answer for a member of an item
         # starts with the answer for its collection.
-        class Least(ITransformContext):
+        class Least(IMapping):
             @override
             def attr_node(self, path: list[str]) -> Visitable:
                 return _from_candidate(*("stored_" + name for name in path))
@@ -1332,7 +1332,7 @@ class TestWhatAContextMustSayAndWhatItMay(unittest.TestCase):
 
         ranked = GreaterThan(field("rank"), Value(3))
         self.assertEqual(
-            describe(ranked.accept(TransformVisitor(Least()))),
+            describe(ranked.accept(MappingVisitor(Least()))),
             ("GT", ("field", "$", "stored_rank"), ("value", 3)),
         )
         # A collection is a member like any other, and the least said of it
@@ -1343,7 +1343,7 @@ class TestWhatAContextMustSayAndWhatItMay(unittest.TestCase):
             Wildcard(Object(Object(Item(), "box"), "parts"), GreaterThan(item("rank"), Value(1))),
         )
         self.assertEqual(
-            describe(deep.accept(TransformVisitor(Least()))),
+            describe(deep.accept(MappingVisitor(Least()))),
             (
                 "any",
                 (("$", "stored_warehouse"), "stored_shelves"),
@@ -1356,7 +1356,7 @@ class TestWhatAContextMustSayAndWhatItMay(unittest.TestCase):
         )
 
     def test_a_member_of_an_item_is_asked_about_by_its_whole_path(self):
-        class Least(ITransformContext):
+        class Least(IMapping):
             @override
             def attr_node(self, path: list[str]) -> Visitable:
                 return field(path[-1])
@@ -1371,7 +1371,7 @@ class TestWhatAContextMustSayAndWhatItMay(unittest.TestCase):
         # It used to be asked about "the item" by the names alone, and
         # refused with NotImplementedError unless it said item_attr_node.
         with self.assertRaises(ValueError) as raised:
-            heavy.accept(TransformVisitor(Least()))
+            heavy.accept(MappingVisitor(Least()))
         self.assertIn("weight", str(raised.exception))
 
 

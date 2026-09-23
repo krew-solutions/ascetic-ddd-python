@@ -120,6 +120,6 @@ class CompositeExpression:
         return Not(self == other)
 
 
-# What a transform context returns for a field or a value of the domain: a
+# What a mapping returns for a field or a value of the domain: a
 # node, or a composite of them.
 Mapped = typing.Union[Visitable, CompositeExpression]

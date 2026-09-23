@@ -273,7 +273,7 @@ column of. Kept in a table of its own,
 `foreign_key("store_items", "owner_id", "owners", "id")`, it is read through
 the key, by a subquery in the column's place. Not mentioned, it is a
 composite kept in the item's row, `("item_1"."maker")."name"` - a Value
-Object; one kept as columns with a prefix is for the transform context to say.
+Object; one kept as columns with a prefix is for the mapping to say.
 From the candidate an object not mentioned is a qualifier, `"s"."price"`, so a
 composite column of the candidate's own row cannot be reached.
 
@@ -294,7 +294,7 @@ readers agree on every specification, the negation of a comparison included.
 
 A value of the domain that the storage keeps as a null - a special case that
 answers for itself, `discount == NoDiscount()` - is tested for where it is
-compared for equality: the transform context maps it to `Value(None)`, and the
+compared for equality: the mapping maps it to `Value(None)`, and the
 transformer, which sees both mapped operands and the operator, builds `IS
 NULL` and `IS NOT NULL`. A value that was null in the domain already stays
 compared. What stays PostgreSQL's own is a null compared with a value:

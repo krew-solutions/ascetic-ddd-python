@@ -13,8 +13,8 @@ from ascetic_ddd.specification.domain.nodes import (
 
 __all__ = (
     'CompositeExpressionsDifferentLengthError',
-    'ITransformContext',
-    'TransformVisitor',
+    'IMapping',
+    'MappingVisitor',
     'transform',
 )
 from ascetic_ddd.specification.domain.constants import OPERATOR
@@ -34,11 +34,12 @@ def _object_chain(root: EmptiableObject, names: List[str]) -> EmptiableObject:
     return result
 
 
-class ITransformContext(metaclass=ABCMeta):
+class IMapping(metaclass=ABCMeta):
     """
-    Interface for transformation context.
+    The mapping: what a domain's members and values are in the storage,
+    Fowler's Metadata Mapping for a Query Object.
 
-    What a domain's members and values are in the storage. A mapping is of
+    A mapping is of
     the aggregate's members and knows nothing of any query: it is asked
     about a member by its whole path from the candidate,
     ``["categories", "products", "price"]`` for the price of a product of a
@@ -151,7 +152,7 @@ def _node(mapped: Mapped) -> Visitable:
     return mapped
 
 
-def transform(context: ITransformContext, expression: Visitable) -> Visitable:
+def transform(context: IMapping, expression: Visitable) -> Visitable:
     """
     Transform a domain specification to an infrastructure specification.
 
@@ -161,18 +162,19 @@ def transform(context: ITransformContext, expression: Visitable) -> Visitable:
 
     Returns:
         Infrastructure specification expression: a node. ``accept`` of a
-        TransformVisitor returns what a part of the tree is mapped to, which
+        MappingVisitor returns what a part of the tree is mapped to, which
         may be a composite; of the whole tree it may not.
 
     Raises:
         ValueError: If the specification as a whole is a composite
     """
-    return _node(expression.accept(TransformVisitor(context)))
+    return _node(expression.accept(MappingVisitor(context)))
 
 
-class TransformVisitor(Visitor[Mapped]):
+class MappingVisitor(Visitor[Mapped]):
     """
-    Visitor that transforms domain specification AST to infrastructure specification AST.
+    Visitor that applies a mapping: the domain's specification tree becomes
+    the storage's, its members and values as the mapping has them.
 
     Handles:
     - Field path mapping (e.g., "id" -> ["tenant_id", "member_id"])
@@ -184,7 +186,7 @@ class TransformVisitor(Visitor[Mapped]):
     ``visit_infix`` above it turns into nodes.
     """
 
-    def __init__(self, context: ITransformContext, _inside: tuple[_Collection, ...] = ()):
+    def __init__(self, context: IMapping, _inside: tuple[_Collection, ...] = ()):
         self._context = context
         # The collections the expression is inside of, the nearest last: the
         # item ``depth`` collections out is of ``_inside[-1 - depth]``.
@@ -239,7 +241,7 @@ class TransformVisitor(Visitor[Mapped]):
             parent: EmptiableObject = Object(placed.object(), placed.name())
         else:
             parent = _object_chain(GlobalScope(), storage)
-        inside = TransformVisitor(self._context, self._inside + (collection,))
+        inside = MappingVisitor(self._context, self._inside + (collection,))
         return Collection(parent, node.name(), _node(node.predicate().accept(inside)))
 
     def visit_item(self, node: Item) -> Mapped:
