@@ -827,6 +827,64 @@ class PostgresqlAgreementIntegrationTestCase(IsolatedAsyncioTestCase):
                         "SELECT id FROM spec_addressed t WHERE %s" % to_psycopg(sql), params,
                     )
 
+    async def test_a_null_test_of_a_declared_composite_is_of_the_value_as_a_whole(self):
+        """An ``Option`` of a Value Object kept as a composite column: Some
+        or Nothing to the evaluator, whatever the members hold; to ``IS NOT
+        NULL`` of the column a row with a null member was neither null nor
+        not. Declared a composite, the column is tested as a whole.
+        """
+        rows = {
+            1: {"discount": Some(DictContext({"percent": 15, "code": "x"}))},
+            2: {"discount": Some(DictContext({"percent": None, "code": "x"}))},
+            3: {"discount": Some(DictContext({"percent": None, "code": None}))},
+            4: {"discount": Nothing()},
+        }
+        discount = field("discount")
+        percent = Field(Object(GlobalScope(), "discount"), "percent")
+        cases = (
+            (IsNotNull(discount), [1, 2, 3]),
+            (IsNull(discount), [4]),
+            (Not(IsNull(discount)), [1, 2, 3]),
+            # The guards a parser writes: is_some_and, is_nothing_or.
+            (And(IsNotNull(discount), GreaterThan(percent, Value(10))), [1]),
+            (Or(IsNull(discount), GreaterThan(percent, Value(10))), [1, 4]),
+            # A null member of a Some, behind the guard: a member of a
+            # Nothing is null to the server and an error to the evaluator,
+            # as the domain's unwrap() of one is, and the guard keeps both out.
+            (And(IsNotNull(discount), IsNull(percent)), [2, 3]),
+        )
+        schema = SchemaRegistry("spec_deals").with_alias("d").composite("spec_deals", "discount")
+        async with self._session_pool.session() as session:
+            async with session.connection.transaction(force_rollback=True):
+                for statement in (
+                    "CREATE TYPE pg_temp.spec_discount AS (percent int8, code text)",
+                    "CREATE TEMP TABLE spec_deals (id int8, discount pg_temp.spec_discount)",
+                    # A Nothing is a null column, not a row of nulls.
+                    "INSERT INTO spec_deals VALUES"
+                    " (1, ROW(15, 'x')), (2, ROW(NULL, 'x')), (3, ROW(NULL, NULL)), (4, NULL)",
+                ):
+                    await session.connection.execute(statement)
+                for specification, expected in cases:
+                    satisfied = [
+                        id_ for id_, row in rows.items()
+                        if specification.accept(EvaluateVisitor(DictContext(row))) is True
+                    ]
+                    self.assertEqual(satisfied, expected)
+                    sql, params = compile_to_sql(specification, schema)
+                    with self.subTest(sql=sql):
+                        cursor = await session.connection.execute(
+                            "SELECT id FROM spec_deals d WHERE %s ORDER BY id" % to_psycopg(sql), params,
+                        )
+                        self.assertEqual([row[0] for row in await cursor.fetchall()], expected)
+                # Undeclared, the test is of the members: a row with a null
+                # inside is neither null nor not.
+                for specification, expected in ((IsNotNull(discount), [1]), (IsNull(discount), [3, 4])):
+                    sql, params = compile_to_sql(specification)
+                    cursor = await session.connection.execute(
+                        "SELECT id FROM spec_deals d WHERE %s ORDER BY id" % to_psycopg(sql), params,
+                    )
+                    self.assertEqual([row[0] for row in await cursor.fetchall()], expected, sql)
+
     async def _make_tables(self, connection: typing.Any) -> None:
         await connection.execute(
             "CREATE TYPE pg_temp.spec_maker AS (name text)"

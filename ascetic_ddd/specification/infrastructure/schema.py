@@ -156,7 +156,13 @@ class SchemaRegistry:
         """The column ``column`` of ``table`` is of a composite type: a Value
         Object kept in the row. From the candidate a path through it is a
         member of the composite, ``("s"."address")."city"``, where a name
-        not declared is a table's alias, ``"s"."price"``."""
+        not declared is a table's alias, ``"s"."price"``. A null test of the
+        column is of the value as a whole, ``IS DISTINCT FROM NULL``: an
+        Option of a Value Object is Some or Nothing whatever its members
+        hold, where ``IS NOT NULL`` of a composite asks that none of them is
+        null. A Nothing is written as a null column, not as a row of nulls.
+        ``table`` is a table, or the array's column a row is of,
+        ``stores.items``, as it is to a key."""
         self._composites.append((table, column))
         return self
 

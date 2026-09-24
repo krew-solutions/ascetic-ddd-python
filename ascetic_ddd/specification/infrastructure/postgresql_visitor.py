@@ -856,5 +856,40 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
         op_sql, op_params = node.operand().accept(sub)
         op_sql = _of_type(op_sql, _type_under_postfix(node.operand()))
 
-        sql = "%s %s" % (op_sql, self._spell(node.operator()))
+        sql = "%s %s" % (op_sql, self._null_test(node))
         return self._wrap_parens(inner_prec, sql), op_params
+
+    def _null_test(self, node: Postfix) -> str:
+        """
+        Return the words of a null test: of the value as a whole, for a
+        column the schema declares a composite.
+
+        Of a composite ``IS NULL`` is true when all its members are null and
+        ``IS NOT NULL`` when none is - the standard's null predicate over a
+        row value - so a row with a null member is neither. An ``Option`` of
+        a Value Object is Some or Nothing whatever its members hold, and so
+        is the column: null, or a row. ``IS DISTINCT FROM NULL`` tests that,
+        as the manual advises; a Nothing is written as a null column, not as
+        a row of nulls.
+        """
+        if self._is_composite_column(node.operand()):
+            return {
+                OPERATOR.IS_NULL: "IS NOT DISTINCT FROM NULL",
+                OPERATOR.IS_NOT_NULL: "IS DISTINCT FROM NULL",
+            }[node.operator()]
+        return self._spell(node.operator())
+
+    def _is_composite_column(self, operand: Visitable) -> bool:
+        """
+        Return whether ``operand`` is a column the schema declares a composite.
+
+        The column is named as a key names it: by its table, or by the array
+        it is a row of, ``stores.items``; a composite inside a composite by
+        the column, ``stores.discount``.
+        """
+        if self._schema is None or not isinstance(operand, Field):
+            return False
+        path = extract_field_path(operand)
+        root = extract_field_root(operand)
+        of = self._wildcard(root).row if isinstance(root, Item) else self._schema.table
+        return self._schema.is_composite(".".join([of, *path[:-1]]), path[-1])

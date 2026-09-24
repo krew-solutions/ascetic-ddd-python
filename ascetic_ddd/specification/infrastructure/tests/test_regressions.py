@@ -11,7 +11,7 @@ from ascetic_ddd.option import Nothing, Some
 from ascetic_ddd.specification.domain.evaluate_visitor import EvaluateVisitor
 from ascetic_ddd.specification.domain.nodes import (
     Add, And, Div, EmptiableObject, Equal, Field, GlobalScope, GreaterThan, Is,
-    IsNull, Item, LeftShift, LessThan, Mul, Neg, Not, NotEqual, Object, Or, RightShift, Sub, Value,
+    IsNotNull, IsNull, Item, LeftShift, LessThan, Mul, Neg, Not, NotEqual, Object, Or, RightShift, Sub, Value,
     Visitable,
     Wildcard,
 )
@@ -974,6 +974,77 @@ class TestACompositeColumnOfTheCandidateIsDeclared(unittest.TestCase):
         # A composite column of another table is not the candidate's.
         other = SchemaRegistry("stores").composite("items", "address")
         self.assertEqual(sql(Equal(self.CITY, Value("x")), other), '"address"."city" = $1')
+
+
+class TestANullTestOfADeclaredCompositeIsOfTheValueAsAWhole(unittest.TestCase):
+    """Of a composite ``IS NULL`` is true when all its members are null and
+    ``IS NOT NULL`` when none is, so a row with a null member is neither: the
+    SQL standard's <null predicate> over a row value, which PostgreSQL
+    follows. An ``Option`` of a Value Object is Some or Nothing whatever its
+    members hold, and the evaluator says so; ``IS NOT NULL`` of the column
+    said otherwise of a Some with a null inside. A null test of a column the
+    schema declares a composite is of the value as a whole, ``IS DISTINCT
+    FROM NULL``, as the manual advises; a Nothing is a null column, not a
+    row of nulls. The rows are in ``test_postgresql_agreement``.
+    """
+
+    def setUp(self):
+        self.schema = SchemaRegistry("stores").with_alias("s").composite("stores", "discount")
+        self.discount = field("discount")
+
+    def test_of_the_candidates_column(self):
+        self.assertEqual(sql(IsNotNull(self.discount), self.schema), '"discount" IS DISTINCT FROM NULL')
+        self.assertEqual(sql(IsNull(self.discount), self.schema), '"discount" IS NOT DISTINCT FROM NULL')
+        # The guard a parser writes, and its negation.
+        percent = Field(Object(GlobalScope(), "discount"), "percent")
+        self.assertEqual(
+            sql(And(IsNotNull(self.discount), GreaterThan(percent, Value(10))), self.schema),
+            '"discount" IS DISTINCT FROM NULL AND ("s"."discount")."percent" > $1',
+        )
+        self.assertEqual(sql(Not(IsNull(self.discount)), self.schema), 'NOT "discount" IS NOT DISTINCT FROM NULL')
+        # Inside a collection's predicate, qualified as the candidate's columns are.
+        self.assertEqual(
+            sql(Wildcard(Object(GlobalScope(), "items"), IsNull(self.discount)), self.schema),
+            'EXISTS (SELECT 1 FROM unnest("items") AS "item_1" WHERE "s"."discount" IS NOT DISTINCT FROM NULL)',
+        )
+
+    def test_of_an_items_column_and_of_a_composite_inside_one(self):
+        # A row of the items array is named by the array's column, as it is
+        # to a key; a row of a table by the table.
+        maker = Field(Item(), "maker")
+        self.assertEqual(
+            sql(
+                Wildcard(Object(GlobalScope(), "items"), IsNotNull(maker)),
+                SchemaRegistry("stores").composite("stores.items", "maker"),
+            ),
+            'EXISTS (SELECT 1 FROM unnest("items") AS "item_1" WHERE "item_1"."maker" IS DISTINCT FROM NULL)',
+        )
+        self.assertEqual(
+            sql(
+                Wildcard(Object(GlobalScope(), "store_items"), IsNotNull(maker)),
+                SchemaRegistry("stores").with_alias("s")
+                .foreign_key("store_items", "store_id", "stores", "id")
+                .composite("store_items", "maker"),
+            ),
+            'EXISTS (SELECT 1 FROM "store_items" AS "store_item_1"'
+            ' WHERE "store_item_1"."store_id" = "s"."id" AND "store_item_1"."maker" IS DISTINCT FROM NULL)',
+        )
+        country = Field(Object(GlobalScope(), "discount"), "country")
+        self.assertEqual(
+            sql(IsNull(country), self.schema.composite("stores.discount", "country")),
+            '("s"."discount")."country" IS NOT DISTINCT FROM NULL',
+        )
+
+    def test_what_is_not_declared_is_tested_as_it_was(self):
+        self.assertEqual(sql(IsNull(field("price")), self.schema), '"price" IS NULL')
+        self.assertEqual(sql(IsNull(self.discount)), '"discount" IS NULL')
+        # A scalar member of the composite, and a composite of another table.
+        percent = Field(Object(GlobalScope(), "discount"), "percent")
+        self.assertEqual(sql(IsNull(percent), self.schema), '("s"."discount")."percent" IS NULL')
+        self.assertEqual(
+            sql(IsNull(self.discount), SchemaRegistry("stores").composite("items", "discount")),
+            '"discount" IS NULL',
+        )
 
 
 class TestANameIsTheColumnsAndNothingElse(unittest.TestCase):

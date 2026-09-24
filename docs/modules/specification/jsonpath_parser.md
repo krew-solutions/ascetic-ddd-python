@@ -277,7 +277,13 @@ Object; one kept as columns with a prefix is for the mapping to say.
 From the candidate an object not mentioned is a qualifier, `"s"."price"` - an
 object under the root is a table's alias - so a composite column of the
 candidate's own row is declared, `composite("stores", "address")`, and read
-as one, `("s"."address")."city"`.
+as one, `("s"."address")."city"`. A null test of a declared composite is of
+the value as a whole, `IS DISTINCT FROM NULL`: of a composite `IS NULL` is
+true when all its members are null and `IS NOT NULL` when none is - the SQL
+standard's null predicate over a row value, which PostgreSQL follows - so a
+row with a null member is neither, where an `Option` of a Value Object is
+Some or Nothing whatever its members hold. A `Nothing` is written as a null
+column, not as a row of nulls.
 
 An object kept by a key and not said to be is taken for a composite, and
 PostgreSQL reads a member called like a type it can cast to - `name`, `text` -
