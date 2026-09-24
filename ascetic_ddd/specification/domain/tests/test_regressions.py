@@ -73,6 +73,24 @@ class TestAnOptionIsWhatItHoldsOrANull(unittest.TestCase):
         self.assertIs(evaluate(Equal(price, Value(15)), {"price": Some(Some(15))}), True)
         self.assertIs(evaluate(IsNull(price), {"price": Some(Nothing())}), True)
 
+    def test_an_object_it_holds(self):
+        # A Value Object inside an Option, and a member of it: the path a
+        # parser writes for `d.discount.is_some_and(lambda v: v.percent > 10)`
+        # goes into the object, and the object was read as the wrapper.
+        percent = Field(Object(GlobalScope(), "discount"), "percent")
+        guarded = And(IsNotNull(Field(GlobalScope(), "discount")), GreaterThan(percent, Value(10)))
+        self.assertIs(evaluate(guarded, {"discount": Some(DictContext({"percent": 15}))}), True)
+        self.assertIs(evaluate(guarded, {"discount": Some(DictContext({"percent": 5}))}), False)
+        self.assertIs(evaluate(guarded, {"discount": Nothing()}), False)
+        # Through one Option inside another, as a field is.
+        nested = {"discount": Some(Some(DictContext({"percent": 15})))}
+        self.assertIs(evaluate(GreaterThan(percent, Value(10)), nested), True)
+        # A path into a Nothing has no object to go into, as the domain's
+        # `unwrap()` of one has none: an error, which the guard beside the
+        # path never lets through.
+        with self.assertRaises(TypeError):
+            evaluate(GreaterThan(percent, Value(10)), {"discount": Nothing()})
+
     def test_the_item_of_a_collection(self):
         items = CollectionContext([DictContext({"price": Nothing()}), DictContext({"price": Some(15)})])
         dear = Wildcard(Object(GlobalScope(), "items"), GreaterThan(Field(Item(), "price"), Value(10)))

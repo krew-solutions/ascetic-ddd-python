@@ -59,9 +59,15 @@ class EvaluateVisitor(Visitor[Any]):
         return self._context
 
     def visit_object(self, node: Object) -> Context:
-        """Visit object node — navigate to it from the parent context."""
+        """Visit object node — navigate to it from the parent context.
+
+        An ``Option`` holding the object is read through, as one holding a
+        field's value is: what it holds. A ``Nothing`` holds no object to go
+        into, as the domain's ``unwrap()`` of one has none - an error, which
+        the guard a parser writes beside the path never lets through.
+        """
         parent_ctx = node.parent().accept(self)
-        obj = parent_ctx.get(node.name())
+        obj = read_option(parent_ctx.get(node.name()))
         if not isinstance(obj, Context):
             raise TypeError("Object %s is not a Context" % node.name())
         return obj

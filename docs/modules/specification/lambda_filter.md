@@ -219,7 +219,8 @@ to both readers of the tree. In a lambda:
   `IsNull(discount)`
 
 The name the inner lambda gives stands for the Option: `d.percent` is
-`discount.percent`. The null test beside the predicate makes the whole of two
+`discount.percent`, which the evaluator reads through the Option to the Value
+Object it holds. The null test beside the predicate makes the whole of two
 values, as it is to the lambda, so the two agree under `not` too, and nothing
 is unwrapped. An Option from outside the lambda is asked the same way,
 `limit.is_some_and(lambda held: ...)`, and `limit.unwrap()` is the Option

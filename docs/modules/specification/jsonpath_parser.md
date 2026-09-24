@@ -289,8 +289,9 @@ for a member of a null composite.
 A member of an aggregate may be an `Option` of a value -
 `discount: Option[Discount]`, `Some(Discount(15))` or `Nothing()` - and so may
 a constant of a specification. To a reader of the tree it is what it holds, or
-a null: the evaluator reads it where a value comes to it, from the candidate
-and from a constant, and the transformer asks the context of what a `Some`
+a null: the evaluator reads it where a value comes to it, from the candidate,
+from a constant, and on the way to a member of the Value Object it holds,
+`discount.percent`; and the transformer asks the context of what a `Some`
 holds and writes a null for a `Nothing`. A null on both sides, so the two
 readers agree on every specification, the negation of a comparison included.
 
