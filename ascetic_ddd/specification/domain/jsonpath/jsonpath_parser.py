@@ -68,7 +68,13 @@ class JSONPathSyntaxError(JSONPathError):
         self.position = position
         self.expression = expression
         self.context = context
-        super().__init__(self._format_message())
+        # The text is made when the error is shown, not when it is made: the
+        # parser makes one ahead of each bound it checks, and the template it
+        # echoes may be long.
+        super().__init__(message)
+
+    def __str__(self) -> str:
+        return self._format_message()
 
     def _format_message(self) -> str:
         parts = [self.message]
@@ -82,8 +88,8 @@ class JSONPathSyntaxError(JSONPathError):
         if self.expression and self.position is not None:
             # Show the expression with a pointer to the error position; a
             # control character by its escape, so that the message has none.
-            shown = "".join(_shown(c) for c in self.expression)
-            pointer = len("".join(_shown(c) for c in self.expression[:self.position]))
+            shown = self.expression.translate(_SHOWN)
+            pointer = len(self.expression[:self.position].translate(_SHOWN))
             parts.append(f"\n  {shown}")
             parts.append(f"\n  {' ' * pointer}^")
 
@@ -270,9 +276,14 @@ def read_string(spelling: str, position: int, expression: str) -> str:
     return "".join(characters)
 
 
+# A control character as an error shows it: its escape, not the character.
+_SHOWN: dict[int, str] = {code: "\\x%02x" % code for code in (*range(0x20), 0x7F)}
+_SHOWN.update({0x09: "\\t", 0x0A: "\\n", 0x0D: "\\r"})
+
+
 def _shown(character: str) -> str:
     """Return a character as an error can show it: a control character by its escape."""
-    return character if character.isprintable() else character.encode("unicode_escape").decode("ascii")
+    return character.translate(_SHOWN)
 
 
 def read_number(spelling: str, position: int, expression: str) -> Union[int, float]:
