@@ -28,18 +28,14 @@ This allows using predicate functions in the Specification Pattern while maintai
 
 ```python
 from ascetic_ddd.specification.domain.lambda_filter import parse
-from ascetic_ddd.specification.domain.evaluate_visitor import EvaluateVisitor
+from ascetic_ddd.specification.domain.evaluate_visitor import DictContext, EvaluateVisitor
 
 # Simple comparison
 spec = parse(lambda user: user.age > 25)
 
-class DictContext:
-    def __init__(self, data):
-        self._data = data
-
-    def get(self, key):
-        return self._data[key]
-
+# A candidate made of plain data: a dict, whose dicts are objects and whose
+# lists are collections. A domain object implements the Context protocol
+# itself: `get(name)`.
 user = DictContext({"age": 30})
 visitor = EvaluateVisitor(user)
 spec.accept(visitor)
@@ -107,16 +103,13 @@ spec = parse(lambda store: any(item.price.Gt(500) for item in store.items))
 ### Wildcard Collections (any)
 
 ```python
-from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext
-
 # Generator expression
 spec = parse(lambda store: any(item.price > 500 for item in store.items))
 
-item1 = DictContext({"name": "Laptop", "price": 999})
-item2 = DictContext({"name": "Mouse", "price": 29})
-
-items = CollectionContext([item1, item2])
-store = DictContext({"items": items})
+store = DictContext({"items": [
+    {"name": "Laptop", "price": 999},
+    {"name": "Mouse", "price": 29},
+]})
 
 visitor = EvaluateVisitor(store)
 spec.accept(visitor)
@@ -144,13 +137,12 @@ spec = parse(lambda order: any([
 ]))
 
 # Create data structure
-item1 = DictContext({"name": "Laptop", "price": 150})
-item2 = DictContext({"name": "Mouse", "price": 50})
-items = CollectionContext([item1, item2])
-category = DictContext({"name": "Electronics", "items": items})
-
-categories = CollectionContext([category])
-order = DictContext({"id": 1, "categories": categories})
+order = DictContext({"id": 1, "categories": [
+    {"name": "Electronics", "items": [
+        {"name": "Laptop", "price": 150},
+        {"name": "Mouse", "price": 50},
+    ]},
+]})
 
 visitor = EvaluateVisitor(order)
 spec.accept(visitor)

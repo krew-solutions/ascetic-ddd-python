@@ -9,26 +9,12 @@ from typing import Any
 
 from ascetic_ddd.option import Nothing, Some
 from ascetic_ddd.specification.domain.constants import OPERATOR
-from ascetic_ddd.specification.domain.evaluate_visitor import (
-    CollectionContext,
-    EvaluateVisitor,
-)
+from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext, DictContext, EvaluateVisitor
 from ascetic_ddd.specification.domain.nodes import (
     Add, And, Div, Equal, Field, GlobalScope, GreaterThan, GreaterThanEqual,
     Is, IsNotNull, IsNull, Item, LeftShift, LessThan, LessThanEqual, Mod, Mul,
     Neg, Not, NotEqual, Object, Or, RightShift, Sub, Value, Wildcard,
 )
-
-
-class DictContext:
-    """Dictionary-based context for testing."""
-
-    def __init__(self, data: dict[str, Any]):
-        self._data = data
-
-    def get(self, key: str) -> Any:
-        """Get value by key."""
-        return self._data[key]
 
 
 def evaluate(node: Any, data: dict[str, Any] | None = None) -> Any:
@@ -38,6 +24,50 @@ def evaluate(node: Any, data: dict[str, Any] | None = None) -> Any:
 def division_by_zero() -> Any:
     """A boolean expression whose evaluation raises ZeroDivisionError."""
     return Equal(Div(Value(1), Value(0)), Value(1))
+
+
+class TestADictContextIsACandidateMadeOfPlainData(unittest.TestCase):
+    """A candidate made of plain data - for tests, for documents, for a
+    candidate that arrives as data - was a class of six lines that every
+    test file wrote for itself, seventeen times over, in three variants that
+    agreed. It is one class of the library: a dict, whose dicts are objects
+    and whose lists are collections, so a candidate is written as data and
+    nothing else.
+    """
+
+    def test_a_dict_is_the_candidate_its_dicts_objects_and_its_lists_collections(self):
+        shop = DictContext({
+            "limit": 50,
+            "owner": {"name": "ann"},
+            "categories": [
+                {"limit": 10, "products": [{"price": 5}, {"price": 20}]},
+                {"limit": 100, "products": []},
+            ],
+        })
+        self.assertIs(GreaterThan(Field(GlobalScope(), "limit"), Value(40)).accept(EvaluateVisitor(shop)), True)
+        self.assertIs(
+            Equal(Field(Object(GlobalScope(), "owner"), "name"), Value("ann")).accept(EvaluateVisitor(shop)), True,
+        )
+        over_its_category = Wildcard(
+            Object(GlobalScope(), "categories"),
+            Wildcard(Object(Item(), "products"), GreaterThan(Field(Item(), "price"), Field(Item(1), "limit"))),
+        )
+        self.assertIs(over_its_category.accept(EvaluateVisitor(shop)), True)
+
+    def test_a_member_that_is_not_there_is_an_error_and_a_null_is_a_member(self):
+        with self.assertRaises(KeyError):
+            IsNull(Field(GlobalScope(), "discount")).accept(EvaluateVisitor(DictContext({})))
+        self.assertIs(IsNull(Field(GlobalScope(), "discount")).accept(EvaluateVisitor(DictContext({"discount": None}))), True)
+        # An Option is read where a value comes to the evaluator, as before.
+        self.assertIs(
+            GreaterThan(Field(GlobalScope(), "discount"), Value(10)).accept(EvaluateVisitor(DictContext({"discount": Some(15)}))),
+            True,
+        )
+
+    def test_a_context_given_ready_made_is_kept(self):
+        items = CollectionContext([DictContext({"price": 5}), DictContext({"price": 20})])
+        dear = Wildcard(Object(GlobalScope(), "items"), GreaterThan(Field(Item(), "price"), Value(10)))
+        self.assertIs(dear.accept(EvaluateVisitor(DictContext({"items": items}))), True)
 
 
 class TestAnOptionIsWhatItHoldsOrANull(unittest.TestCase):

@@ -1,7 +1,6 @@
 """Unit tests for native JSONPath parser (without external dependencies)."""
 import threading
 import unittest
-from typing import Any
 
 from ascetic_ddd.specification.domain.jsonpath.jsonpath_parser import (
     Lexer,
@@ -11,41 +10,8 @@ from ascetic_ddd.specification.domain.jsonpath.jsonpath_parser import (
     JSONPathSyntaxError,
     JSONPathTypeError,
 )
-from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext
+from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext, DictContext
 from ascetic_ddd.specification.domain.nodes import And, Or, Equal, Not, GreaterThan, GlobalScope, Object
-
-
-class DictContext:
-    """Dictionary-based context for testing."""
-
-    def __init__(self, data: dict[str, Any]):
-        self._data = data
-
-    def get(self, key: str) -> Any:
-        """Get value by key."""
-        if key not in self._data:
-            raise KeyError(f"Key '{key}' not found")
-        return self._data[key]
-
-
-class NestedDictContext:
-    """Nested dictionary-based context for testing nested paths."""
-
-    def __init__(self, data: dict[str, Any]):
-        self._data = data
-
-    def get(self, key: str) -> Any:
-        """Get value by key, supporting nested dict access."""
-        if key not in self._data:
-            raise KeyError(f"Key '{key}' not found")
-
-        value = self._data[key]
-
-        # If value is a dict, wrap it in NestedDictContext
-        if isinstance(value, dict):
-            return NestedDictContext(value)
-
-        return value
 
 
 class TestNativeParser(unittest.TestCase):
@@ -412,7 +378,7 @@ class TestNativeParserNestedPaths(unittest.TestCase):
         product2 = DictContext({"name": "Mouse", "price": 29.0})
         products = CollectionContext([product1, product2])
 
-        data = NestedDictContext({
+        data = DictContext({
             "store": {
                 "name": "MyStore",
                 "products": products
@@ -433,7 +399,7 @@ class TestNativeParserNestedPaths(unittest.TestCase):
         member2 = DictContext({"name": "Bob", "age": 25})
         members = CollectionContext([member1, member2])
 
-        data = NestedDictContext({
+        data = DictContext({
             "company": {
                 "name": "TechCorp",
                 "department": {
@@ -456,7 +422,7 @@ class TestNativeParserNestedPaths(unittest.TestCase):
         """Test nested path in filter expression: $[?@.a.b.c > value]"""
         spec = parse("$[?@.user.profile.age > %d]")
 
-        data = NestedDictContext({
+        data = DictContext({
             "user": {
                 "name": "Alice",
                 "profile": {
@@ -481,7 +447,7 @@ class TestNativeParserNestedPaths(unittest.TestCase):
         product3 = DictContext({"name": "Monitor", "price": 599.0, "stock": 10})
         products = CollectionContext([product1, product2, product3])
 
-        data = NestedDictContext({
+        data = DictContext({
             "store": {
                 "products": products
             }
@@ -501,7 +467,7 @@ class TestNativeParserNestedPaths(unittest.TestCase):
         item2 = DictContext({"name": "Gadget", "quantity": 50})
         items = CollectionContext([item1, item2])
 
-        data = NestedDictContext({
+        data = DictContext({
             "warehouse": {
                 "location": "East",
                 "items": items
@@ -518,7 +484,7 @@ class TestNativeParserNestedPaths(unittest.TestCase):
         """Test deeply nested field in filter expression."""
         spec = parse("$[?@.company.department.manager.level > %d]")
 
-        data = NestedDictContext({
+        data = DictContext({
             "company": {
                 "name": "TechCorp",
                 "department": {

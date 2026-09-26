@@ -8,7 +8,7 @@ import unittest
 from typing import Any, override
 
 from ascetic_ddd.option import Nothing, Some
-from ascetic_ddd.specification.domain.evaluate_visitor import EvaluateVisitor
+from ascetic_ddd.specification.domain.evaluate_visitor import DictContext, EvaluateVisitor
 from ascetic_ddd.specification.domain.nodes import (
     Add, And, Div, EmptiableObject, Equal, Field, GlobalScope, GreaterThan, Is,
     IsNotNull, IsNull, Item, LeftShift, LessThan, Mul, Neg, Not, NotEqual, Object, Or, RightShift, Sub, Value,
@@ -47,17 +47,6 @@ def item(name: str) -> Field:
 
 def sql(node: Visitable, schema: SchemaRegistry | None = None) -> str:
     return compile_to_sql(node, schema)[0]
-
-
-class DictContext:
-    """Dictionary-based context for testing."""
-
-    def __init__(self, data: dict[str, Any]):
-        self._data = data
-
-    def get(self, key: str) -> Any:
-        """Get value by key."""
-        return self._data[key]
 
 
 class TestTheItemOfAnEnclosingCollectionIsItsAlias(unittest.TestCase):

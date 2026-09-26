@@ -10,23 +10,12 @@ from typing import Any
 from ascetic_ddd import option
 from ascetic_ddd.option import Nothing, Some
 from ascetic_ddd.option import Some as Holding
-from ascetic_ddd.specification.domain.evaluate_visitor import EvaluateVisitor
+from ascetic_ddd.specification.domain.evaluate_visitor import DictContext, EvaluateVisitor
 from ascetic_ddd.specification.domain.lambda_filter.lambda_parser import parse
 from ascetic_ddd.specification.domain.tests.describing import describe
 
 DISCOUNT = ("field", "$", "discount")
 OUTSIDE, EMPTY = Some(5), Nothing()
-
-
-class DictContext:
-    """Dictionary-based context for testing."""
-
-    def __init__(self, data: dict[str, Any]):
-        self._data = data
-
-    def get(self, key: str) -> Any:
-        """Get value by key."""
-        return self._data[key]
 
 
 class Candidate:

@@ -1,20 +1,7 @@
 """Example usage of Native JSONPath Specification Parser (no external dependencies)."""
-from typing import Any
 
 from ascetic_ddd.specification.domain.jsonpath.jsonpath_parser import parse
-
-
-class DictContext:
-    """Simple dictionary-based context implementation."""
-
-    def __init__(self, data: dict[str, Any]):
-        self._data = data
-
-    def get(self, key: str) -> Any:
-        """Get value by key."""
-        if key not in self._data:
-            raise KeyError(f"Key '{key}' not found")
-        return self._data[key]
+from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext, DictContext
 
 
 def main():

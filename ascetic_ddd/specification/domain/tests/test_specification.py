@@ -1,11 +1,7 @@
 """Unit tests for Specification pattern implementation."""
 import unittest
-from typing import Any
 
-from ascetic_ddd.specification.domain.evaluate_visitor import (
-    CollectionContext,
-    EvaluateVisitor,
-)
+from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext, DictContext, EvaluateVisitor
 from ascetic_ddd.specification.domain.nodes import (
     And,
     Equal,
@@ -48,19 +44,6 @@ class ComparableInt:
 
     def __repr__(self) -> str:
         return f"ComparableInt({self.val})"
-
-
-class DictContext:
-    """Dictionary-based context for testing."""
-
-    def __init__(self, data: dict[str, Any]):
-        self._data = data
-
-    def get(self, key: str) -> Any:
-        """Get value by key."""
-        if key not in self._data:
-            raise KeyError(f"Key '{key}' not found")
-        return self._data[key]
 
 
 class TestNodes(unittest.TestCase):

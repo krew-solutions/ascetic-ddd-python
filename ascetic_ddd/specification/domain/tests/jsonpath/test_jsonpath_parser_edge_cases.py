@@ -7,48 +7,14 @@ library's own spelling of equality, `=`, went with it.
 """
 import threading
 import unittest
-from typing import Any
 
 from ascetic_ddd.specification.domain.jsonpath.jsonpath_parser import (
     parse,
     JSONPathSyntaxError,
     JSONPathTypeError,
 )
-from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext
+from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext, DictContext
 from ascetic_ddd.specification.domain.nodes import And, Or, Equal, Not, GreaterThan
-
-
-class DictContext:
-    """Dictionary-based context for testing."""
-
-    def __init__(self, data: dict[str, Any]):
-        self._data = data
-
-    def get(self, key: str) -> Any:
-        """Get value by key."""
-        if key not in self._data:
-            raise KeyError(f"Key '{key}' not found")
-        return self._data[key]
-
-
-class NestedDictContext:
-    """Nested dictionary-based context for testing nested paths."""
-
-    def __init__(self, data: dict[str, Any]):
-        self._data = data
-
-    def get(self, key: str) -> Any:
-        """Get value by key, supporting nested dict access."""
-        if key not in self._data:
-            raise KeyError(f"Key '{key}' not found")
-
-        value = self._data[key]
-
-        # If value is a dict, wrap it in NestedDictContext
-        if isinstance(value, dict):
-            return NestedDictContext(value)
-
-        return value
 
 
 class TestParser(unittest.TestCase):
@@ -330,7 +296,7 @@ class TestNestedPaths(unittest.TestCase):
         spec = parse("$[?@.profile.age > %d]")
 
         # Test with age > 25
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "age": 30,
                 "name": "Alice"
@@ -340,7 +306,7 @@ class TestNestedPaths(unittest.TestCase):
         self.assertTrue(spec.match(data, (25,)))
 
         # Test with age <= 25
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "age": 20,
                 "name": "Bob"
@@ -353,7 +319,7 @@ class TestNestedPaths(unittest.TestCase):
         """Test deep nested path: $[?@.company.department.manager.level > 5]."""
         spec = parse("$[?@.company.department.manager.level > %d]")
 
-        data = NestedDictContext({
+        data = DictContext({
             "company": {
                 "department": {
                     "manager": {
@@ -367,7 +333,7 @@ class TestNestedPaths(unittest.TestCase):
         self.assertTrue(spec.match(data, (5,)))
 
         # Test with level <= 5
-        data = NestedDictContext({
+        data = DictContext({
             "company": {
                 "department": {
                     "manager": {
@@ -384,7 +350,7 @@ class TestNestedPaths(unittest.TestCase):
         """Test nested path with AND operator."""
         spec = parse("$[?@.profile.age > %d && @.profile.active == %s]")
 
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "age": 30,
                 "active": True
@@ -394,7 +360,7 @@ class TestNestedPaths(unittest.TestCase):
         self.assertTrue(spec.match(data, (25, True)))
 
         # Test with active = False
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "age": 30,
                 "active": False
@@ -407,7 +373,7 @@ class TestNestedPaths(unittest.TestCase):
         """Test nested path with OR operator."""
         spec = parse("$[?@.profile.age < %d || @.profile.age > %d]")
 
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "age": 15
             }
@@ -415,7 +381,7 @@ class TestNestedPaths(unittest.TestCase):
 
         self.assertTrue(spec.match(data, (18, 65)))
 
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "age": 70
             }
@@ -423,7 +389,7 @@ class TestNestedPaths(unittest.TestCase):
 
         self.assertTrue(spec.match(data, (18, 65)))
 
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "age": 30
             }
@@ -435,7 +401,7 @@ class TestNestedPaths(unittest.TestCase):
         """Test nested path with equality comparison."""
         spec = parse("$[?@.profile.status == %s]")
 
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "status": "active"
             }
@@ -443,7 +409,7 @@ class TestNestedPaths(unittest.TestCase):
 
         self.assertTrue(spec.match(data, ("active",)))
 
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "status": "inactive"
             }
@@ -455,7 +421,7 @@ class TestNestedPaths(unittest.TestCase):
         """Test nested path with named placeholder."""
         spec = parse("$[?@.profile.age > %(min_age)d]")
 
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "age": 30
             }

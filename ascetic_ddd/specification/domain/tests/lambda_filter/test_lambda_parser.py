@@ -1,6 +1,5 @@
 """Unit tests for lambda function parser."""
 import unittest
-from typing import Any
 
 from ascetic_ddd.specification.domain.lambda_filter.lambda_parser import parse
 from ascetic_ddd.specification.domain.nodes import (
@@ -27,56 +26,7 @@ from ascetic_ddd.specification.domain.nodes import (
     Wildcard,
     Object,
 )
-from ascetic_ddd.specification.domain.evaluate_visitor import EvaluateVisitor
-
-
-class DictContext:
-    """Dictionary-based context for testing."""
-
-    def __init__(self, data: dict[str, Any]):
-        self._data = data
-
-    def get(self, key: str) -> Any:
-        """Get value by key."""
-        if key not in self._data:
-            raise KeyError(f"Key '{key}' not found")
-        return self._data[key]
-
-
-class CollectionContext:
-    """Collection context for wildcard testing."""
-
-    def __init__(self, items: list[Any]):
-        self._items = items
-
-    def __iter__(self):
-        return iter(self._items)
-
-    def get(self, slice_: str) -> Any:
-        """Get collection slice - returns items for wildcard."""
-        if slice_ == "*":
-            return self._items
-        raise ValueError(f'Unsupported slice type "{slice_}"')
-
-
-class NestedDictContext:
-    """Nested dictionary-based context for testing nested paths."""
-
-    def __init__(self, data: dict[str, Any]):
-        self._data = data
-
-    def get(self, key: str) -> Any:
-        """Get value by key, supporting nested dict access."""
-        if key not in self._data:
-            raise KeyError(f"Key '{key}' not found")
-
-        value = self._data[key]
-
-        # If value is a dict, wrap it in NestedDictContext
-        if isinstance(value, dict):
-            return NestedDictContext(value)
-
-        return value
+from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext, DictContext, EvaluateVisitor
 
 
 class TestLambdaParser(unittest.TestCase):
@@ -570,7 +520,7 @@ class TestLambdaParser(unittest.TestCase):
         self.assertIsInstance(spec.left(), Field)
 
         # Test with age > 25
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "age": 30,
                 "name": "Alice"
@@ -582,7 +532,7 @@ class TestLambdaParser(unittest.TestCase):
         self.assertTrue(result)
 
         # Test with age <= 25
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "age": 20,
                 "name": "Bob"
@@ -597,7 +547,7 @@ class TestLambdaParser(unittest.TestCase):
         """Test deep nested path: user.company.department.manager.level."""
         spec = parse(lambda user: user.company.department.manager.level > 5)
 
-        data = NestedDictContext({
+        data = DictContext({
             "company": {
                 "department": {
                     "manager": {
@@ -613,7 +563,7 @@ class TestLambdaParser(unittest.TestCase):
         self.assertTrue(result)
 
         # Test with level <= 5
-        data = NestedDictContext({
+        data = DictContext({
             "company": {
                 "department": {
                     "manager": {
@@ -634,7 +584,7 @@ class TestLambdaParser(unittest.TestCase):
 
         self.assertIsInstance(spec, And)
 
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "age": 30,
                 "active": True
@@ -646,7 +596,7 @@ class TestLambdaParser(unittest.TestCase):
         self.assertTrue(result)
 
         # Test with active = False
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "age": 30,
                 "active": False
@@ -661,7 +611,7 @@ class TestLambdaParser(unittest.TestCase):
         """Test nested path with OR operator."""
         spec = parse(lambda user: user.profile.age < 18 or user.profile.age > 65)
 
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "age": 15
             }
@@ -671,7 +621,7 @@ class TestLambdaParser(unittest.TestCase):
         result = spec.accept(visitor)
         self.assertTrue(result)
 
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "age": 70
             }
@@ -681,7 +631,7 @@ class TestLambdaParser(unittest.TestCase):
         result = spec.accept(visitor)
         self.assertTrue(result)
 
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "age": 30
             }
@@ -695,7 +645,7 @@ class TestLambdaParser(unittest.TestCase):
         """Test nested path with equality comparison."""
         spec = parse(lambda user: user.profile.status == "active")
 
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "status": "active"
             }
@@ -705,7 +655,7 @@ class TestLambdaParser(unittest.TestCase):
         result = spec.accept(visitor)
         self.assertTrue(result)
 
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "status": "inactive"
             }
@@ -719,7 +669,7 @@ class TestLambdaParser(unittest.TestCase):
         """Test nested path with complex expression."""
         spec = parse(lambda user: user.profile.age >= 18 and user.profile.age <= 65 and user.profile.active == True)
 
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "age": 30,
                 "active": True
@@ -731,7 +681,7 @@ class TestLambdaParser(unittest.TestCase):
         self.assertTrue(result)
 
         # Test with age out of range
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "age": 70,
                 "active": True
@@ -743,7 +693,7 @@ class TestLambdaParser(unittest.TestCase):
         self.assertFalse(result)
 
         # Test with active = False
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "age": 30,
                 "active": False
@@ -998,7 +948,7 @@ class TestLambdaParser(unittest.TestCase):
         self.assertIsInstance(spec.left(), Field)
         self.assertEqual(spec.left().name(), "age")
 
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "age": 30,
             }
@@ -1008,7 +958,7 @@ class TestLambdaParser(unittest.TestCase):
         result = spec.accept(visitor)
         self.assertTrue(result)
 
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "age": 20,
             }
@@ -1024,7 +974,7 @@ class TestLambdaParser(unittest.TestCase):
 
         self.assertIsInstance(spec, IsNull)
 
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "email": None,
             }
@@ -1034,7 +984,7 @@ class TestLambdaParser(unittest.TestCase):
         result = spec.accept(visitor)
         self.assertTrue(result)
 
-        data = NestedDictContext({
+        data = DictContext({
             "profile": {
                 "email": "test@example.com",
             }

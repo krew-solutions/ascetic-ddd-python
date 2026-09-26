@@ -171,3 +171,34 @@ class CollectionContext:
         if slice_ == "*":
             return self._items
         raise ValueError(f'Unsupported slice type "{slice_}"')
+
+
+class DictContext:
+    """A candidate made of plain data: a dict, whose dicts are objects and
+    whose lists are collections.
+
+    For tests, for documents, and for a candidate that arrives as data
+    rather than as a domain object; a domain object implements ``Context``
+    itself. A member that is not there is a ``KeyError``, not a null: a
+    null is a member that is there and holds nothing, ``{"discount": None}``.
+    A context given ready-made, a ``DictContext`` or a ``CollectionContext``,
+    is kept as it is.
+    """
+
+    def __init__(self, data: dict[str, Any]):
+        self._data = data
+
+    def get(self, key: str) -> Any:
+        """Get value by key."""
+        if key not in self._data:
+            raise KeyError("Key '%s' not found" % key)
+        return _from_data(self._data[key])
+
+
+def _from_data(value: Any) -> Any:
+    """Return a dict as an object, a list as a collection, anything else as it is."""
+    if isinstance(value, dict):
+        return DictContext(value)
+    if isinstance(value, list):
+        return CollectionContext([_from_data(item) for item in value])
+    return value

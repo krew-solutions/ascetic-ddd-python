@@ -5,10 +5,7 @@ Each test names the defect it pins, and what the code did before the fix.
 import unittest
 from typing import Any
 
-from ascetic_ddd.specification.domain.evaluate_visitor import (
-    CollectionContext,
-    EvaluateVisitor,
-)
+from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext, DictContext, EvaluateVisitor
 from ascetic_ddd.specification.domain.lambda_filter.lambda_parser import parse
 from ascetic_ddd.specification.domain.tests.describing import describe
 
@@ -20,17 +17,6 @@ class Limits:
 
     def __init__(self, max_price: int):
         self.max_price = max_price
-
-
-class DictContext:
-    """Dictionary-based context for testing."""
-
-    def __init__(self, data: dict[str, Any]):
-        self._data = data
-
-    def get(self, key: str) -> Any:
-        """Get value by key."""
-        return self._data[key]
 
 
 def store(*items: dict[str, Any]) -> DictContext:

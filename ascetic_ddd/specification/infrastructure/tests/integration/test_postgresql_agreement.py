@@ -21,10 +21,7 @@ from psycopg import errors
 
 from ascetic_ddd.option import Nothing, Option, Some
 
-from ascetic_ddd.specification.domain.evaluate_visitor import (
-    CollectionContext,
-    EvaluateVisitor,
-)
+from ascetic_ddd.specification.domain.evaluate_visitor import CollectionContext, DictContext, EvaluateVisitor
 from ascetic_ddd.specification.domain.nodes import (
     Add, And, Div, EmptiableObject, Equal, Field, GlobalScope, GreaterThan, GreaterThanEqual,
     Is, IsNotNull, IsNull, Item, LeftShift, LessThan, LessThanEqual, Mod, Mul,
@@ -47,17 +44,6 @@ FAILURES: dict[type[Exception], type[Exception]] = {
     OverflowError: errors.NumericValueOutOfRange,
     TypeError: errors.UndefinedFunction,
 }
-
-
-class DictContext:
-    """Dictionary-based context for testing."""
-
-    def __init__(self, data: dict[str, typing.Any]):
-        self._data = data
-
-    def get(self, key: str) -> typing.Any:
-        """Get value by key."""
-        return self._data[key]
 
 
 def field(name: str) -> Field:
