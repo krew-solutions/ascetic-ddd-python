@@ -361,6 +361,15 @@ class _ParseContext:
 _MAX_HEIGHT = 128
 _MAX_NESTING = 32
 
+# How long a template may be, in bytes of UTF-8. The two bounds above bound
+# the shape of a tree and not the size of a text: a string literal is as long
+# as it is written, and a text of megabytes was read to its end - lexed whole
+# before the parser could refuse it at its thirty-fifth character, or accepted
+# and sent to the server as a parameter of megabytes. The length is checked
+# before anything is read. A template of realistic operands within the bounds
+# is a few kilobytes; a long value belongs in a parameter.
+_MAX_LENGTH = 262_144
+
 
 # What a template is bound to: a tuple for positional placeholders, a mapping
 # for named ones, as Python's `%` takes them.
@@ -589,6 +598,13 @@ class NativeParametrizedSpecification:
             template: JSONPath with %s, %d, %f or %(name)s placeholders
         """
         self.template = template
+
+        length = len(template.encode("utf-8"))
+        if length > _MAX_LENGTH:
+            raise JSONPathSyntaxError(
+                "Template too long",
+                context="at most %d bytes of UTF-8, this has %d" % (_MAX_LENGTH, length),
+            )
 
         # Parse AST once at initialization (cached for all match() calls),
         # into the function that builds it of the parameters

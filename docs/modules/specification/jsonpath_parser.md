@@ -272,9 +272,13 @@ deep - groups, `!`, the filters of collections; beyond either it is refused,
 "Expression is nested too deep". Every reader of a tree recurses, and a text
 that is not trusted used to end in a `RecursionError`, which is not the error
 of a template and is not caught as one. A chain of `&&` or `||` nests to the
-left, so it has at most 128 operands. Within the bounds a template is parsed,
-and its tree read by everything that reads one, in under 500 frames of
-recursion, and in a time that grows as the length of the text.
+left, so it has at most 128 operands. A template is at most 262 144 bytes of
+UTF-8, looked at before anything is read: the bounds on the tree bound its
+shape and not the size of a text, and a text of megabytes was lexed whole
+before the parser could refuse it, or accepted with a literal of megabytes
+for a parameter. Within the bounds a template is parsed, and its tree read by
+everything that reads one, in under 500 frames of recursion, and in a time
+that grows as the length of the text.
 
 In a query, an object on the way to a member - `@.owner_id.name` - is looked
 up in the schema registry as a collection is: by the key its name is a

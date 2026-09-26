@@ -75,12 +75,34 @@ class TestATemplateIsReadInTheTimeItTakesToReadIt(unittest.TestCase):
         self.assertIs(specification.match(Record(a=1), (1,) * 2 ** 14), True)
 
     def test_a_long_text_that_is_refused(self):
-        long = "$[?@.a == %d" + " @.a %d" * 60000 + "]"
+        long = "$[?@.a == %d" + " @.a %d" * 30000 + "]"
         started = time.monotonic()
         with self.assertRaises(JSONPathSyntaxError) as raised:
             parse(long)
         self.assertEqual(raised.exception.message, "Expected ']'")
         self.assertLess(time.monotonic() - started, 10)
+
+    def test_a_template_longer_than_the_bound_is_refused_before_it_is_read(self):
+        # The bounds on height and nesting bound the shape of a tree and not
+        # the size of a text: a text of megabytes was lexed whole before the
+        # parser could refuse it, or accepted with a literal of megabytes. The
+        # length is the first thing looked at.
+        room = "$[?@.a == 1]"
+        at_the_bound = "$[?@.a == 1" + " " * (262_144 - len(room)) + "]"
+        self.assertEqual(len(at_the_bound.encode()), 262_144)
+        self.assertIs(parse(at_the_bound).match(Record(a=1)), True)
+        with self.assertRaises(JSONPathSyntaxError) as raised:
+            parse(at_the_bound + " ")
+        self.assertEqual(raised.exception.message, "Template too long")
+        self.assertEqual(raised.exception.context, "at most 262144 bytes of UTF-8, this has 262145")
+        # Bytes, not characters: a template is one in every port, or in none.
+        with self.assertRaises(JSONPathSyntaxError):
+            parse("$[?@.a == '" + "\u00e9" * 131_072 + "']")
+        # And it is refused in the time it takes to look at its length.
+        started = time.monotonic()
+        with self.assertRaises(JSONPathSyntaxError):
+            parse("$[?" + " && ".join(["@.a == 1"] * 400_000) + "]")
+        self.assertLess(time.monotonic() - started, 1)
 
 
 class Record:
