@@ -124,6 +124,15 @@ Full support for the RFC 9535 standard:
 - `||` - Logical OR (RFC 9535)
 - `!` - Logical NOT (RFC 9535)
 
+### String Literals
+A string is written in either quote with the escapes of RFC 9535, 2.3.5.1:
+`\'`, `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t` and `\uXXXX`. A
+control character stands in a string only as its escape; raw, it is a syntax
+error with a position. `\u0000` is an escape like any other to the parser,
+but a text with a NUL in it is no text PostgreSQL has, and the compiler
+refuses it rather than let the query fail at the server; in memory it is a
+string like any other.
+
 ### Parameterization
 ```python
 # Positional

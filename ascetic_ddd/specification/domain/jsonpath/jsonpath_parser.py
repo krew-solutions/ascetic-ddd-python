@@ -80,9 +80,12 @@ class JSONPathSyntaxError(JSONPathError):
             parts.append(f" ({self.context})")
 
         if self.expression and self.position is not None:
-            # Show the expression with a pointer to the error position
-            parts.append(f"\n  {self.expression}")
-            parts.append(f"\n  {' ' * self.position}^")
+            # Show the expression with a pointer to the error position; a
+            # control character by its escape, so that the message has none.
+            shown = "".join(_shown(c) for c in self.expression)
+            pointer = len("".join(_shown(c) for c in self.expression[:self.position]))
+            parts.append(f"\n  {shown}")
+            parts.append(f"\n  {' ' * pointer}^")
 
         return "".join(parts)
 
@@ -231,13 +234,24 @@ def read_string(spelling: str, position: int, expression: str) -> str:
         The string
 
     Raises:
-        JSONPathSyntaxError: If a backslash is followed by what is not an escape
+        JSONPathSyntaxError: If a backslash is followed by what is not an
+            escape, or a control character stands in the string unescaped
     """
     characters: list[str] = []
     at = 1
     end = len(spelling) - 1
     while at < end:
         if spelling[at] != _BACKSLASH:
+            # RFC 9535, 2.3.5.1: unescaped, a character of a string is %x20
+            # and up. A control character is written as its escape, and a
+            # NUL that arrives raw does not get as far as a query.
+            if ord(spelling[at]) < 0x20:
+                raise JSONPathSyntaxError(
+                    "Control character in a string",
+                    position=position + at,
+                    expression=expression,
+                    context="escape it, %s" % _shown(spelling[at]),
+                )
             characters.append(spelling[at])
             at += 1
             continue
@@ -254,6 +268,11 @@ def read_string(spelling: str, position: int, expression: str) -> str:
         character, at = escape
         characters.append(character)
     return "".join(characters)
+
+
+def _shown(character: str) -> str:
+    """Return a character as an error can show it: a control character by its escape."""
+    return character if character.isprintable() else character.encode("unicode_escape").decode("ascii")
 
 
 def read_number(spelling: str, position: int, expression: str) -> Union[int, float]:
@@ -531,7 +550,7 @@ class Lexer:
 
             if not matched:
                 raise JSONPathSyntaxError(
-                    f"Unexpected character '{self.text[self.position]}'",
+                    f"Unexpected character '{_shown(self.text[self.position])}'",
                     position=self.position,
                     expression=self.text,
                     context="expected valid token",

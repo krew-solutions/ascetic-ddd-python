@@ -1036,6 +1036,28 @@ class TestANullTestOfADeclaredCompositeIsOfTheValueAsAWhole(unittest.TestCase):
         )
 
 
+class TestATextWithANulIsNoTextOfTheServer(unittest.TestCase):
+    """PostgreSQL's ``text`` holds no NUL: a parameter with one in it is
+    "invalid byte sequence for encoding UTF8: 0x00" from the server, or the
+    driver's refusal before it, at execution - a failure of the query where
+    the application expects one of the data. A text with a NUL is refused
+    where every value meets the server, by the compiler; in memory it is a
+    string like any other. The server's refusal is in
+    ``test_postgresql_agreement``.
+    """
+
+    def test_the_compiler_refuses_it(self):
+        nul = Equal(field("name"), Value("a" + chr(0) + "b"))
+        with self.assertRaises(ValueError) as refused:
+            compile_to_sql(nul)
+        self.assertEqual(str(refused.exception), "A text with a NUL (U+0000) in it is no text PostgreSQL has")
+        # Wherever the value stands: a composite, a mapped constant.
+        with self.assertRaises(ValueError):
+            compile_specification(OwnersContext(), Equal(field("pair"), Value(Pair("x", "a" + chr(0)))))
+        # The evaluator is not the server.
+        self.assertIs(nul.accept(EvaluateVisitor(DictContext({"name": "a" + chr(0) + "b"}))), True)
+
+
 class TestANameIsTheColumnsAndNothingElse(unittest.TestCase):
     """A name was written into the query as it stood, and PostgreSQL reads a
     word it knows as what it knows: ``user = $1`` compares the user of the

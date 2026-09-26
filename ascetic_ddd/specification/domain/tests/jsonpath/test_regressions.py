@@ -466,6 +466,29 @@ class TestLiteralsAreThoseOfRfc9535(unittest.TestCase):
         self.assertEqual(raised.exception.message, "Unterminated string")
         self.assertEqual(raised.exception.position, 13)
 
+    def test_a_control_character_is_written_as_its_escape(self):
+        # RFC 9535, 2.3.5.1: unescaped, a character of a string is %x20 and
+        # up. A raw one was taken into the string - a NUL among them, which
+        # went as far as the server and failed there.
+        for raw, why in ((chr(0), "a NUL"), (chr(9), "a tab"), (chr(10), "a newline")):
+            with self.subTest(why=why):
+                with self.assertRaises(JSONPathSyntaxError) as raised:
+                    jsonpath_parser.parse("$[?@.name == 'a%sb']" % raw)
+                self.assertEqual(raised.exception.message, "Control character in a string")
+                self.assertEqual(raised.exception.position, 15)
+                # The error shows the character by its escape, not as it is:
+                # in the hint, and in the line that echoes the template.
+                escaped = raw.encode("unicode_escape").decode("ascii")
+                self.assertEqual(raised.exception.context, "escape it, " + escaped)
+                echoed = str(raised.exception).split("\n")[1]
+                self.assertIn("'a" + escaped + "b'", echoed)
+                self.assertNotIn(raw, echoed)
+        self.assertEqual(self.parsed("'a" + BS + "tb" + BS + "u0000c'"), "a" + chr(9) + "b" + chr(0) + "c")
+        # A control character outside a string is shown by its escape too.
+        with self.assertRaises(JSONPathSyntaxError) as raised:
+            jsonpath_parser.parse("$[?@.na" + chr(0) + "me == 1]")
+        self.assertEqual(raised.exception.message, "Unexpected character '" + BS + "x00'")
+
     def test_numbers(self):
         cases = (
             ("30", 30, int),

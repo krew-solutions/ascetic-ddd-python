@@ -787,9 +787,18 @@ class PostgresqlVisitor(Visitor[SqlFragment]):
     def visit_value(self, node: Value) -> SqlFragment:
         """
         Visit value node and produce a parameterized placeholder.
+
+        A text with a NUL in it is no text PostgreSQL has - ``text`` holds
+        none, "invalid byte sequence for encoding UTF8: 0x00" - so it is
+        refused here, where every value meets the server, rather than by
+        the driver or the server at execution: a query that cannot run is
+        not compiled. In memory such a text is a string like any other.
         """
+        value = node.value()
+        if isinstance(value, str) and "\x00" in value:
+            raise ValueError("A text with a NUL (U+0000) in it is no text PostgreSQL has")
         self._counters.placeholder_index += 1
-        return "$%d" % self._counters.placeholder_index, [node.value()]
+        return "$%d" % self._counters.placeholder_index, [value]
 
     def visit_prefix(self, node: Prefix) -> SqlFragment:
         """

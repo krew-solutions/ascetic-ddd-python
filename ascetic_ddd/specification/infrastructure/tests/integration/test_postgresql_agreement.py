@@ -871,6 +871,16 @@ class PostgresqlAgreementIntegrationTestCase(IsolatedAsyncioTestCase):
                     )
                     self.assertEqual([row[0] for row in await cursor.fetchall()], expected, sql)
 
+    async def test_a_text_with_a_nul_is_no_text_of_the_server(self):
+        """Why the compiler refuses a text with a NUL in it: the server has no
+        such text, and the driver knows it before the server does."""
+        async with self._session_pool.session() as session:
+            async with session.connection.transaction(force_rollback=True):
+                with self.assertRaises(errors.DataError):
+                    await session.connection.execute("SELECT %s::text", ["a" + chr(0) + "b"])
+        with self.assertRaises(ValueError):
+            compile_to_sql(Equal(field("name"), Value("a" + chr(0) + "b")))
+
     async def _make_tables(self, connection: typing.Any) -> None:
         await connection.execute(
             "CREATE TYPE pg_temp.spec_maker AS (name text)"
